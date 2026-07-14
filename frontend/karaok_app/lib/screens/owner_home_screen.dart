@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import '../widgets/bottom_nav_bar.dart';
+import '../widgets/guest_banner.dart';
+import '../services/user_session.dart';
 import 'genre_select_screen.dart';
 import 'uploading_screen.dart';
 import 'owner_previous_results_screen.dart';
+import 'login_screen.dart';
 
 class OwnerHomeScreen extends StatefulWidget {
   const OwnerHomeScreen({super.key});
@@ -52,14 +55,59 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
         ),
         centerTitle: true,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.chevron_left, color: Colors.white),
-            onPressed: () => Navigator.pop(context),
-          ),
+          if (UserSession.instance.isGuest)
+            TextButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const LoginScreen(userType: 'owner')),
+              ),
+              child: const Text('Sign In',
+                  style: TextStyle(
+                      color: Color(0xFFFF8C00), fontWeight: FontWeight.w700)),
+            )
+          else
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.account_circle, color: Colors.white),
+              color: const Color(0xFF1C1C2E),
+              onSelected: (v) {
+                if (v == 'logout') {
+                  UserSession.instance.clear();
+                  Navigator.pushNamedAndRemoveUntil(
+                      context, '/', (route) => false);
+                }
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  enabled: false,
+                  child: Text(
+                    UserSession.instance.name ?? 'User',
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                const PopupMenuDivider(),
+                const PopupMenuItem(
+                  value: 'logout',
+                  child: Row(
+                    children: [
+                      Icon(Icons.logout, color: Color(0xFFF44336), size: 18),
+                      SizedBox(width: 8),
+                      Text('Log Out',
+                          style: TextStyle(color: Color(0xFFF44336))),
+                    ],
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      body: Column(
+        children: [
+          GuestBanner(userType: 'owner'),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -120,6 +168,9 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
             ..._recentAnalysis.map((item) => _AnalysisListItem(item: item)),
           ],
         ),
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: BottomNavBar(
         selectedIndex: _selectedNavIndex,

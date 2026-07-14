@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../services/user_session.dart';
 import 'results_screen.dart';
 
 class ProcessingScreen extends StatefulWidget {
@@ -44,9 +45,14 @@ class _ProcessingScreenState extends State<ProcessingScreen>
         t.cancel();
         Future.delayed(const Duration(milliseconds: 500), () {
           if (!mounted) return;
+          // Guest users: results shown but not persisted
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => const ResultsScreen()),
+            MaterialPageRoute(
+              builder: (_) => ResultsScreen(
+                isGuest: UserSession.instance.isGuest,
+              ),
+            ),
           );
         });
       }

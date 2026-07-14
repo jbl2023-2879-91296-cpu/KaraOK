@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../widgets/bottom_nav_bar.dart';
+import '../services/api_service.dart';
 
 class RecommendedSettingsScreen extends StatefulWidget {
   const RecommendedSettingsScreen({super.key, this.genre = 'Ballad'});
@@ -13,8 +14,9 @@ class RecommendedSettingsScreen extends StatefulWidget {
 class _RecommendedSettingsScreenState
     extends State<RecommendedSettingsScreen> {
   int _selectedNavIndex = 3;
+  bool _loading = true;
+  bool _saving = false;
 
-  // Default recommended values per genre (simplified)
   late double _volume;
   late double _bass;
   late double _treble;
@@ -24,10 +26,11 @@ class _RecommendedSettingsScreenState
   @override
   void initState() {
     super.initState();
-    _initValues();
+    _loadDefaults();
+    _fetchFromApi();
   }
 
-  void _initValues() {
+  void _loadDefaults() {
     switch (widget.genre) {
       case 'Rock':
         _volume = 0.85; _bass = 0.70; _treble = 0.75; _flatness = 0.55; _sharpness = 0.90;
@@ -44,8 +47,52 @@ class _RecommendedSettingsScreenState
       case 'R&B':
         _volume = 0.78; _bass = 0.72; _treble = 0.62; _flatness = 0.68; _sharpness = 0.82;
         break;
-      default: // Ballad
+      default:
         _volume = 0.75; _bass = 0.55; _treble = 0.65; _flatness = 0.70; _sharpness = 0.90;
+    }
+  }
+
+  Future<void> _fetchFromApi() async {
+    try {
+      final data = await ApiService().getGenreSettings(widget.genre);
+      if (!mounted) return;
+      setState(() {
+        _volume    = (data['volume']    as num) / 100.0;
+        _bass      = (data['bass']      as num) / 100.0;
+        _treble    = (data['treble']    as num) / 100.0;
+        _flatness  = (data['flatness']  as num) / 100.0;
+        _sharpness = (data['sharpness'] as num) / 100.0;
+        _loading   = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await ApiService().saveGenreSettings(
+        genre:     widget.genre,
+        volume:    (_volume    * 100).round(),
+        bass:      (_bass      * 100).round(),
+        treble:    (_treble    * 100).round(),
+        flatness:  (_flatness  * 100).round(),
+        sharpness: (_sharpness * 100).round(),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Settings saved successfully!')),
+      );
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Save failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -70,7 +117,10 @@ class _RecommendedSettingsScreenState
         ),
         centerTitle: true,
       ),
-      body: SafeArea(
+      body: _loading
+          ? const Center(
+              child: CircularProgressIndicator(color: Color(0xFFFF8C00)))
+          : SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           child: Column(
@@ -148,17 +198,17 @@ class _RecommendedSettingsScreenState
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Settings saved successfully!')),
-                    );
-                    Navigator.pop(context);
-                  },
-                  icon: const Icon(Icons.save_alt, color: Colors.white),
-                  label: const Text(
-                    'Save',
-                    style: TextStyle(
+                  onPressed: _saving ? null : _save,
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              color: Colors.white, strokeWidth: 2))
+                      : const Icon(Icons.save_alt, color: Colors.white),
+                  label: Text(
+                    _saving ? 'Saving...' : 'Save',
+                    style: const TextStyle(
                         color: Colors.white,
                         fontSize: 16,
                         fontWeight: FontWeight.w700),

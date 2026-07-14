@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'technician_home_screen.dart';
-import 'owner_home_screen.dart';
+import 'login_screen.dart';
 
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
@@ -15,7 +14,6 @@ class SplashScreen extends StatelessWidget {
           child: Column(
             children: [
               const Spacer(flex: 2),
-              // Logo area
               _buildLogo(),
               const SizedBox(height: 16),
               const Text(
@@ -28,7 +26,6 @@ class SplashScreen extends StatelessWidget {
                 ),
               ),
               const Spacer(flex: 3),
-              // Select User Type
               const Text(
                 'Select User Type',
                 style: TextStyle(
@@ -38,19 +35,18 @@ class SplashScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              // Technician button
+              // Technician button → Login
               SizedBox(
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const TechnicianHomeScreen(),
-                      ),
-                    );
-                  },
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          const LoginScreen(userType: 'technician'),
+                    ),
+                  ),
                   icon: const Icon(Icons.person, color: Colors.white),
                   label: const Text(
                     'Technician',
@@ -69,19 +65,18 @@ class SplashScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              // Owner button
+              // Owner button → Login
               SizedBox(
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const OwnerHomeScreen(),
-                      ),
-                    );
-                  },
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          const LoginScreen(userType: 'owner'),
+                    ),
+                  ),
                   icon: const Icon(Icons.person_outline, color: Colors.white),
                   label: const Text(
                     'Owner',

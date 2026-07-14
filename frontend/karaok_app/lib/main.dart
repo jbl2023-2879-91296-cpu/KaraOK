@@ -23,7 +23,11 @@ class KaraOKApp extends StatelessWidget {
         ),
         fontFamily: 'Roboto',
       ),
-      home: const SplashScreen(),
+      // Named routes so any screen can logout → '/'
+      initialRoute: '/',
+      routes: {
+        '/': (_) => const SplashScreen(),
+      },
     );
   }
 }

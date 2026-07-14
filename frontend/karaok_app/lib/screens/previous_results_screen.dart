@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../widgets/bottom_nav_bar.dart';
+import '../services/api_service.dart';
 import 'results_screen.dart';
 
 class PreviousResultsScreen extends StatefulWidget {
@@ -11,18 +12,33 @@ class PreviousResultsScreen extends StatefulWidget {
 
 class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
   int _selectedNavIndex = 2;
-  String _filter = 'All'; // All | Acceptable | Problematic
+  String _filter = 'All';
+  List<dynamic> _results = [];
+  bool _loading = true;
 
-  final List<_TestResult> _results = [
-    _TestResult(name: 'Test #1', date: 'May 1, 2025 10:30AM', score: 79, status: 'Acceptable'),
-    _TestResult(name: 'Test #2', date: 'May 1, 2025 11:00AM', score: 80, status: 'Acceptable'),
-    _TestResult(name: 'Test #3', date: 'May 1, 2025 11:30AM', score: 79, status: 'Acceptable'),
-    _TestResult(name: 'Test #4', date: 'May 1, 2025 11:45AM', score: 80, status: 'Acceptable'),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
 
-  List<_TestResult> get _filtered {
+  Future<void> _load() async {
+    try {
+      final tests = await ApiService().getAudioTests();
+      if (!mounted) return;
+      setState(() {
+        _results = tests;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  List<dynamic> get _filtered {
     if (_filter == 'All') return _results;
-    return _results.where((r) => r.status == _filter).toList();
+    return _results.where((r) => r['status'] == _filter).toList();
   }
 
   @override
@@ -79,7 +95,9 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
                         child: Text(
                           f,
                           style: TextStyle(
-                            color: selected ? Colors.white : const Color(0xFF888888),
+                            color: selected
+                                ? Colors.white
+                                : const Color(0xFF888888),
                             fontSize: 13,
                             fontWeight: selected
                                 ? FontWeight.w600
@@ -95,86 +113,103 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
             const SizedBox(height: 16),
             // Results list
             Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                itemCount: _filtered.length,
-                itemBuilder: (_, i) {
-                  final item = _filtered[i];
-                  return GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ResultsScreen(
-                            testName: item.name,
-                            score: item.score,
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                          color: Color(0xFF4A90D9)))
+                  : _filtered.isEmpty
+                      ? const Center(
+                          child: Text('No results found',
+                              style: TextStyle(color: Color(0xFF666666))))
+                      : RefreshIndicator(
+                          onRefresh: _load,
+                          color: const Color(0xFF4A90D9),
+                          child: ListView.builder(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 20),
+                            itemCount: _filtered.length,
+                            itemBuilder: (_, i) {
+                              final item = _filtered[i];
+                              final score  = item['score'] ?? 0;
+                              final status = item['status'] ?? 'Acceptable';
+                              final date   = (item['created_at'] ?? '').toString();
+                              final name   = item['test_name'] ?? '';
+                              final color  = status == 'Acceptable'
+                                  ? const Color(0xFF4CAF50)
+                                  : const Color(0xFFF44336);
+                              return GestureDetector(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ResultsScreen(
+                                        testName: name,
+                                        score: score,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: Container(
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 14),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF1C1C2E),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(name,
+                                                style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 14,
+                                                    fontWeight:
+                                                        FontWeight.w600)),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                                date.length > 16
+                                                    ? date.substring(0, 16)
+                                                    : date,
+                                                style: const TextStyle(
+                                                    color: Color(0xFF666666),
+                                                    fontSize: 11)),
+                                          ],
+                                        ),
+                                      ),
+                                      Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
+                                        children: [
+                                          Text(status,
+                                              style: TextStyle(
+                                                  color: color,
+                                                  fontSize: 11,
+                                                  fontWeight:
+                                                      FontWeight.w500)),
+                                          Text('$score/100',
+                                              style: TextStyle(
+                                                  color: color,
+                                                  fontSize: 13,
+                                                  fontWeight:
+                                                      FontWeight.w700)),
+                                        ],
+                                      ),
+                                      const SizedBox(width: 6),
+                                      const Icon(Icons.chevron_right,
+                                          color: Color(0xFF555555),
+                                          size: 20),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                         ),
-                      );
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1C1C2E),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item.name,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  item.date,
-                                  style: const TextStyle(
-                                    color: Color(0xFF666666),
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                item.status,
-                                style: const TextStyle(
-                                  color: Color(0xFF4CAF50),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              Text(
-                                '${item.score}/100',
-                                style: const TextStyle(
-                                  color: Color(0xFF4CAF50),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(width: 6),
-                          const Icon(Icons.chevron_right,
-                              color: Color(0xFF555555), size: 20),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
             ),
           ],
         ),
@@ -185,17 +220,4 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
       ),
     );
   }
-}
-
-class _TestResult {
-  const _TestResult({
-    required this.name,
-    required this.date,
-    required this.score,
-    required this.status,
-  });
-  final String name;
-  final String date;
-  final int score;
-  final String status;
 }
