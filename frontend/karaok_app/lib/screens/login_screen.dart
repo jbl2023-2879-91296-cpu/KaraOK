@@ -4,6 +4,7 @@ import '../services/user_session.dart';
 import 'signup_screen.dart';
 import 'technician_home_screen.dart';
 import 'owner_home_screen.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   /// Pre-selected user type coming from splash ('technician' or 'owner')
@@ -43,6 +44,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       // Validate user type matches what they selected on splash
       if (res['user_type'] != widget.userType) {
+        await ApiService().logout();
         setState(() {
           _error = 'This account is registered as a '
               '${res['user_type']}. Please go back and select the correct user type.';
@@ -157,7 +159,22 @@ class _LoginScreenState extends State<LoginScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ForgotPasswordScreen(),
+                      ),
+                    ),
+                    child: Text(
+                      'Forgot password?',
+                      style: TextStyle(color: _accentColor),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 2),
                 // Error message
                 if (_error != null)
                   Padding(

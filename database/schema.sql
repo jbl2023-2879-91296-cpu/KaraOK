@@ -2,7 +2,7 @@ CREATE DATABASE karaok_db;
 USE karaok_db;
 
 -- ==========================================
--- TABLE: USER
+-- ORIGINAL TABLE: USER
 -- ==========================================
 
 CREATE TABLE user (
@@ -12,13 +12,18 @@ CREATE TABLE user (
     password VARCHAR(255) NOT NULL,
     email VARCHAR(100) NOT NULL UNIQUE,
 
-    role ENUM('Consumer','Technician') NOT NULL DEFAULT 'Consumer',
+    -- Kept as a string so roles are extensible; no user-type ENUM is used.
+    role VARCHAR(30) NOT NULL DEFAULT 'Consumer',
+
+    -- Merged from the former user_security table.
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    security_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ==========================================
--- TABLE: GENRE PRESET
+-- ORIGINAL TABLE: GENRE PRESET
 -- Stores the recommended sound settings
 -- ==========================================
 
@@ -35,7 +40,7 @@ CREATE TABLE genre_preset (
 );
 
 -- ==========================================
--- TABLE: AUDIO QUALITY THRESHOLD
+-- ORIGINAL TABLE: AUDIO QUALITY THRESHOLD
 -- Stores empirical threshold values
 -- ==========================================
 
@@ -50,7 +55,7 @@ CREATE TABLE audio_quality_threshold (
 );
 
 -- ==========================================
--- TABLE: ASSESSMENT
+-- ORIGINAL TABLE: ASSESSMENT
 -- One uploaded audio per assessment
 -- ==========================================
 
@@ -70,6 +75,11 @@ CREATE TABLE assessment (
 
     processing_time FLOAT,
 
+    -- Merged from the former assessment_metadata table.
+    test_name VARCHAR(120),
+    duration_seconds INT NOT NULL DEFAULT 0,
+    result_status VARCHAR(30) NOT NULL DEFAULT 'Acceptable',
+
     CONSTRAINT fk_assessment_user
         FOREIGN KEY (user_id)
         REFERENCES user(user_id)
@@ -77,9 +87,8 @@ CREATE TABLE assessment (
 );
 
 -- ==========================================
--- TABLE: AUDIO ANALYSIS RESULT
--- Stores both quality assessment and
--- genre recommendation results
+-- ORIGINAL TABLE: AUDIO ANALYSIS RESULT
+-- Stores quality assessment and genre recommendation results
 -- ==========================================
 
 CREATE TABLE audio_analysis_result (
@@ -124,3 +133,122 @@ CREATE TABLE audio_analysis_result (
         FOREIGN KEY (preset_id)
         REFERENCES genre_preset(preset_id)
 );
+
+-- ==========================================
+-- ADDITIVE TABLE: REFRESH TOKEN
+-- Stores only hashes of long-lived session tokens.
+-- ==========================================
+
+CREATE TABLE refresh_token (
+    refresh_token_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    token_hash CHAR(64) NOT NULL UNIQUE,
+    expires_at DATETIME NOT NULL,
+    revoked_at DATETIME NULL,
+    ip_address VARCHAR(45),
+    user_agent VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_refresh_token_user
+        FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE CASCADE
+);
+
+-- ==========================================
+-- ADDITIVE TABLE: PASSWORD RESET TOKEN
+-- ==========================================
+
+CREATE TABLE password_reset_token (
+    reset_token_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    token_hash CHAR(64) NOT NULL UNIQUE,
+    expires_at DATETIME NOT NULL,
+    used_at DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_password_reset_user
+        FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE CASCADE
+);
+
+-- ==========================================
+-- ADDITIVE TABLE: REVOKED ACCESS TOKEN
+-- ==========================================
+
+CREATE TABLE revoked_access_token (
+    jti CHAR(32) PRIMARY KEY,
+    user_id INT NOT NULL,
+    expires_at DATETIME NOT NULL,
+    revoked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_revoked_access_user
+        FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE CASCADE
+);
+
+-- ==========================================
+-- ADDITIVE TABLE: AUDIT LOG
+-- ==========================================
+
+CREATE TABLE audit_log (
+    audit_log_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NULL,
+    action VARCHAR(80) NOT NULL,
+    resource_type VARCHAR(80) NULL,
+    resource_id BIGINT NULL,
+    result VARCHAR(20) NOT NULL,
+    ip_address VARCHAR(45) NULL,
+    user_agent VARCHAR(255) NULL,
+    details VARCHAR(500) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_audit_log_user
+        FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE SET NULL
+);
+
+-- ==========================================
+-- ADDITIVE TABLE: USER GENRE SETTINGS
+-- Preserves genre_preset as the shared preset foundation while allowing
+-- owner-specific saved settings.
+-- ==========================================
+
+CREATE TABLE user_genre_setting (
+    setting_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    preset_id INT NULL,
+    genre_name VARCHAR(50) NOT NULL,
+    volume FLOAT NOT NULL,
+    bass FLOAT NOT NULL,
+    treble FLOAT NOT NULL,
+    flatness FLOAT NOT NULL,
+    sharpness FLOAT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_user_genre_setting_user
+        FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_genre_setting_preset
+        FOREIGN KEY (preset_id) REFERENCES genre_preset(preset_id) ON DELETE SET NULL
+);
+
+-- ==========================================
+-- ADDITIVE TABLE: AUDIO UPLOAD RECORD
+-- ==========================================
+
+CREATE TABLE audio_upload (
+    upload_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    assessment_id INT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    genre_name VARCHAR(50) NULL,
+    score FLOAT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'Acceptable',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_audio_upload_user
+        FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE CASCADE,
+    CONSTRAINT fk_audio_upload_assessment
+        FOREIGN KEY (assessment_id) REFERENCES assessment(assessment_id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_assessment_user_date
+    ON assessment (user_id, assessment_date);
+CREATE INDEX idx_refresh_token_user
+    ON refresh_token (user_id, revoked_at, expires_at);
+CREATE INDEX idx_password_reset_user
+    ON password_reset_token (user_id, used_at, expires_at);
+CREATE INDEX idx_audit_log_created
+    ON audit_log (created_at);
+CREATE INDEX idx_audio_upload_user_date
+    ON audio_upload (user_id, created_at);

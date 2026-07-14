@@ -144,7 +144,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 const SizedBox(height: 6),
                 _AuthField(
                   controller: _passCtrl,
-                  hint: 'Min 8 characters',
+                  hint: '12+ characters, mixed case, number and symbol',
                   obscure: _obscurePass,
                   suffixIcon: IconButton(
                     icon: Icon(
@@ -157,7 +157,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                   validator: (v) {
                     if (v == null || v.isEmpty) return 'Enter a password';
-                    if (v.length < 8) return 'Password must be at least 8 characters';
+                    if (v.length < 12) return 'Password must be at least 12 characters';
+                    if (!RegExp(r'[A-Z]').hasMatch(v) ||
+                        !RegExp(r'[a-z]').hasMatch(v) ||
+                        !RegExp(r'\d').hasMatch(v) ||
+                        !RegExp(r'[^A-Za-z0-9]').hasMatch(v)) {
+                      return 'Use upper/lowercase, a number, and a symbol';
+                    }
                     return null;
                   },
                 ),

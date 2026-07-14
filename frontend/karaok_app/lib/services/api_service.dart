@@ -1,65 +1,137 @@
 import 'dart:convert';
+
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
-/// Central API service — talks to the Flask backend.
-/// Change [baseUrl] to your machine's IP when running on a physical device.
+/// Authenticated client for the KaraOK Flask API.
+///
+/// Override at build/run time when the API is not on localhost:
+/// flutter run --dart-define=API_BASE_URL=http://10.0.2.2:5000/api
 class ApiService {
-  // Use 10.0.2.2 for Android emulator (maps to host localhost).
-  // Use your actual LAN IP (e.g. 192.168.1.x) for a physical device.
-  static const String baseUrl = 'http://10.0.2.2:5000/api';
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://localhost:5000/api',
+  );
+
+  static const _accessTokenKey = 'karaok_access_token';
+  static const _refreshTokenKey = 'karaok_refresh_token';
+  static const _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
 
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
   ApiService._internal();
 
-  final _headers = {'Content-Type': 'application/json'};
-
-  // ── helpers ───────────────────────────────────────────────────────────────
-
   Uri _uri(String path, [Map<String, String>? params]) {
     final uri = Uri.parse('$baseUrl$path');
-    return params != null ? uri.replace(queryParameters: params) : uri;
+    return params == null ? uri : uri.replace(queryParameters: params);
   }
 
-  Future<dynamic> _get(String path, [Map<String, String>? params]) async {
-    final res = await http.get(_uri(path, params), headers: _headers);
-    _checkStatus(res);
-    return jsonDecode(res.body);
+  Future<Map<String, String>> _headers({bool authenticated = true}) async {
+    final headers = <String, String>{'Content-Type': 'application/json'};
+    if (authenticated) {
+      final token = await _storage.read(key: _accessTokenKey);
+      if (token != null) headers['Authorization'] = 'Bearer $token';
+    }
+    return headers;
   }
 
-  Future<dynamic> _post(String path, Map<String, dynamic> body) async {
-    final res = await http.post(
-      _uri(path),
-      headers: _headers,
-      body: jsonEncode(body),
-    );
-    _checkStatus(res);
-    return jsonDecode(res.body);
+  Future<http.Response> _send(
+    String method,
+    String path, {
+    Map<String, String>? params,
+    Map<String, dynamic>? body,
+    bool authenticated = true,
+    bool retry = true,
+  }) async {
+    final uri = _uri(path, params);
+    final headers = await _headers(authenticated: authenticated);
+    late http.Response response;
+    switch (method) {
+      case 'GET':
+        response = await http.get(uri, headers: headers);
+        break;
+      case 'POST':
+        response = await http.post(uri, headers: headers, body: jsonEncode(body ?? {}));
+        break;
+      case 'DELETE':
+        response = await http.delete(uri, headers: headers);
+        break;
+      default:
+        throw ArgumentError('Unsupported method: $method');
+    }
+
+    if (response.statusCode == 401 && authenticated && retry && await _refresh()) {
+      return _send(method, path, params: params, body: body, authenticated: true, retry: false);
+    }
+    _checkStatus(response);
+    return response;
   }
+
+  dynamic _decode(http.Response response) =>
+      response.body.isEmpty ? null : jsonDecode(response.body);
+
+  Future<dynamic> _get(String path, [Map<String, String>? params]) async =>
+      _decode(await _send('GET', path, params: params));
+
+  Future<dynamic> _post(
+    String path,
+    Map<String, dynamic> body, {
+    bool authenticated = true,
+  }) async =>
+      _decode(await _send('POST', path, body: body, authenticated: authenticated));
 
   Future<void> _delete(String path) async {
-    final res = await http.delete(_uri(path), headers: _headers);
-    _checkStatus(res);
+    await _send('DELETE', path);
   }
 
-  void _checkStatus(http.Response res) {
-    if (res.statusCode >= 400) {
-      throw ApiException(res.statusCode, res.body);
+  void _checkStatus(http.Response response) {
+    if (response.statusCode >= 400) {
+      String message = response.body;
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map && decoded['error'] is String) message = decoded['error'];
+      } catch (_) {}
+      throw ApiException(response.statusCode, message);
     }
   }
 
-  // ── health ────────────────────────────────────────────────────────────────
+  Future<void> _saveAuth(Map<String, dynamic> data) async {
+    await _storage.write(key: _accessTokenKey, value: data['access_token'] as String);
+    await _storage.write(key: _refreshTokenKey, value: data['refresh_token'] as String);
+  }
 
-  Future<bool> checkHealth() async {
+  Future<bool> _refresh() async {
+    final refreshToken = await _storage.read(key: _refreshTokenKey);
+    if (refreshToken == null) return false;
     try {
-      final data = await _get('/health');
-      return data['status'] == 'ok';
+      final response = await http.post(
+        _uri('/auth/refresh'),
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode({'refresh_token': refreshToken}),
+      );
+      if (response.statusCode >= 400) {
+        await clearTokens();
+        return false;
+      }
+      await _saveAuth(Map<String, dynamic>.from(jsonDecode(response.body) as Map));
+      return true;
     } catch (_) {
       return false;
     }
   }
 
-  // ── auth ──────────────────────────────────────────────────────────────────
+  Future<void> clearTokens() => _storage.deleteAll();
+
+  Future<bool> checkHealth() async {
+    try {
+      final response = await http.get(_uri('/health'));
+      return response.statusCode == 200 && jsonDecode(response.body)['status'] == 'ok';
+    } catch (_) {
+      return false;
+    }
+  }
 
   Future<Map<String, dynamic>> register({
     required String name,
@@ -67,50 +139,56 @@ class ApiService {
     required String password,
     required String userType,
   }) async {
-    final data = await _post('/auth/register', {
+    final data = Map<String, dynamic>.from(await _post('/auth/register', {
       'name': name,
       'email': email,
       'password': password,
       'user_type': userType,
-    });
-    return Map<String, dynamic>.from(data as Map);
+    }, authenticated: false) as Map);
+    await _saveAuth(data);
+    return Map<String, dynamic>.from(data['user'] as Map);
   }
 
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
   }) async {
-    final data = await _post('/auth/login', {
+    final data = Map<String, dynamic>.from(await _post('/auth/login', {
       'email': email,
       'password': password,
-    });
-    return Map<String, dynamic>.from(data as Map);
+    }, authenticated: false) as Map);
+    await _saveAuth(data);
+    return Map<String, dynamic>.from(data['user'] as Map);
   }
 
-  // ── users ─────────────────────────────────────────────────────────────────
-
-  Future<List<dynamic>> getUsers() => _get('/users') as Future<List<dynamic>>;
-
-  Future<Map<String, dynamic>> createUser({
-    required String name,
-    required String userType,
-  }) async {
-    final data = await _post('/users', {'name': name, 'user_type': userType});
-    return Map<String, dynamic>.from(data as Map);
+  Future<void> logout() async {
+    final refreshToken = await _storage.read(key: _refreshTokenKey);
+    try {
+      if (refreshToken != null) {
+        await _post('/auth/logout', {'refresh_token': refreshToken});
+      }
+    } finally {
+      await clearTokens();
+    }
   }
 
-  // ── audio tests (technician) ──────────────────────────────────────────────
-
-  Future<List<dynamic>> getAudioTests({int? userId}) async {
-    final params = userId != null ? {'user_id': '$userId'} : null;
-    final data = await _get('/audio-tests', params);
-    return List<dynamic>.from(data as List);
+  Future<Map<String, dynamic>> requestPasswordReset(String email) async {
+    return Map<String, dynamic>.from(
+      await _post('/auth/forgot-password', {'email': email}, authenticated: false) as Map,
+    );
   }
 
-  Future<Map<String, dynamic>> getAudioTest(int testId) async {
-    final data = await _get('/audio-tests/$testId');
-    return Map<String, dynamic>.from(data as Map);
+  Future<void> resetPassword({required String token, required String password}) async {
+    await _post('/auth/reset-password', {'token': token, 'password': password}, authenticated: false);
   }
+
+  Future<List<dynamic>> getUsers() async => List<dynamic>.from(await _get('/users') as List);
+
+  Future<List<dynamic>> getAudioTests({int? userId}) async =>
+      List<dynamic>.from(await _get('/audio-tests') as List);
+
+  Future<Map<String, dynamic>> getAudioTest(int testId) async =>
+      Map<String, dynamic>.from(await _get('/audio-tests/$testId') as Map);
 
   Future<Map<String, dynamic>> createAudioTest({
     int? userId,
@@ -120,32 +198,22 @@ class ApiService {
     double distortionLevel = 0.12,
     String status = 'Acceptable',
     int durationSeconds = 0,
-  }) async {
-    final data = await _post('/audio-tests', {
-      'user_id': userId,
-      'test_name': testName,
-      'score': score,
-      'noise_level': noiseLevel,
-      'distortion_level': distortionLevel,
-      'status': status,
-      'duration_seconds': durationSeconds,
-    });
-    return Map<String, dynamic>.from(data as Map);
-  }
+  }) async => Map<String, dynamic>.from(await _post('/audio-tests', {
+        'test_name': testName,
+        'score': score,
+        'noise_level': noiseLevel,
+        'distortion_level': distortionLevel,
+        'status': status,
+        'duration_seconds': durationSeconds,
+      }) as Map);
 
   Future<void> deleteAudioTest(int testId) => _delete('/audio-tests/$testId');
 
-  // ── genre settings (owner) ────────────────────────────────────────────────
+  Future<Map<String, dynamic>> getGenreSettings(String genre) async =>
+      Map<String, dynamic>.from(await _get('/genre-settings', {'genre': genre}) as Map);
 
-  Future<Map<String, dynamic>> getGenreSettings(String genre) async {
-    final data = await _get('/genre-settings', {'genre': genre});
-    return Map<String, dynamic>.from(data as Map);
-  }
-
-  Future<List<dynamic>> getAllGenreSettings() async {
-    final data = await _get('/genre-settings');
-    return List<dynamic>.from(data as List);
-  }
+  Future<List<dynamic>> getAllGenreSettings() async =>
+      List<dynamic>.from(await _get('/genre-settings') as List);
 
   Future<Map<String, dynamic>> saveGenreSettings({
     int? userId,
@@ -155,26 +223,17 @@ class ApiService {
     required int treble,
     required int flatness,
     required int sharpness,
-  }) async {
-    final data = await _post('/genre-settings', {
-      'user_id': userId,
-      'genre': genre,
-      'volume': volume,
-      'bass': bass,
-      'treble': treble,
-      'flatness': flatness,
-      'sharpness': sharpness,
-    });
-    return Map<String, dynamic>.from(data as Map);
-  }
+  }) async => Map<String, dynamic>.from(await _post('/genre-settings', {
+        'genre': genre,
+        'volume': volume,
+        'bass': bass,
+        'treble': treble,
+        'flatness': flatness,
+        'sharpness': sharpness,
+      }) as Map);
 
-  // ── audio uploads (owner) ─────────────────────────────────────────────────
-
-  Future<List<dynamic>> getAudioUploads({int? userId}) async {
-    final params = userId != null ? {'user_id': '$userId'} : null;
-    final data = await _get('/audio-uploads', params);
-    return List<dynamic>.from(data as List);
-  }
+  Future<List<dynamic>> getAudioUploads({int? userId}) async =>
+      List<dynamic>.from(await _get('/audio-uploads') as List);
 
   Future<Map<String, dynamic>> createAudioUpload({
     int? userId,
@@ -182,19 +241,13 @@ class ApiService {
     String? genre,
     int? score,
     String status = 'Acceptable',
-  }) async {
-    final data = await _post('/audio-uploads', {
-      'user_id': userId,
-      'file_name': fileName,
-      'genre': genre,
-      'score': score,
-      'status': status,
-    });
-    return Map<String, dynamic>.from(data as Map);
-  }
+  }) async => Map<String, dynamic>.from(await _post('/audio-uploads', {
+        'file_name': fileName,
+        'genre': genre,
+        'score': score,
+        'status': status,
+      }) as Map);
 }
-
-// ── Exception ─────────────────────────────────────────────────────────────────
 
 class ApiException implements Exception {
   const ApiException(this.statusCode, this.message);

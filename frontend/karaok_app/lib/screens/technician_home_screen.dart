@@ -86,8 +86,10 @@ class _TechnicianHomeScreenState extends State<TechnicianHomeScreen> {
             PopupMenuButton<String>(
               icon: const Icon(Icons.account_circle, color: Colors.white),
               color: const Color(0xFF1C1C2E),
-              onSelected: (v) {
+              onSelected: (v) async {
                 if (v == 'logout') {
+                  await ApiService().logout();
+                  if (!context.mounted) return;
                   UserSession.instance.clear();
                   Navigator.pushNamedAndRemoveUntil(
                       context, '/', (route) => false);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../widgets/bottom_nav_bar.dart';
 import '../widgets/guest_banner.dart';
 import '../services/user_session.dart';
+import '../services/api_service.dart';
 import 'genre_select_screen.dart';
 import 'uploading_screen.dart';
 import 'owner_previous_results_screen.dart';
@@ -70,8 +71,10 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
             PopupMenuButton<String>(
               icon: const Icon(Icons.account_circle, color: Colors.white),
               color: const Color(0xFF1C1C2E),
-              onSelected: (v) {
+              onSelected: (v) async {
                 if (v == 'logout') {
+                  await ApiService().logout();
+                  if (!context.mounted) return;
                   UserSession.instance.clear();
                   Navigator.pushNamedAndRemoveUntil(
                       context, '/', (route) => false);
