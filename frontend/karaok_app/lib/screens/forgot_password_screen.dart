@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
+import 'login_screen.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -13,7 +14,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   bool _loading = false;
-  bool _submitted = false;
   String? _error;
 
   @override
@@ -33,7 +33,18 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         _emailController.text.trim(),
       );
       if (!mounted) return;
-      setState(() => _submitted = true);
+      final email = _emailController.text.trim();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('A new temporary password has been sent to your email.'),
+        ),
+      );
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => LoginScreen(initialIdentifier: email),
+        ),
+      );
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _error = error.message);
@@ -64,38 +75,34 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              Text(
-                _submitted
-                    ? 'If an account exists for that email, a password reset link has been sent. Check your inbox and spam folder.'
-                    : 'Enter your verified email address and we will send you a single-use password reset link.',
+              const Text(
+                'Enter your verified email address and we will send you a temporary password.',
                 style: const TextStyle(color: Color(0xFFAAAAAA), height: 1.4),
               ),
-              if (!_submitted) ...[
-                const SizedBox(height: 24),
-                TextFormField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    final email = value?.trim() ?? '';
-                    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
-                      return 'Enter a valid email address.';
-                    }
-                    return null;
-                  },
-                  decoration: const InputDecoration(labelText: 'Email address'),
-                ),
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: _loading ? null : _requestReset,
-                  child: _loading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Send reset link'),
-                ),
-              ],
+              const SizedBox(height: 24),
+              TextFormField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                validator: (value) {
+                  final email = value?.trim() ?? '';
+                  if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+                    return 'Enter a valid email address.';
+                  }
+                  return null;
+                },
+                decoration: const InputDecoration(labelText: 'Email address'),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: _loading ? null : _requestReset,
+                child: _loading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Send temporary password'),
+              ),
               if (_error != null) ...[
                 const SizedBox(height: 16),
                 Text(_error!, style: const TextStyle(color: Colors.redAccent)),

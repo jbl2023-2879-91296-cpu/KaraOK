@@ -5,10 +5,13 @@ import 'signup_screen.dart';
 import 'technician_home_screen.dart';
 import 'owner_home_screen.dart';
 import 'forgot_password_screen.dart';
+import 'change_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   /// Pre-selected user type coming from splash ('technician' or 'owner')
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, this.initialIdentifier});
+
+  final String? initialIdentifier;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -16,13 +19,19 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey    = GlobalKey<FormState>();
-  final _identifierCtrl = TextEditingController();
+  late final TextEditingController _identifierCtrl;
   final _passCtrl   = TextEditingController();
   bool  _obscure    = true;
   bool  _loading    = false;
   String? _error;
 
   static const _accentColor = Color(0xFF4A90D9);
+
+  @override
+  void initState() {
+    super.initState();
+    _identifierCtrl = TextEditingController(text: widget.initialIdentifier);
+  }
 
   @override
   void dispose() {
@@ -44,7 +53,19 @@ class _LoginScreenState extends State<LoginScreen> {
         name:     res['name'],
         email:    res['email'],
         userType: res['user_type'],
+        requiresPasswordChange: res['requires_password_change'] == true,
       );
+      if (UserSession.instance.requiresPasswordChange) {
+        if (!mounted) return;
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const ChangePasswordScreen(forceChange: true),
+          ),
+          (route) => false,
+        );
+        return;
+      }
       _navigateHome();
     } on ApiException catch (e) {
       final body = e.message;

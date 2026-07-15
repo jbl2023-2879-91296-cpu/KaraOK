@@ -6,6 +6,7 @@ import '../widgets/bottom_nav_bar.dart';
 import '../widgets/guest_banner.dart';
 import '../services/user_session.dart';
 import '../services/api_service.dart';
+import 'change_password_screen.dart';
 
 class TechnicianHomeScreen extends StatefulWidget {
   const TechnicianHomeScreen({super.key});
@@ -87,7 +88,14 @@ class _TechnicianHomeScreenState extends State<TechnicianHomeScreen> {
               icon: const Icon(Icons.account_circle, color: Colors.white),
               color: const Color(0xFF1C1C2E),
               onSelected: (v) async {
-                if (v == 'logout') {
+                if (v == 'change_password') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ChangePasswordScreen(),
+                    ),
+                  );
+                } else if (v == 'logout') {
                   await ApiService().logout();
                   if (!context.mounted) return;
                   UserSession.instance.clear();
@@ -105,6 +113,16 @@ class _TechnicianHomeScreenState extends State<TechnicianHomeScreen> {
                   ),
                 ),
                 const PopupMenuDivider(),
+                const PopupMenuItem(
+                  value: 'change_password',
+                  child: Row(
+                    children: [
+                      Icon(Icons.lock_outline, color: Colors.white, size: 18),
+                      SizedBox(width: 8),
+                      Text('Change Password'),
+                    ],
+                  ),
+                ),
                 const PopupMenuItem(
                   value: 'logout',
                   child: Row(

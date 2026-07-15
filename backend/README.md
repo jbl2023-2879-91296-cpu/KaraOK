@@ -51,7 +51,7 @@ These tables do not replace the original tables. They add capabilities that the 
 | Table | What it stores | Why it is separate |
 |---|---|---|
 | `refresh_token` | A hash of each long-lived refresh token, its owner, expiry, revocation time, client IP, and user agent. | One user may sign in on multiple devices. A separate row per session supports rotation and logout revocation without storing a bearer token in plaintext. |
-| `password_reset_token` | A hash of a one-time reset token, its owner, expiry, usage time, and creation time. | Reset requests have their own expiry and one-use lifecycle. Storing them on `user` would overwrite or mix account data with temporary workflow data. |
+| `password_reset_token` | Reserved storage for token-based password recovery if that workflow is enabled in the future. | The current recovery flow issues an emailed temporary password and tracks the mandatory password change through security audit events, so this table is not currently written by the API. |
 | `revoked_access_token` | The JWT `jti`, owner, expiry, and revocation time for access tokens invalidated before natural expiry. | Access tokens are normally stateless. This small denylist allows logout and emergency revocation while retaining short-lived tokens. |
 | `audit_log` | Security and accountability events such as login failures, authorization failures, password resets, and data changes, including actor, action, result, client information, and timestamp. | Audit records are append-only events. They should not be columns on `user` or `assessment`, because one actor can create many events across many resource types. |
 | `user_genre_setting` | A user's saved genre adjustment, optionally linked to the shared `genre_preset`, including volume and tone values. | Shared presets and user-specific overrides have different ownership and lifecycles, so overrides belong in a child table. |
@@ -67,9 +67,7 @@ The role column is a `VARCHAR`, not an enum, so new role labels can be introduce
 
 `CREATE DATABASE` and `CREATE TABLE` statements are initialization statements, not migrations. Back up existing data before applying this file to an existing database, and add future changes through explicit migration scripts.
 
-For a local classroom demonstration, `EXPOSE_RESET_TOKEN=true` returns the reset token to the client. Set it to `false` in production and deliver the token through an email provider.
-
-Password recovery emails use the same SMTP settings as registration. `RESET_LINK_BASE` points to the browser page that accepts the single-use token and new password; it defaults to `http://127.0.0.1:5000/reset-password` for local development. Configure it with the public HTTPS backend URL before deployment. The Flutter app never displays or accepts the reset token. Keep `EXPOSE_RESET_TOKEN=false`.
+Password recovery uses the same SMTP settings as registration. A reset immediately replaces the existing password with a random temporary password, revokes active refresh sessions, and emails the temporary password to the verified address. After signing in, the forced screen asks only for a new password and confirmation. The account-menu flow separately requires the current password, new password, and confirmation.
 
 When `DEV_MODE=true`, the forgot-password request endpoint is exempt from its production rate limit for local testing. Set `DEV_MODE=false` before deployment; production requests are limited to three per IP address per hour.
 
@@ -83,7 +81,7 @@ Public endpoints:
 - `POST /api/auth/refresh`
 - `POST /api/auth/logout`
 - `POST /api/auth/forgot-password`
-- `GET|POST /reset-password` — browser-based password reset form
+- `POST /api/auth/change-password` — authenticated password change
 
 `POST /api/auth/login` accepts an `identifier` containing either the username or email address, together with `password`.
 

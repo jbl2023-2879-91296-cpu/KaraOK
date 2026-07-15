@@ -188,6 +188,16 @@ class ApiService {
     );
   }
 
+  Future<void> changePassword({
+    String? currentPassword,
+    required String newPassword,
+  }) async {
+    await _post('/auth/change-password', {
+      if (currentPassword != null) 'current_password': currentPassword,
+      'new_password': newPassword,
+    });
+  }
+
   Future<List<dynamic>> getUsers() async => List<dynamic>.from(await _get('/users') as List);
 
   Future<List<dynamic>> getAudioTests({int? userId}) async =>

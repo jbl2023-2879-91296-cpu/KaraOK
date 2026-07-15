@@ -9,12 +9,11 @@ import secrets
 import smtplib
 from email.message import EmailMessage
 from typing import Any, Callable
-from urllib.parse import urlencode
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from dotenv import load_dotenv
-from flask import Flask, g, jsonify, render_template, request
+from flask import Flask, g, jsonify, request
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -50,9 +49,6 @@ JWT_SECRET = os.getenv("JWT_SECRET", "")
 JWT_ISSUER = "karaok-api"
 ACCESS_TOKEN_MINUTES = int(os.getenv("ACCESS_TOKEN_MINUTES", "15"))
 REFRESH_TOKEN_DAYS = int(os.getenv("REFRESH_TOKEN_DAYS", "7"))
-RESET_TOKEN_MINUTES = int(os.getenv("RESET_TOKEN_MINUTES", "15"))
-EXPOSE_RESET_TOKEN = os.getenv("EXPOSE_RESET_TOKEN", "false").lower() == "true"
-RESET_LINK_BASE = os.getenv("RESET_LINK_BASE", "http://127.0.0.1:5000/reset-password")
 SMTP_HOST = os.getenv("SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
@@ -158,24 +154,36 @@ Thank you,
         server.send_message(message)
 
 
-def send_password_reset_email(email: str, token: str) -> None:
+def generate_temporary_password(length: int = 16) -> str:
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%"
+    characters = [
+        secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ"),
+        secrets.choice("abcdefghijkmnopqrstuvwxyz"),
+        secrets.choice("23456789"),
+        secrets.choice("!@#$%"),
+    ]
+    characters.extend(secrets.choice(alphabet) for _ in range(length - len(characters)))
+    secrets.SystemRandom().shuffle(characters)
+    return "".join(characters)
+
+
+def send_temporary_password_email(email: str, temporary_password: str) -> None:
     if not all((SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM)):
         raise RuntimeError("SMTP is not configured")
-    separator = "&" if "?" in RESET_LINK_BASE else "?"
-    reset_link = f"{RESET_LINK_BASE}{separator}{urlencode({'token': token})}"
     message = EmailMessage()
-    message["Subject"] = "Reset your KaraOK password"
+    message["Subject"] = "Your temporary KaraOK password"
     message["From"] = SMTP_FROM
     message["To"] = email
     message.set_content(
         f"""A password reset was requested for your KaraOK account.
 
-Open this single-use link to choose a new password:
+Your temporary password is:
 
-{reset_link}
+{temporary_password}
 
-This link expires in {RESET_TOKEN_MINUTES} minutes. If you did not request a
-password reset, you can safely ignore this email. Never share this link.
+Use this password to sign in, then change it immediately when prompted. If you
+did not request this reset, contact the system administrator. Never share this
+password with anyone.
 """
     )
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
@@ -222,6 +230,23 @@ def audit(
         app.logger.exception("Could not write audit log")
 
 
+def password_change_required(user_id: int) -> bool:
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        """SELECT action FROM audit_log
+           WHERE user_id = %s
+             AND action IN ('temporary_password_issued', 'password_changed')
+             AND result = 'success'
+           ORDER BY audit_log_id DESC LIMIT 1""",
+        (user_id,),
+    )
+    event = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return bool(event and event["action"] == "temporary_password_issued")
+
+
 def issue_access_token(user: dict[str, Any]) -> tuple[str, int]:
     now = utcnow()
     expires = now + timedelta(minutes=ACCESS_TOKEN_MINUTES)
@@ -264,6 +289,7 @@ def auth_response(user: dict[str, Any], status: int = 200):
                 "name": user["username"],
                 "email": user["email"],
                 "user_type": user["user_type"],
+                "requires_password_change": bool(user.get("requires_password_change", False)),
             },
             "access_token": access_token,
             "access_expires_at": access_expires_at,
@@ -305,6 +331,8 @@ def require_auth(*roles: str) -> Callable:
             if roles and g.user_role not in roles:
                 audit("access_denied", "failure", user_id=g.user_id, details="Insufficient role")
                 return jsonify({"error": "Forbidden"}), 403
+            if request.path != "/api/auth/change-password" and password_change_required(g.user_id):
+                return jsonify({"error": "Password change required"}), 403
             return view(*args, **kwargs)
 
         return wrapped
@@ -466,9 +494,16 @@ def login():
     cursor = conn.cursor(dictionary=True)
     login_column = "email" if is_email else "username"
     cursor.execute(
-        f"""SELECT user_id, username, email, role AS user_type,
-                   password AS password_hash, is_active
-            FROM user WHERE {login_column} = %s LIMIT 1""",
+        f"""SELECT u.user_id, u.username, u.email, u.role AS user_type,
+                   u.password AS password_hash, u.is_active,
+                   COALESCE((
+                       SELECT al.action FROM audit_log al
+                       WHERE al.user_id = u.user_id
+                         AND al.action IN ('temporary_password_issued', 'password_changed')
+                         AND al.result = 'success'
+                       ORDER BY al.audit_log_id DESC LIMIT 1
+                   ) = 'temporary_password_issued', FALSE) AS requires_password_change
+            FROM user u WHERE u.{login_column} = %s LIMIT 1""",
         (identifier,),
     )
     user = cursor.fetchone()
@@ -569,87 +604,93 @@ def forgot_password():
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT user_id AS id FROM user WHERE email = %s AND is_active = TRUE", (email,))
     user = cursor.fetchone()
-    reset_token = None
     if user:
-        reset_token = secrets.token_urlsafe(32)
+        temporary_password = generate_temporary_password()
         try:
-            cursor.execute("UPDATE password_reset_token SET used_at = UTC_TIMESTAMP() WHERE user_id = %s AND used_at IS NULL", (user["id"],))
             cursor.execute(
-                "INSERT INTO password_reset_token (user_id, token_hash, expires_at) VALUES (%s, %s, %s)",
-                (user["id"], token_hash(reset_token), (utcnow() + timedelta(minutes=RESET_TOKEN_MINUTES)).replace(tzinfo=None)),
+                "UPDATE user SET password = %s WHERE user_id = %s",
+                (password_hasher.hash(temporary_password), user["id"]),
+            )
+            cursor.execute(
+                "UPDATE refresh_token SET revoked_at = UTC_TIMESTAMP() WHERE user_id = %s AND revoked_at IS NULL",
+                (user["id"],),
+            )
+            cursor.execute(
+                """INSERT INTO audit_log
+                   (user_id, action, result, ip_address, user_agent, details)
+                   VALUES (%s, 'temporary_password_issued', 'success', %s, %s, %s)""",
+                (
+                    user["id"],
+                    client_ip(),
+                    request.headers.get("User-Agent", "")[:255],
+                    "Password reset generated a temporary password",
+                ),
             )
             if SMTP_HOST and SMTP_USERNAME and SMTP_PASSWORD and SMTP_FROM:
-                send_password_reset_email(email, reset_token)
-            elif not EXPOSE_RESET_TOKEN:
+                send_temporary_password_email(email, temporary_password)
+            else:
                 raise RuntimeError("SMTP is not configured")
             conn.commit()
         except (smtplib.SMTPException, OSError, RuntimeError):
             conn.rollback()
-            app.logger.exception("Password reset email delivery failed")
-            reset_token = None
+            app.logger.exception("Temporary password email delivery failed")
     cursor.close()
     conn.close()
     audit("password_reset_requested", "success", user_id=user["id"] if user else None)
-    response = {"message": "If the account exists, password reset instructions have been sent."}
-    if EXPOSE_RESET_TOKEN and reset_token:
-        response["reset_token"] = reset_token
-    return jsonify(response)
+    return jsonify({"message": "If the account exists, a temporary password has been sent."})
 
 
-def complete_password_reset(raw_token: str, password: str) -> bool:
+@app.post("/api/auth/change-password")
+@limiter.limit("10 per hour", exempt_when=lambda: DEV_MODE)
+@require_auth("technician", "owner")
+def change_password():
+    data = json_body()
+    current_password = data.get("current_password")
+    new_password = validate_password(data.get("new_password"))
+    forced_change = password_change_required(g.user_id)
+    if not forced_change:
+        if not isinstance(current_password, str) or len(current_password) > 128:
+            raise ValueError("current password is invalid")
+        if secrets.compare_digest(current_password, new_password):
+            raise ValueError("new password must be different from the current password")
+
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT password FROM user WHERE user_id = %s AND is_active = TRUE", (g.user_id,))
+    user = cursor.fetchone()
+    if not forced_change:
+        try:
+            valid = bool(user) and password_hasher.verify(user["password"], current_password)
+        except (VerifyMismatchError, InvalidHashError):
+            valid = False
+        if not valid:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Current password is incorrect"}), 401
+
     cursor.execute(
-        """SELECT reset_token_id AS id, user_id FROM password_reset_token
-           WHERE token_hash = %s AND used_at IS NULL AND expires_at > UTC_TIMESTAMP() FOR UPDATE""",
-        (token_hash(raw_token),),
+        "UPDATE user SET password = %s WHERE user_id = %s",
+        (password_hasher.hash(new_password), g.user_id),
     )
-    reset = cursor.fetchone()
-    if not reset:
-        cursor.close()
-        conn.close()
-        return False
-    cursor.execute("UPDATE user SET password = %s WHERE user_id = %s", (password_hasher.hash(password), reset["user_id"]))
-    cursor.execute("UPDATE password_reset_token SET used_at = UTC_TIMESTAMP() WHERE reset_token_id = %s", (reset["id"],))
-    cursor.execute("UPDATE refresh_token SET revoked_at = UTC_TIMESTAMP() WHERE user_id = %s AND revoked_at IS NULL", (reset["user_id"],))
+    cursor.execute(
+        "UPDATE refresh_token SET revoked_at = UTC_TIMESTAMP() WHERE user_id = %s AND revoked_at IS NULL",
+        (g.user_id,),
+    )
+    cursor.execute(
+        """INSERT INTO audit_log
+           (user_id, action, result, ip_address, user_agent, details)
+           VALUES (%s, 'password_changed', 'success', %s, %s, %s)""",
+        (
+            g.user_id,
+            client_ip(),
+            request.headers.get("User-Agent", "")[:255],
+            "User changed password inside the application",
+        ),
+    )
     conn.commit()
     cursor.close()
     conn.close()
-    audit("password_reset", "success", user_id=reset["user_id"])
-    return True
-
-
-@app.route("/reset-password", methods=["GET", "POST"])
-@limiter.limit("5 per hour", exempt_when=lambda: DEV_MODE)
-def reset_password_page():
-    raw_token = request.values.get("token", "")
-    error = None
-    can_submit = isinstance(raw_token, str) and 20 <= len(raw_token) <= 200
-    if not can_submit:
-        error = "This password reset link is invalid or incomplete."
-    if request.method == "POST" and error is None:
-        password = request.form.get("password", "")
-        confirmation = request.form.get("confirmation", "")
-        if password != confirmation:
-            error = "The passwords do not match."
-        else:
-            try:
-                password = validate_password(password)
-            except ValueError as exc:
-                error = str(exc)
-        if error is None and complete_password_reset(raw_token, password):
-            return render_template("reset_password.html", success=True)
-        if error is None:
-            audit("password_reset", "failure")
-            error = "This password reset link is invalid or has expired."
-            can_submit = False
-    return render_template(
-        "reset_password.html",
-        token=raw_token,
-        error=error,
-        success=False,
-        can_submit=can_submit,
-    ), 400 if error else 200
+    return jsonify({"message": "Password changed successfully. Please log in again."})
 
 
 @app.get("/api/users")

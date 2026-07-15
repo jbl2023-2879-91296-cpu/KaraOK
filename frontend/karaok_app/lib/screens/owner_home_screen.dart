@@ -7,6 +7,7 @@ import 'genre_select_screen.dart';
 import 'uploading_screen.dart';
 import 'owner_previous_results_screen.dart';
 import 'login_screen.dart';
+import 'change_password_screen.dart';
 
 class OwnerHomeScreen extends StatefulWidget {
   const OwnerHomeScreen({super.key});
@@ -72,7 +73,14 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
               icon: const Icon(Icons.account_circle, color: Colors.white),
               color: const Color(0xFF1C1C2E),
               onSelected: (v) async {
-                if (v == 'logout') {
+                if (v == 'change_password') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ChangePasswordScreen(),
+                    ),
+                  );
+                } else if (v == 'logout') {
                   await ApiService().logout();
                   if (!context.mounted) return;
                   UserSession.instance.clear();
@@ -90,6 +98,16 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                   ),
                 ),
                 const PopupMenuDivider(),
+                const PopupMenuItem(
+                  value: 'change_password',
+                  child: Row(
+                    children: [
+                      Icon(Icons.lock_outline, color: Colors.white, size: 18),
+                      SizedBox(width: 8),
+                      Text('Change Password'),
+                    ],
+                  ),
+                ),
                 const PopupMenuItem(
                   value: 'logout',
                   child: Row(

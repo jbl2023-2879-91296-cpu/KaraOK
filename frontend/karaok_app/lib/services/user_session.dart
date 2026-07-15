@@ -9,6 +9,7 @@ class UserSession {
   String? email;
   String? userType; // 'technician' | 'owner'
   bool   isGuest = false;
+  bool   requiresPasswordChange = false;
 
   bool get isLoggedIn => id != null || isGuest;
 
@@ -17,11 +18,13 @@ class UserSession {
     required String name,
     required String email,
     required String userType,
+    bool requiresPasswordChange = false,
   }) {
     this.id       = id;
     this.name     = name;
     this.email    = email;
     this.userType = userType;
+    this.requiresPasswordChange = requiresPasswordChange;
     isGuest       = false;
   }
 
@@ -31,6 +34,7 @@ class UserSession {
     email         = null;
     this.userType = userType;
     isGuest       = true;
+    requiresPasswordChange = false;
   }
 
   void clear() {
@@ -39,5 +43,6 @@ class UserSession {
     email    = null;
     userType = null;
     isGuest  = false;
+    requiresPasswordChange = false;
   }
 }

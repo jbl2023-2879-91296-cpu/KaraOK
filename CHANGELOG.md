@@ -73,16 +73,18 @@ All notable changes to KaraOK are documented here.
 - Connected pending OTP registrations to account creation through a transactional promotion into `user` with a five-attempt verification limit.
 - Updated the backend and Flutter README files to document the revised login and registration flows.
 
-## 2026-07-15 — Email password recovery
+## 2026-07-16 — Temporary-password recovery
 
 ### Added
 
-- Added SMTP delivery for single-use, expiring password-reset links.
-- Added a backend-hosted password-reset webpage with password confirmation.
+- Added SMTP delivery of randomly generated temporary passwords.
+- Added an authenticated in-app change-password screen with current-password verification and confirmation.
+- Added Change Password above Logout in owner and technician account menus.
 
 ### Changed
 
-- Simplified the forgot-password screen to request only the verified email address.
-- Kept account lookup responses indistinguishable and retained development-token exposure behind `EXPOSE_RESET_TOKEN`.
-- Removed reset-token handling from the Flutter app; new passwords are accepted only by the browser recovery page.
-- Successful password resets revoke existing refresh sessions.
+- Forgot password now returns to login with the requested email prefilled after showing a sent notification.
+- Signing in with a temporary password immediately requires the user to choose a permanent password.
+- The forced temporary-password replacement asks only for the new password and confirmation; manual changes from the account menu still require the current password.
+- Password recovery and password changes revoke existing refresh sessions.
+- Kept account lookup responses indistinguishable.
