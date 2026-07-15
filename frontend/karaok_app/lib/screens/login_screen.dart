@@ -8,8 +8,7 @@ import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   /// Pre-selected user type coming from splash ('technician' or 'owner')
-  const LoginScreen({super.key, required this.userType});
-  final String userType;
+  const LoginScreen({super.key});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -17,19 +16,17 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey    = GlobalKey<FormState>();
-  final _emailCtrl  = TextEditingController();
+  final _identifierCtrl = TextEditingController();
   final _passCtrl   = TextEditingController();
   bool  _obscure    = true;
   bool  _loading    = false;
   String? _error;
 
-  Color get _accentColor => widget.userType == 'owner'
-      ? const Color(0xFFE07B00)
-      : const Color(0xFF1E5BB5);
+  static const _accentColor = Color(0xFF4A90D9);
 
   @override
   void dispose() {
-    _emailCtrl.dispose();
+    _identifierCtrl.dispose();
     _passCtrl.dispose();
     super.dispose();
   }
@@ -39,19 +36,9 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() { _loading = true; _error = null; });
     try {
       final res = await ApiService().login(
-        email: _emailCtrl.text.trim(),
+        identifier: _identifierCtrl.text.trim(),
         password: _passCtrl.text,
       );
-      // Validate user type matches what they selected on splash
-      if (res['user_type'] != widget.userType) {
-        await ApiService().logout();
-        setState(() {
-          _error = 'This account is registered as a '
-              '${res['user_type']}. Please go back and select the correct user type.';
-          _loading = false;
-        });
-        return;
-      }
       UserSession.instance.setUser(
         id:       res['id'],
         name:     res['name'],
@@ -62,7 +49,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } on ApiException catch (e) {
       final body = e.message;
       setState(() {
-        _error = body.contains('Invalid') ? 'Invalid email or password.' : 'Login failed. Try again.';
+        _error = body.contains('Invalid') ? 'Invalid username/email or password.' : 'Login failed. Try again.';
         _loading = false;
       });
     } catch (_) {
@@ -71,7 +58,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _continueAsGuest() {
-    UserSession.instance.setGuest(widget.userType);
+    UserSession.instance.setGuest('owner');
     _navigateHome();
   }
 
@@ -79,7 +66,7 @@ class _LoginScreenState extends State<LoginScreen> {
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(
-        builder: (_) => widget.userType == 'owner'
+        builder: (_) => UserSession.instance.userType == 'owner'
             ? const OwnerHomeScreen()
             : const TechnicianHomeScreen(),
       ),
@@ -89,8 +76,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final typeLabel = widget.userType == 'owner' ? 'Owner' : 'Technician';
-
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
       appBar: AppBar(
@@ -120,21 +105,21 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 Text(
-                  'Sign in as $typeLabel',
+                  'Sign in to continue',
                   style: const TextStyle(
                       color: Color(0xFF888888), fontSize: 14),
                 ),
                 const SizedBox(height: 36),
-                // Email
-                _FieldLabel('Email'),
+                // Username or email
+                _FieldLabel('Username or Email'),
                 const SizedBox(height: 6),
                 _AuthField(
-                  controller: _emailCtrl,
-                  hint: 'you@example.com',
-                  keyboardType: TextInputType.emailAddress,
+                  controller: _identifierCtrl,
+                  hint: 'Username or email address',
                   validator: (v) {
-                    if (v == null || v.isEmpty) return 'Enter your email';
-                    if (!v.contains('@')) return 'Enter a valid email';
+                    if (v == null || v.trim().isEmpty) {
+                      return 'Enter your username or email';
+                    }
                     return null;
                   },
                 ),
@@ -225,7 +210,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           context,
                           MaterialPageRoute(
                             builder: (_) =>
-                                SignUpScreen(userType: widget.userType),
+                                const SignUpScreen(),
                           ),
                         );
                       },

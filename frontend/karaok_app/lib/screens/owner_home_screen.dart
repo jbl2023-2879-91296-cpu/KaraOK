@@ -61,7 +61,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (_) => const LoginScreen(userType: 'owner')),
+                    builder: (_) => const LoginScreen()),
               ),
               child: const Text('Sign In',
                   style: TextStyle(

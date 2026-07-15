@@ -133,28 +133,38 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> register({
+  Future<Map<String, dynamic>> startRegistration({
     required String name,
     required String email,
     required String password,
     required String userType,
   }) async {
-    final data = Map<String, dynamic>.from(await _post('/auth/register', {
+    return Map<String, dynamic>.from(await _post('/auth/register', {
       'name': name,
       'email': email,
       'password': password,
       'user_type': userType,
+    }, authenticated: false) as Map);
+  }
+
+  Future<Map<String, dynamic>> verifyRegistration({
+    required String email,
+    required String code,
+  }) async {
+    final data = Map<String, dynamic>.from(await _post('/auth/register/verify', {
+      'email': email,
+      'code': code,
     }, authenticated: false) as Map);
     await _saveAuth(data);
     return Map<String, dynamic>.from(data['user'] as Map);
   }
 
   Future<Map<String, dynamic>> login({
-    required String email,
+    required String identifier,
     required String password,
   }) async {
     final data = Map<String, dynamic>.from(await _post('/auth/login', {
-      'email': email,
+      'identifier': identifier,
       'password': password,
     }, authenticated: false) as Map);
     await _saveAuth(data);

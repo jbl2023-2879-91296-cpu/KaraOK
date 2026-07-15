@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
-import '../services/user_session.dart';
 import 'login_screen.dart';
-import 'technician_home_screen.dart';
-import 'owner_home_screen.dart';
+import 'otp_verification_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
-  const SignUpScreen({super.key, required this.userType});
-  final String userType;
+  const SignUpScreen({super.key});
 
   @override
   State<SignUpScreen> createState() => _SignUpScreenState();
@@ -24,9 +21,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool  _loading      = false;
   String? _error;
 
-  Color get _accentColor => widget.userType == 'owner'
-      ? const Color(0xFFE07B00)
-      : const Color(0xFF1E5BB5);
+  static const _accentColor = Color(0xFF4A90D9);
 
   @override
   void dispose() {
@@ -41,20 +36,25 @@ class _SignUpScreenState extends State<SignUpScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() { _loading = true; _error = null; });
     try {
-      final res = await ApiService().register(
+      final response = await ApiService().startRegistration(
         name:     _nameCtrl.text.trim(),
         email:    _emailCtrl.text.trim(),
         password: _passCtrl.text,
-        userType: widget.userType,
+        userType: 'owner',
       );
-      UserSession.instance.setUser(
-        id:       res['id'],
-        name:     res['name'],
-        email:    res['email'],
-        userType: res['user_type'],
+      if (!mounted) return;
+      setState(() => _loading = false);
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OtpVerificationScreen(
+            email: _emailCtrl.text.trim(),
+            developmentCode: response['development_code'] as String?,
+          ),
+        ),
       );
-      _navigateHome();
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message.contains('already')
             ? 'An account with this email already exists.'
@@ -62,26 +62,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
         _loading = false;
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() { _error = 'Could not connect to server.'; _loading = false; });
     }
   }
 
-  void _navigateHome() {
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(
-        builder: (_) => widget.userType == 'owner'
-            ? const OwnerHomeScreen()
-            : const TechnicianHomeScreen(),
-      ),
-      (route) => false,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final typeLabel = widget.userType == 'owner' ? 'Owner' : 'Technician';
-
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
       appBar: AppBar(
@@ -110,17 +97,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                 ),
                 Text(
-                  'Register as $typeLabel',
+                  'Create an account to save your results',
                   style: const TextStyle(
                       color: Color(0xFF888888), fontSize: 14),
                 ),
                 const SizedBox(height: 32),
-                // Full name
-                _FieldLabel('Full Name'),
+                // Username
+                _FieldLabel('Username'),
                 const SizedBox(height: 6),
                 _AuthField(
                   controller: _nameCtrl,
-                  hint: 'John Doe',
+                  hint: 'Choose a username',
                   validator: (v) =>
                       (v == null || v.isEmpty) ? 'Enter your name' : null,
                 ),
@@ -218,7 +205,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             child: CircularProgressIndicator(
                                 color: Colors.white, strokeWidth: 2.5),
                           )
-                        : const Text('Create Account',
+                        : const Text('Send Verification Code',
                             style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 16,
@@ -238,7 +225,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         context,
                         MaterialPageRoute(
                           builder: (_) =>
-                              LoginScreen(userType: widget.userType),
+                              const LoginScreen(),
                         ),
                       ),
                       child: Text(

@@ -76,7 +76,7 @@ class _TechnicianHomeScreenState extends State<TechnicianHomeScreen> {
                 context,
                 MaterialPageRoute(
                     builder: (_) =>
-                        const LoginScreen(userType: 'technician')),
+                        const LoginScreen()),
               ),
               child: const Text('Sign In',
                   style: TextStyle(

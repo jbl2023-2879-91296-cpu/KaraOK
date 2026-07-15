@@ -6,7 +6,8 @@ Flask REST API providing secure authentication, authorization, session managemen
 
 1. Import `../database/schema.sql` into MySQL.
 2. Copy `.env.example` to `.env` and set the database credentials and a random `JWT_SECRET` of at least 32 characters.
-3. Install and run the API:
+3. Configure SMTP in `.env` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, and `SMTP_FROM`) for real registration emails.
+4. Install and run the API:
 
 ```bash
 python -m pip install -r requirements.txt
@@ -26,6 +27,8 @@ The local API listens on `http://127.0.0.1:5000` by default. `GET /api/health` v
 - Owner/technician permissions are enforced at each API route.
 - Authentication endpoints are rate limited, and sensitive responses use `Cache-Control: no-store`.
 - Authentication, authorization failures, password recovery, and data changes are recorded in `audit_logs`.
+- Login accepts either the account username or verified email address through the `identifier` field.
+- Registration uses a six-digit, expiring OTP. The code is emailed through the configured SMTP provider and only its hash is stored in `registration_otp`.
 
 ## Database design
 
@@ -35,7 +38,7 @@ The active schema is [`database/schema.sql`](../database/schema.sql). It keeps t
 
 | Table | What it stores | How the application uses it |
 |---|---|---|
-| `user` | One account per row: login name, password hash, email, role, active status, security-update time, and creation time. The `user_id` value is the identity used by foreign keys. | Authentication looks up the account by `email`; the `password` column stores the Argon2id hash; `role` is read by authorization code. `Consumer` is the current owner-facing role label and `Technician` is the technician-facing role label. Account security state is stored here because it is one-to-one with the account. |
+| `user` | One account per row: login name, password hash, email, role, active status, security-update time, and creation time. The `user_id` value is the identity used by foreign keys. | Authentication looks up the account by `username` or `email`; the `password` column stores the Argon2id hash; `role` is read by authorization code. `Consumer` is the current owner-facing role label and `Technician` is the technician-facing role label. Account security state is stored here because it is one-to-one with the account. |
 | `genre_preset` | Shared recommended sound values for a genre, including bass, treble, loudness, sharpness, and flatness. `genre_name` is unique so one shared preset cannot be accidentally duplicated. | The analysis result points to a preset through `preset_id`. This preserves which recommendation was used for an assessment. |
 | `audio_quality_threshold` | Named quality rules: maximum noise, maximum distortion, and minimum quality score. | An analysis result points to the threshold used through `threshold_id`, making the decision reproducible if thresholds change later. |
 | `assessment` | The uploaded-audio job itself: owner (`user_id`), file path, processing status, date, external API reference, processing time, display name, duration, and result status. | This is the parent record for one audio assessment. Its lifecycle is represented by `assessment_status`; application metadata is stored on the same row because it depends directly on `assessment_id`; detailed measurements belong in `audio_analysis_result`. |
@@ -78,6 +81,8 @@ Public endpoints:
 - `POST /api/auth/forgot-password`
 - `POST /api/auth/reset-password`
 
+`POST /api/auth/login` accepts an `identifier` containing either the username or email address, together with `password`.
+
 Authenticated endpoints:
 
 - `GET /api/users` — owner only
@@ -103,3 +108,11 @@ Authorization: Bearer <access-token>
 - Restrict `CORS_ORIGINS` to the deployed application origins.
 - Configure Flask-Limiter with Redis or another shared storage backend.
 - Connect password recovery to verified email delivery without returning tokens in API responses.
+
+## Email-verified registration
+
+Registration is two-step: `POST /api/auth/register` validates the account details and sends a six-digit OTP through SMTP; `POST /api/auth/register/verify` accepts the email and code and then creates the account. The Flutter client presents verification on a dedicated OTP screen after the registration form is submitted. The code is hashed before storage and is never logged in plaintext.
+
+Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, and `REGISTRATION_OTP_MINUTES` in `backend/.env`. The SQL seed section adds baseline genre presets and quality thresholds with `INSERT IGNORE`, so it can be rerun safely.
+
+`registration_otp` is a staging table and intentionally has no foreign key to `user`: no user row exists before verification. When verification succeeds, the API inserts the pending account into `user` and deletes the staging row in the same database transaction. Invalid codes increment `attempts`, and verification is rejected after five failed attempts.

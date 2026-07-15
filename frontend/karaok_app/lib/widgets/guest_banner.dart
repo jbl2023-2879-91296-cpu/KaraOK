@@ -30,7 +30,7 @@ class GuestBanner extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => LoginScreen(userType: userType),
+                  builder: (_) => const LoginScreen(),
                 ),
               );
             },

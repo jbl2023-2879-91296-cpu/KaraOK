@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../services/user_session.dart';
 import 'login_screen.dart';
+import 'owner_home_screen.dart';
 
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
@@ -10,91 +12,45 @@ class SplashScreen extends StatelessWidget {
       backgroundColor: const Color(0xFF0D0D0D),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32.0),
+          padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Column(
             children: [
               const Spacer(flex: 2),
-              _buildLogo(),
+              _logo(),
               const SizedBox(height: 16),
               const Text(
                 'Analyze and improve your\nkaraoke sound quality',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color(0xFFAAAAAA),
-                  fontSize: 14,
-                  height: 1.5,
-                ),
+                style: TextStyle(color: Color(0xFFAAAAAA), fontSize: 14, height: 1.5),
               ),
               const Spacer(flex: 3),
-              const Text(
-                'Select User Type',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              const Text('Get started', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
               const SizedBox(height: 16),
-              // Technician button → Login
               SizedBox(
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton.icon(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          const LoginScreen(userType: 'technician'),
-                    ),
-                  ),
-                  icon: const Icon(Icons.person, color: Colors.white),
-                  label: const Text(
-                    'Technician',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1E5BB5),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+                  icon: const Icon(Icons.lock_outline, color: Colors.white),
+                  label: const Text('Log In / Register', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4A90D9), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                 ),
               ),
               const SizedBox(height: 12),
-              // Owner button → Login
               SizedBox(
                 width: double.infinity,
                 height: 52,
-                child: ElevatedButton.icon(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          const LoginScreen(userType: 'owner'),
-                    ),
-                  ),
-                  icon: const Icon(Icons.person_outline, color: Colors.white),
-                  label: const Text(
-                    'Owner',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE07B00),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    UserSession.instance.setGuest('owner');
+                    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const OwnerHomeScreen()));
+                  },
+                  icon: const Icon(Icons.visibility_outlined, color: Color(0xFFAAAAAA)),
+                  label: const Text('Continue as Guest', style: TextStyle(color: Color(0xFFAAAAAA), fontSize: 15, fontWeight: FontWeight.w600)),
+                  style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xFF3A3A5E), width: 1.5), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                 ),
               ),
-              const Spacer(flex: 1),
+              const Spacer(),
             ],
           ),
         ),
@@ -102,73 +58,12 @@ class SplashScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildLogo() {
-    return Column(
-      children: [
-        RichText(
-          text: const TextSpan(
-            children: [
-              TextSpan(
-                text: 'kara',
-                style: TextStyle(
-                  color: Color(0xFF4A90D9),
-                  fontSize: 52,
-                  fontWeight: FontWeight.w900,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-              TextSpan(
-                text: 'O',
-                style: TextStyle(
-                  color: Color(0xFF4A90D9),
-                  fontSize: 52,
-                  fontWeight: FontWeight.w900,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-              TextSpan(
-                text: 'K',
-                style: TextStyle(
-                  color: Color(0xFFFF8C00),
-                  fontSize: 52,
-                  fontWeight: FontWeight.w900,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+  static Widget _logo() => RichText(
+        text: const TextSpan(
           children: [
-            _dotDivider(),
-            const SizedBox(width: 8),
-            const Text(
-              'BUILD • TEST • SING',
-              style: TextStyle(
-                color: Color(0xFFFF8C00),
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 2,
-              ),
-            ),
-            const SizedBox(width: 8),
-            _dotDivider(),
+            TextSpan(text: 'karaO', style: TextStyle(color: Color(0xFF4A90D9), fontSize: 52, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic)),
+            TextSpan(text: 'K', style: TextStyle(color: Color(0xFFFF8C00), fontSize: 52, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic)),
           ],
         ),
-      ],
-    );
-  }
-
-  Widget _dotDivider() {
-    return Container(
-      width: 24,
-      height: 2,
-      decoration: BoxDecoration(
-        color: const Color(0xFF4A90D9),
-        borderRadius: BorderRadius.circular(1),
-      ),
-    );
-  }
+      );
 }

@@ -303,10 +303,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) => LoginScreen(
-                                        userType: session.userType ??
-                                            'technician',
-                                      ),
+                                      builder: (_) => const LoginScreen(),
                                     ),
                                   );
                                 },

@@ -6,7 +6,8 @@ Repository: [github.com/jbl2023-2879-91296-cpu/KaraOK](https://github.com/jbl202
 
 ## Application features
 
-- Owner and technician account registration and sign-in
+- Owner and technician account registration and username-or-email sign-in
+- Dedicated email OTP verification screen after registration details are submitted
 - Argon2id password hashing, expiring token sessions, logout revocation, and role-based API access
 - Single-use, expiring forgot/reset-password tokens
 - Server-side input validation, login rate limiting, and security audit logs
@@ -132,7 +133,7 @@ The Flutter client uses these REST resources:
 |---|---|---|
 | `GET` | `/api/health` | Check API and database availability |
 | `POST` | `/api/auth/register` | Register an owner or technician |
-| `POST` | `/api/auth/login` | Authenticate an account |
+| `POST` | `/api/auth/login` | Authenticate with a username or email address |
 | `POST` | `/api/auth/refresh` | Rotate a refresh token and issue a new session pair |
 | `POST` | `/api/auth/logout` | Revoke access and refresh tokens |
 | `POST` | `/api/auth/forgot-password` | Request a single-use reset token |
@@ -171,6 +172,12 @@ KaraOK is under active development. Secure authentication, session rotation/revo
 
 The backend provides Argon2id password hashing, token-based sessions, role-based API authorization, password reset tokens, rate limiting, input validation, and audit logging. See [`backend/README.md`](../../backend/README.md) for the security model and table-by-table schema explanation.
 
+Registration asks for a username instead of a full name. After submitting the form, the app opens a separate verification screen where the user enters the six-digit OTP delivered to the supplied email address. The backend must have SMTP settings configured before registration emails can be sent. Login accepts either the username or email address.
+
 The original design is retained at [`database/schema_original.sql`](../../database/schema_original.sql). The active [`database/schema.sql`](../../database/schema.sql) keeps those original foundation tables and adds only the missing security/application tables. The one-to-one `user_security` and `assessment_metadata` additions are now merged into `user` and `assessment`, respectively. See the backend README for longer onboarding descriptions of every table, its foreign keys, and the reason each additive table exists.
 
 See [`CHANGELOG.md`](../../CHANGELOG.md) for the dated list of security, API, client, and schema changes.
+
+## Email registration
+
+Registration asks for a username instead of a full name, then opens a dedicated screen for the six-digit OTP delivered to the supplied email address. SMTP must be configured in the backend before real registration emails can be sent. The visible registration flow is role-neutral; roles remain an internal authorization concern. Users can subsequently sign in with either their username or email address.

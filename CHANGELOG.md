@@ -40,3 +40,35 @@ All notable changes to KaraOK are documented here.
 ### Documentation
 
 - Updated the backend README table descriptions, relationships, and normalization explanation to document the merged design.
+
+## 2026-07-15 — Email-verified registration
+
+### Added
+
+- Added `registration_otp` for pending registrations, hashed six-digit codes, expiration, and verification state.
+- Added SMTP environment configuration for real OTP delivery.
+- Added repeatable seed records for baseline genre presets and audio-quality thresholds.
+- Added `/api/auth/register/verify` and a Flutter OTP entry step.
+
+### Changed
+
+- Changed the registration field label from `Full Name` to `Username`.
+- Made the visible registration flow role-neutral while retaining backend roles for authorization.
+- Documented SMTP setup, OTP flow, and seed behavior in the README files.
+
+### Compatibility note
+
+- The OTP implementation currently follows the backend's existing application-user table contract. A fresh database created solely from the original-foundation schema requires the backend authentication queries to be migrated to those original table names before the full registration/login flow can operate.
+
+## 2026-07-15 — Flexible login and dedicated OTP screen
+
+### Added
+
+- Added a dedicated email-verification screen for entering the six-digit registration OTP.
+
+### Changed
+
+- Login now accepts either the account username or email address.
+- Registration now opens the OTP screen after successfully sending the verification code instead of adding an OTP field to the registration form.
+- Connected pending OTP registrations to account creation through a transactional promotion into `user` with a five-attempt verification limit.
+- Updated the backend and Flutter README files to document the revised login and registration flows.

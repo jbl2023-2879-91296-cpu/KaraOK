@@ -1,11 +1,11 @@
-CREATE DATABASE karaok_db;
+CREATE DATABASE IF NOT EXISTS karaok_db;
 USE karaok_db;
 
 -- ==========================================
 -- ORIGINAL TABLE: USER
 -- ==========================================
 
-CREATE TABLE user (
+CREATE TABLE IF NOT EXISTS user (
     user_id INT AUTO_INCREMENT PRIMARY KEY,
 
     username VARCHAR(50) NOT NULL UNIQUE,
@@ -27,7 +27,7 @@ CREATE TABLE user (
 -- Stores the recommended sound settings
 -- ==========================================
 
-CREATE TABLE genre_preset (
+CREATE TABLE IF NOT EXISTS genre_preset (
     preset_id INT AUTO_INCREMENT PRIMARY KEY,
 
     genre_name VARCHAR(50) NOT NULL UNIQUE,
@@ -44,7 +44,7 @@ CREATE TABLE genre_preset (
 -- Stores empirical threshold values
 -- ==========================================
 
-CREATE TABLE audio_quality_threshold (
+CREATE TABLE IF NOT EXISTS audio_quality_threshold (
     threshold_id INT AUTO_INCREMENT PRIMARY KEY,
 
     threshold_name VARCHAR(100) NOT NULL,
@@ -59,7 +59,7 @@ CREATE TABLE audio_quality_threshold (
 -- One uploaded audio per assessment
 -- ==========================================
 
-CREATE TABLE assessment (
+CREATE TABLE IF NOT EXISTS assessment (
     assessment_id INT AUTO_INCREMENT PRIMARY KEY,
 
     user_id INT NOT NULL,
@@ -91,7 +91,7 @@ CREATE TABLE assessment (
 -- Stores quality assessment and genre recommendation results
 -- ==========================================
 
-CREATE TABLE audio_analysis_result (
+CREATE TABLE IF NOT EXISTS audio_analysis_result (
     result_id INT AUTO_INCREMENT PRIMARY KEY,
 
     assessment_id INT NOT NULL UNIQUE,
@@ -139,7 +139,7 @@ CREATE TABLE audio_analysis_result (
 -- Stores only hashes of long-lived session tokens.
 -- ==========================================
 
-CREATE TABLE refresh_token (
+CREATE TABLE IF NOT EXISTS refresh_token (
     refresh_token_id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     token_hash CHAR(64) NOT NULL UNIQUE,
@@ -156,7 +156,7 @@ CREATE TABLE refresh_token (
 -- ADDITIVE TABLE: PASSWORD RESET TOKEN
 -- ==========================================
 
-CREATE TABLE password_reset_token (
+CREATE TABLE IF NOT EXISTS password_reset_token (
     reset_token_id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     token_hash CHAR(64) NOT NULL UNIQUE,
@@ -171,7 +171,7 @@ CREATE TABLE password_reset_token (
 -- ADDITIVE TABLE: REVOKED ACCESS TOKEN
 -- ==========================================
 
-CREATE TABLE revoked_access_token (
+CREATE TABLE IF NOT EXISTS revoked_access_token (
     jti CHAR(32) PRIMARY KEY,
     user_id INT NOT NULL,
     expires_at DATETIME NOT NULL,
@@ -184,7 +184,7 @@ CREATE TABLE revoked_access_token (
 -- ADDITIVE TABLE: AUDIT LOG
 -- ==========================================
 
-CREATE TABLE audit_log (
+CREATE TABLE IF NOT EXISTS audit_log (
     audit_log_id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NULL,
     action VARCHAR(80) NOT NULL,
@@ -205,7 +205,7 @@ CREATE TABLE audit_log (
 -- owner-specific saved settings.
 -- ==========================================
 
-CREATE TABLE user_genre_setting (
+CREATE TABLE IF NOT EXISTS user_genre_setting (
     setting_id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     preset_id INT NULL,
@@ -227,7 +227,7 @@ CREATE TABLE user_genre_setting (
 -- ADDITIVE TABLE: AUDIO UPLOAD RECORD
 -- ==========================================
 
-CREATE TABLE audio_upload (
+CREATE TABLE IF NOT EXISTS audio_upload (
     upload_id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     assessment_id INT NULL,
@@ -252,3 +252,40 @@ CREATE INDEX idx_audit_log_created
     ON audit_log (created_at);
 CREATE INDEX idx_audio_upload_user_date
     ON audio_upload (user_id, created_at);
+
+-- ==========================================
+-- ADDITIVE TABLE: REGISTRATION OTP
+-- Stores only pending registration data and a hash of the email code.
+-- ==========================================
+
+CREATE TABLE IF NOT EXISTS registration_otp (
+    registration_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role VARCHAR(30) NOT NULL DEFAULT 'Consumer',
+    code_hash CHAR(64) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    verified_at DATETIME NULL,
+    attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_registration_otp_email (email)
+);
+
+-- ==========================================
+-- SEED DATA
+-- Safe to run repeatedly after the tables exist.
+-- ==========================================
+
+INSERT IGNORE INTO genre_preset
+    (genre_name, bass, treble, loudness, sharpness, flatness)
+VALUES
+    ('Ballad', 55, 50, 60, 45, 50),
+    ('Pop', 60, 60, 65, 55, 50),
+    ('Rock', 70, 65, 70, 60, 45),
+    ('Acoustic', 45, 65, 55, 60, 65);
+
+INSERT IGNORE INTO audio_quality_threshold
+    (threshold_name, max_allowable_noise, max_allowable_distortion, min_quality_score)
+VALUES
+    ('Default', 10, 5, 60);

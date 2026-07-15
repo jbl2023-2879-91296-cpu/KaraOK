@@ -6,6 +6,8 @@ import hashlib
 import os
 import re
 import secrets
+import smtplib
+from email.message import EmailMessage
 from typing import Any, Callable
 
 from argon2 import PasswordHasher
@@ -29,7 +31,12 @@ allowed_origins = [
     if origin.strip()
 ]
 CORS(app, resources={r"/api/*": {"origins": allowed_origins}})
-limiter = Limiter(get_remote_address, app=app, default_limits=["200 per hour"])
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    storage_uri=os.getenv("RATELIMIT_STORAGE_URI", "memory://"),
+    default_limits=["200 per hour"],
+)
 
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
@@ -44,6 +51,14 @@ ACCESS_TOKEN_MINUTES = int(os.getenv("ACCESS_TOKEN_MINUTES", "15"))
 REFRESH_TOKEN_DAYS = int(os.getenv("REFRESH_TOKEN_DAYS", "7"))
 RESET_TOKEN_MINUTES = int(os.getenv("RESET_TOKEN_MINUTES", "15"))
 EXPOSE_RESET_TOKEN = os.getenv("EXPOSE_RESET_TOKEN", "false").lower() == "true"
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME)
+OTP_MINUTES = int(os.getenv("REGISTRATION_OTP_MINUTES", "10"))
+DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
+EXPOSE_REGISTRATION_OTP = os.getenv("EXPOSE_REGISTRATION_OTP", "false").lower() == "true"
 
 password_hasher = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
@@ -108,6 +123,39 @@ def token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def send_registration_otp(email: str, code: str) -> None:
+    if not all((SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM)):
+        raise RuntimeError("SMTP is not configured; set SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, and SMTP_FROM")
+    message = EmailMessage()
+    message["Subject"] = "Email Verification OTP — Audio Evaluation System"
+    message["From"] = SMTP_FROM
+    message["To"] = email
+    message.set_content(
+        f"""Dear User,
+
+Thank you for registering with our application.
+
+Your One-Time Password (OTP) for email verification is:
+
+**{code}**
+
+This verification code is valid for **{OTP_MINUTES} minutes**. Please enter this code in the application to complete your registration.
+
+For your security, do not share this OTP with anyone. Our team will never ask you for your verification code.
+
+If you did not request this verification or believe you received this email in error, please disregard this message. No further action is required, and your account will not be activated unless the correct OTP is entered.
+
+Thank you,
+
+**The Audio Evaluation System Team**
+"""
+    )
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
+        server.starttls()
+        server.login(SMTP_USERNAME, SMTP_PASSWORD)
+        server.send_message(message)
+
+
 def client_ip() -> str:
     return request.headers.get("X-Forwarded-For", request.remote_addr or "")[:45]
 
@@ -125,7 +173,7 @@ def audit(
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute(
-            """INSERT INTO audit_logs
+            """INSERT INTO audit_log
                (user_id, action, resource_type, resource_id, result, ip_address, user_agent, details)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
             (
@@ -150,7 +198,7 @@ def issue_access_token(user: dict[str, Any]) -> tuple[str, int]:
     now = utcnow()
     expires = now + timedelta(minutes=ACCESS_TOKEN_MINUTES)
     payload = {
-        "sub": str(user["id"]),
+        "sub": str(user["user_id"]),
         "role": user["user_type"],
         "iss": JWT_ISSUER,
         "iat": now,
@@ -167,7 +215,7 @@ def create_refresh_token(user_id: int) -> tuple[str, datetime]:
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute(
-        """INSERT INTO refresh_tokens
+        """INSERT INTO refresh_token
            (user_id, token_hash, expires_at, ip_address, user_agent)
            VALUES (%s, %s, %s, %s, %s)""",
         (user_id, token_hash(raw_token), expires.replace(tzinfo=None), client_ip(), request.headers.get("User-Agent", "")[:255]),
@@ -180,12 +228,12 @@ def create_refresh_token(user_id: int) -> tuple[str, datetime]:
 
 def auth_response(user: dict[str, Any], status: int = 200):
     access_token, access_expires_at = issue_access_token(user)
-    refresh_token, refresh_expires_at = create_refresh_token(user["id"])
+    refresh_token, refresh_expires_at = create_refresh_token(user["user_id"])
     return jsonify(
         {
             "user": {
-                "id": user["id"],
-                "name": user["name"],
+                "id": user["user_id"],
+                "name": user["username"],
                 "email": user["email"],
                 "user_type": user["user_type"],
             },
@@ -217,7 +265,7 @@ def require_auth(*roles: str) -> Callable:
                 g.user_role = payload["role"]
                 conn = get_db()
                 cursor = conn.cursor()
-                cursor.execute("SELECT 1 FROM revoked_access_tokens WHERE jti = %s", (payload["jti"],))
+                cursor.execute("SELECT 1 FROM revoked_access_token WHERE jti = %s", (payload["jti"],))
                 revoked = cursor.fetchone() is not None
                 cursor.close()
                 conn.close()
@@ -275,10 +323,10 @@ def health():
 @limiter.limit("5 per hour")
 def register():
     data = json_body()
-    name = clean_text(data.get("name"), "name", 2, 100)
+    name = clean_text(data.get("name"), "name", 2, 50)
     email = clean_email(data.get("email"))
     password = validate_password(data.get("password"))
-    user_type = data.get("user_type")
+    user_type = data.get("user_type", "owner")
     if user_type not in VALID_ROLES:
         raise ValueError("user_type must be technician or owner")
 
@@ -286,20 +334,87 @@ def register():
     cursor = conn.cursor(dictionary=True)
     try:
         cursor.execute(
-            "INSERT INTO users (name, email, password_hash, user_type) VALUES (%s, %s, %s, %s)",
-            (name, email, password_hasher.hash(password), user_type),
+            "SELECT user_id FROM user WHERE email = %s OR username = %s LIMIT 1",
+            (email, name),
+        )
+        if cursor.fetchone():
+            return jsonify({"error": "Unable to create account"}), 409
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        cursor.execute(
+            "DELETE FROM registration_otp WHERE email = %s OR username = %s",
+            (email, name),
+        )
+        cursor.execute(
+            """INSERT INTO registration_otp
+               (username, email, password_hash, role, code_hash, expires_at)
+               VALUES (%s, %s, %s, %s, %s, UTC_TIMESTAMP() + INTERVAL %s MINUTE)""",
+            (name, email, password_hasher.hash(password), user_type, token_hash(code), OTP_MINUTES),
         )
         conn.commit()
-        user_id = cursor.lastrowid
-    except IntegrityError:
+        if SMTP_HOST and SMTP_USERNAME and SMTP_PASSWORD and SMTP_FROM:
+            send_registration_otp(email, code)
+        elif not (DEV_MODE and EXPOSE_REGISTRATION_OTP):
+            raise RuntimeError("SMTP is not configured")
+    except (IntegrityError, smtplib.SMTPException, RuntimeError):
         conn.rollback()
-        audit("registration", "failure", details="Duplicate email")
-        return jsonify({"error": "Unable to create account"}), 409
+        app.logger.exception("Registration OTP delivery failed")
+        return jsonify({"error": "Unable to send verification email"}), 503
     finally:
         cursor.close()
         conn.close()
+    response = {"message": "Verification code sent to the supplied email"}
+    if DEV_MODE and EXPOSE_REGISTRATION_OTP:
+        response["development_code"] = code
+    return jsonify(response), 202
 
-    user = {"id": user_id, "name": name, "email": email, "user_type": user_type}
+
+@app.post("/api/auth/register/verify")
+@limiter.limit("10 per hour")
+def verify_registration():
+    data = json_body()
+    email = clean_email(data.get("email"))
+    code = data.get("code")
+    if not isinstance(code, str) or not re.fullmatch(r"\d{6}", code):
+        raise ValueError("verification code must be six digits")
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        """SELECT * FROM registration_otp
+           WHERE email = %s AND verified_at IS NULL
+             AND expires_at > UTC_TIMESTAMP() AND attempts < 5
+           FOR UPDATE""",
+        (email,),
+    )
+    pending = cursor.fetchone()
+    if not pending or not secrets.compare_digest(pending["code_hash"], token_hash(code)):
+        if pending:
+            cursor.execute(
+                "UPDATE registration_otp SET attempts = attempts + 1 WHERE registration_id = %s",
+                (pending["registration_id"],),
+            )
+            conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"error": "Invalid or expired verification code"}), 400
+    try:
+        cursor.execute(
+            "INSERT INTO user (username, email, password, role) VALUES (%s, %s, %s, %s)",
+            (pending["username"], pending["email"], pending["password_hash"], pending["role"]),
+        )
+        user_id = cursor.lastrowid
+        cursor.execute(
+            "DELETE FROM registration_otp WHERE registration_id = %s",
+            (pending["registration_id"],),
+        )
+        conn.commit()
+    except IntegrityError:
+        conn.rollback()
+        cursor.close()
+        conn.close()
+        return jsonify({"error": "Unable to create account"}), 409
+    cursor.close()
+    conn.close()
+    user = {"user_id": user_id, "username": pending["username"], "email": email, "user_type": pending["role"]}
     audit("registration", "success", user_id=user_id, resource_type="user", resource_id=user_id)
     return auth_response(user, 201)
 
@@ -308,16 +423,25 @@ def register():
 @limiter.limit("5 per minute")
 def login():
     data = json_body()
-    email = clean_email(data.get("email"))
+    raw_identifier = data.get("identifier", data.get("email"))
+    identifier = clean_text(raw_identifier, "username or email", 2, 254)
+    is_email = EMAIL_RE.fullmatch(identifier) is not None
+    if is_email:
+        identifier = clean_email(identifier)
+    elif len(identifier) > 50:
+        raise ValueError("username must be 2-50 characters")
     password = data.get("password")
     if not isinstance(password, str) or len(password) > 128:
         raise ValueError("password is invalid")
 
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
+    login_column = "email" if is_email else "username"
     cursor.execute(
-        "SELECT id, name, email, user_type, password_hash, is_active FROM users WHERE email = %s",
-        (email,),
+        f"""SELECT user_id, username, email, role AS user_type,
+                   password AS password_hash, is_active
+            FROM user WHERE {login_column} = %s LIMIT 1""",
+        (identifier,),
     )
     user = cursor.fetchone()
     cursor.close()
@@ -330,16 +454,16 @@ def login():
         except (VerifyMismatchError, InvalidHashError):
             valid = False
     if not valid:
-        audit("login", "failure", user_id=user["id"] if user else None)
-        return jsonify({"error": "Invalid email or password"}), 401
+        audit("login", "failure", user_id=user["user_id"] if user else None)
+        return jsonify({"error": "Invalid username/email or password"}), 401
     if password_hasher.check_needs_rehash(user["password_hash"]):
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute("UPDATE users SET password_hash = %s WHERE id = %s", (password_hasher.hash(password), user["id"]))
+        cursor.execute("UPDATE user SET password = %s WHERE user_id = %s", (password_hasher.hash(password), user["user_id"]))
         conn.commit()
         cursor.close()
         conn.close()
-    audit("login", "success", user_id=user["id"])
+    audit("login", "success", user_id=user["user_id"])
     return auth_response(user)
 
 
@@ -353,9 +477,9 @@ def refresh():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        """SELECT rt.id AS token_id, rt.user_id, rt.expires_at, rt.revoked_at,
-                  u.id, u.name, u.email, u.user_type, u.is_active
-           FROM refresh_tokens rt JOIN users u ON u.id = rt.user_id
+        """SELECT rt.refresh_token_id AS token_id, rt.user_id, rt.expires_at, rt.revoked_at,
+                  u.user_id AS id, u.username AS name, u.email, u.role AS user_type, u.is_active
+           FROM refresh_token rt JOIN user u ON u.user_id = rt.user_id
            WHERE rt.token_hash = %s""",
         (hashed,),
     )
@@ -365,7 +489,7 @@ def refresh():
         conn.close()
         audit("token_refresh", "failure")
         return jsonify({"error": "Invalid or expired refresh token"}), 401
-    cursor.execute("UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP() WHERE id = %s", (row["token_id"],))
+    cursor.execute("UPDATE refresh_token SET revoked_at = UTC_TIMESTAMP() WHERE refresh_token_id = %s", (row["token_id"],))
     conn.commit()
     cursor.close()
     conn.close()
@@ -393,12 +517,12 @@ def logout():
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP() WHERE token_hash = %s AND revoked_at IS NULL",
+            "UPDATE refresh_token SET revoked_at = UTC_TIMESTAMP() WHERE token_hash = %s AND revoked_at IS NULL",
             (token_hash(raw_token),),
         )
         if access_payload:
             cursor.execute(
-                """INSERT IGNORE INTO revoked_access_tokens (jti, user_id, expires_at)
+                """INSERT IGNORE INTO revoked_access_token (jti, user_id, expires_at)
                    VALUES (%s, %s, FROM_UNIXTIME(%s))""",
                 (access_payload["jti"], int(access_payload["sub"]), int(access_payload["exp"])),
             )
@@ -415,14 +539,14 @@ def forgot_password():
     email = clean_email(json_body().get("email"))
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT id FROM users WHERE email = %s AND is_active = TRUE", (email,))
+    cursor.execute("SELECT user_id AS id FROM user WHERE email = %s AND is_active = TRUE", (email,))
     user = cursor.fetchone()
     reset_token = None
     if user:
         reset_token = secrets.token_urlsafe(32)
-        cursor.execute("UPDATE password_reset_tokens SET used_at = UTC_TIMESTAMP() WHERE user_id = %s AND used_at IS NULL", (user["id"],))
+        cursor.execute("UPDATE password_reset_token SET used_at = UTC_TIMESTAMP() WHERE user_id = %s AND used_at IS NULL", (user["id"],))
         cursor.execute(
-            "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (%s, %s, %s)",
+            "INSERT INTO password_reset_token (user_id, token_hash, expires_at) VALUES (%s, %s, %s)",
             (user["id"], token_hash(reset_token), (utcnow() + timedelta(minutes=RESET_TOKEN_MINUTES)).replace(tzinfo=None)),
         )
         conn.commit()
@@ -446,7 +570,7 @@ def reset_password():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        """SELECT id, user_id FROM password_reset_tokens
+        """SELECT reset_token_id AS id, user_id FROM password_reset_token
            WHERE token_hash = %s AND used_at IS NULL AND expires_at > UTC_TIMESTAMP() FOR UPDATE""",
         (token_hash(raw_token),),
     )
@@ -456,9 +580,9 @@ def reset_password():
         conn.close()
         audit("password_reset", "failure")
         return jsonify({"error": "Invalid or expired reset token"}), 400
-    cursor.execute("UPDATE users SET password_hash = %s WHERE id = %s", (password_hasher.hash(password), reset["user_id"]))
-    cursor.execute("UPDATE password_reset_tokens SET used_at = UTC_TIMESTAMP() WHERE id = %s", (reset["id"],))
-    cursor.execute("UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP() WHERE user_id = %s AND revoked_at IS NULL", (reset["user_id"],))
+    cursor.execute("UPDATE user SET password = %s WHERE user_id = %s", (password_hasher.hash(password), reset["user_id"]))
+    cursor.execute("UPDATE password_reset_token SET used_at = UTC_TIMESTAMP() WHERE reset_token_id = %s", (reset["id"],))
+    cursor.execute("UPDATE refresh_token SET revoked_at = UTC_TIMESTAMP() WHERE user_id = %s AND revoked_at IS NULL", (reset["user_id"],))
     conn.commit()
     cursor.close()
     conn.close()
@@ -471,7 +595,7 @@ def reset_password():
 def get_users():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT id, name, email, user_type, is_active, created_at FROM users ORDER BY created_at DESC")
+    cursor.execute("SELECT user_id AS id, username AS name, email, role AS user_type, is_active, created_at FROM user ORDER BY created_at DESC")
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -630,7 +754,7 @@ def get_audit_logs():
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
         """SELECT id, user_id, action, resource_type, resource_id, result, ip_address, created_at
-           FROM audit_logs ORDER BY created_at DESC LIMIT 200"""
+           FROM audit_log ORDER BY created_at DESC LIMIT 200"""
     )
     rows = cursor.fetchall()
     cursor.close()
