@@ -86,5 +86,10 @@ All notable changes to KaraOK are documented here.
 - Forgot password now returns to login with the requested email prefilled after showing a sent notification.
 - Signing in with a temporary password immediately requires the user to choose a permanent password.
 - The forced temporary-password replacement asks only for the new password and confirmation; manual changes from the account menu still require the current password.
+- Protected API operations are blocked until a user who signed in with a temporary password completes the required password change.
 - Password recovery and password changes revoke existing refresh sessions.
 - Kept account lookup responses indistinguishable.
+
+### Removed
+
+- Removed the reset-token browser page, reset-link email flow, and mobile reset-token handling in favor of emailed temporary passwords.
