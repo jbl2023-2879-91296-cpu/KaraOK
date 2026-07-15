@@ -41,13 +41,12 @@ KaraOK/
 |-- database/
 |   `-- schema.sql            # MySQL schema
 `-- frontend/
-    `-- karaok_app/
-        |-- lib/
-        |   |-- screens/      # Application screens and flows
-        |   |-- services/     # API access and user session state
-        |   `-- widgets/      # Shared UI components
-        |-- test/              # Flutter tests
-        `-- pubspec.yaml       # Flutter dependencies and metadata
+    |-- lib/
+    |   |-- screens/      # Application screens and flows
+    |   |-- services/     # API access and user session state
+    |   `-- widgets/      # Shared UI components
+    |-- test/              # Flutter tests
+    `-- pubspec.yaml       # Flutter dependencies and metadata
 ```
 
 ## Prerequisites
@@ -113,7 +112,7 @@ A physical device must be on the same network as the API host, and the host fire
 ### 5. Install Flutter packages and run
 
 ```bash
-cd frontend/karaok_app
+cd frontend
 flutter pub get
 flutter run
 ```
@@ -147,7 +146,7 @@ The Flutter client uses these REST resources:
 
 ## Development checks
 
-Run these commands from `frontend/karaok_app` before submitting changes:
+Run these commands from `frontend` before submitting changes:
 
 ```bash
 flutter analyze
