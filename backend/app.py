@@ -9,11 +9,12 @@ import secrets
 import smtplib
 from email.message import EmailMessage
 from typing import Any, Callable
+from urllib.parse import urlencode
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from dotenv import load_dotenv
-from flask import Flask, g, jsonify, request
+from flask import Flask, g, jsonify, render_template, request
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -51,6 +52,7 @@ ACCESS_TOKEN_MINUTES = int(os.getenv("ACCESS_TOKEN_MINUTES", "15"))
 REFRESH_TOKEN_DAYS = int(os.getenv("REFRESH_TOKEN_DAYS", "7"))
 RESET_TOKEN_MINUTES = int(os.getenv("RESET_TOKEN_MINUTES", "15"))
 EXPOSE_RESET_TOKEN = os.getenv("EXPOSE_RESET_TOKEN", "false").lower() == "true"
+RESET_LINK_BASE = os.getenv("RESET_LINK_BASE", "http://127.0.0.1:5000/reset-password")
 SMTP_HOST = os.getenv("SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
@@ -148,6 +150,32 @@ If you did not request this verification or believe you received this email in e
 Thank you,
 
 **The Audio Evaluation System Team**
+"""
+    )
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
+        server.starttls()
+        server.login(SMTP_USERNAME, SMTP_PASSWORD)
+        server.send_message(message)
+
+
+def send_password_reset_email(email: str, token: str) -> None:
+    if not all((SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM)):
+        raise RuntimeError("SMTP is not configured")
+    separator = "&" if "?" in RESET_LINK_BASE else "?"
+    reset_link = f"{RESET_LINK_BASE}{separator}{urlencode({'token': token})}"
+    message = EmailMessage()
+    message["Subject"] = "Reset your KaraOK password"
+    message["From"] = SMTP_FROM
+    message["To"] = email
+    message.set_content(
+        f"""A password reset was requested for your KaraOK account.
+
+Open this single-use link to choose a new password:
+
+{reset_link}
+
+This link expires in {RESET_TOKEN_MINUTES} minutes. If you did not request a
+password reset, you can safely ignore this email. Never share this link.
 """
     )
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
@@ -534,7 +562,7 @@ def logout():
 
 
 @app.post("/api/auth/forgot-password")
-@limiter.limit("3 per hour")
+@limiter.limit("3 per hour", exempt_when=lambda: DEV_MODE)
 def forgot_password():
     email = clean_email(json_body().get("email"))
     conn = get_db()
@@ -544,29 +572,31 @@ def forgot_password():
     reset_token = None
     if user:
         reset_token = secrets.token_urlsafe(32)
-        cursor.execute("UPDATE password_reset_token SET used_at = UTC_TIMESTAMP() WHERE user_id = %s AND used_at IS NULL", (user["id"],))
-        cursor.execute(
-            "INSERT INTO password_reset_token (user_id, token_hash, expires_at) VALUES (%s, %s, %s)",
-            (user["id"], token_hash(reset_token), (utcnow() + timedelta(minutes=RESET_TOKEN_MINUTES)).replace(tzinfo=None)),
-        )
-        conn.commit()
+        try:
+            cursor.execute("UPDATE password_reset_token SET used_at = UTC_TIMESTAMP() WHERE user_id = %s AND used_at IS NULL", (user["id"],))
+            cursor.execute(
+                "INSERT INTO password_reset_token (user_id, token_hash, expires_at) VALUES (%s, %s, %s)",
+                (user["id"], token_hash(reset_token), (utcnow() + timedelta(minutes=RESET_TOKEN_MINUTES)).replace(tzinfo=None)),
+            )
+            if SMTP_HOST and SMTP_USERNAME and SMTP_PASSWORD and SMTP_FROM:
+                send_password_reset_email(email, reset_token)
+            elif not EXPOSE_RESET_TOKEN:
+                raise RuntimeError("SMTP is not configured")
+            conn.commit()
+        except (smtplib.SMTPException, OSError, RuntimeError):
+            conn.rollback()
+            app.logger.exception("Password reset email delivery failed")
+            reset_token = None
     cursor.close()
     conn.close()
     audit("password_reset_requested", "success", user_id=user["id"] if user else None)
-    response = {"message": "If the account exists, password reset instructions have been created."}
+    response = {"message": "If the account exists, password reset instructions have been sent."}
     if EXPOSE_RESET_TOKEN and reset_token:
         response["reset_token"] = reset_token
     return jsonify(response)
 
 
-@app.post("/api/auth/reset-password")
-@limiter.limit("5 per hour")
-def reset_password():
-    data = json_body()
-    raw_token = data.get("token")
-    password = validate_password(data.get("password"))
-    if not isinstance(raw_token, str):
-        raise ValueError("token is required")
+def complete_password_reset(raw_token: str, password: str) -> bool:
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
@@ -578,8 +608,7 @@ def reset_password():
     if not reset:
         cursor.close()
         conn.close()
-        audit("password_reset", "failure")
-        return jsonify({"error": "Invalid or expired reset token"}), 400
+        return False
     cursor.execute("UPDATE user SET password = %s WHERE user_id = %s", (password_hasher.hash(password), reset["user_id"]))
     cursor.execute("UPDATE password_reset_token SET used_at = UTC_TIMESTAMP() WHERE reset_token_id = %s", (reset["id"],))
     cursor.execute("UPDATE refresh_token SET revoked_at = UTC_TIMESTAMP() WHERE user_id = %s AND revoked_at IS NULL", (reset["user_id"],))
@@ -587,7 +616,40 @@ def reset_password():
     cursor.close()
     conn.close()
     audit("password_reset", "success", user_id=reset["user_id"])
-    return jsonify({"message": "Password reset successful. Please log in."})
+    return True
+
+
+@app.route("/reset-password", methods=["GET", "POST"])
+@limiter.limit("5 per hour", exempt_when=lambda: DEV_MODE)
+def reset_password_page():
+    raw_token = request.values.get("token", "")
+    error = None
+    can_submit = isinstance(raw_token, str) and 20 <= len(raw_token) <= 200
+    if not can_submit:
+        error = "This password reset link is invalid or incomplete."
+    if request.method == "POST" and error is None:
+        password = request.form.get("password", "")
+        confirmation = request.form.get("confirmation", "")
+        if password != confirmation:
+            error = "The passwords do not match."
+        else:
+            try:
+                password = validate_password(password)
+            except ValueError as exc:
+                error = str(exc)
+        if error is None and complete_password_reset(raw_token, password):
+            return render_template("reset_password.html", success=True)
+        if error is None:
+            audit("password_reset", "failure")
+            error = "This password reset link is invalid or has expired."
+            can_submit = False
+    return render_template(
+        "reset_password.html",
+        token=raw_token,
+        error=error,
+        success=False,
+        can_submit=can_submit,
+    ), 400 if error else 200
 
 
 @app.get("/api/users")

@@ -69,6 +69,10 @@ The role column is a `VARCHAR`, not an enum, so new role labels can be introduce
 
 For a local classroom demonstration, `EXPOSE_RESET_TOKEN=true` returns the reset token to the client. Set it to `false` in production and deliver the token through an email provider.
 
+Password recovery emails use the same SMTP settings as registration. `RESET_LINK_BASE` points to the browser page that accepts the single-use token and new password; it defaults to `http://127.0.0.1:5000/reset-password` for local development. Configure it with the public HTTPS backend URL before deployment. The Flutter app never displays or accepts the reset token. Keep `EXPOSE_RESET_TOKEN=false`.
+
+When `DEV_MODE=true`, the forgot-password request endpoint is exempt from its production rate limit for local testing. Set `DEV_MODE=false` before deployment; production requests are limited to three per IP address per hour.
+
 ## Endpoints
 
 Public endpoints:
@@ -79,7 +83,7 @@ Public endpoints:
 - `POST /api/auth/refresh`
 - `POST /api/auth/logout`
 - `POST /api/auth/forgot-password`
-- `POST /api/auth/reset-password`
+- `GET|POST /reset-password` — browser-based password reset form
 
 `POST /api/auth/login` accepts an `identifier` containing either the username or email address, together with `password`.
 

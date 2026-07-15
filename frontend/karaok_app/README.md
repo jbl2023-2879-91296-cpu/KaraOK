@@ -10,6 +10,7 @@ Repository: [github.com/jbl2023-2879-91296-cpu/KaraOK](https://github.com/jbl202
 - Dedicated email OTP verification screen after registration details are submitted
 - Argon2id password hashing, expiring token sessions, logout revocation, and role-based API access
 - Single-use, expiring forgot/reset-password tokens
+- Email-delivered password reset links that open a dedicated browser page
 - Server-side input validation, login rate limiting, and security audit logs
 - Guest access for trying the application without saving a session
 - Role-specific home screens and result histories
@@ -136,8 +137,8 @@ The Flutter client uses these REST resources:
 | `POST` | `/api/auth/login` | Authenticate with a username or email address |
 | `POST` | `/api/auth/refresh` | Rotate a refresh token and issue a new session pair |
 | `POST` | `/api/auth/logout` | Revoke access and refresh tokens |
-| `POST` | `/api/auth/forgot-password` | Request a single-use reset token |
-| `POST` | `/api/auth/reset-password` | Reset a password and revoke existing sessions |
+| `POST` | `/api/auth/forgot-password` | Request an emailed password-reset link |
+| `GET`, `POST` | `/reset-password` | Display and submit the browser password-reset form |
 | `GET`, `POST` | `/api/users` | List or create users |
 | `GET`, `POST` | `/api/audio-tests` | List or save audio-test results |
 | `GET`, `DELETE` | `/api/audio-tests/<id>` | Retrieve or delete a test result |

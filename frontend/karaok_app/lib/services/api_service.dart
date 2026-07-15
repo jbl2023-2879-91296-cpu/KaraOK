@@ -188,10 +188,6 @@ class ApiService {
     );
   }
 
-  Future<void> resetPassword({required String token, required String password}) async {
-    await _post('/auth/reset-password', {'token': token, 'password': password}, authenticated: false);
-  }
-
   Future<List<dynamic>> getUsers() async => List<dynamic>.from(await _get('/users') as List);
 
   Future<List<dynamic>> getAudioTests({int? userId}) async =>
