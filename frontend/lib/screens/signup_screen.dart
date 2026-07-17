@@ -20,6 +20,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool  _obscureConf  = true;
   bool  _loading      = false;
   String? _error;
+  String _userType = 'owner';
 
   static const _accentColor = Color(0xFF4A90D9);
 
@@ -40,7 +41,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         name:     _nameCtrl.text.trim(),
         email:    _emailCtrl.text.trim(),
         password: _passCtrl.text,
-        userType: 'owner',
+        userType: _userType,
       );
       if (!mounted) return;
       setState(() => _loading = false);
@@ -102,6 +103,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       color: Color(0xFF888888), fontSize: 14),
                 ),
                 const SizedBox(height: 32),
+                _FieldLabel('Account type'),
+                const SizedBox(height: 6),
+                DropdownButtonFormField<String>(
+                  initialValue: _userType,
+                  items: const [
+                    DropdownMenuItem(value: 'owner', child: Text('Owner')),
+                    DropdownMenuItem(value: 'technician', child: Text('Technician')),
+                  ],
+                  onChanged: _loading
+                      ? null
+                      : (value) => setState(() => _userType = value ?? 'owner'),
+                  decoration: const InputDecoration(hintText: 'Select account type'),
+                ),
+                const SizedBox(height: 16),
                 // Username
                 _FieldLabel('Username'),
                 const SizedBox(height: 6),

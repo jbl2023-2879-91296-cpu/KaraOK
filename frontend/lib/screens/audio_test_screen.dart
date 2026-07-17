@@ -1,322 +1,589 @@
 import 'dart:async';
-import 'dart:math';
+import 'dart:developer' as developer;
+import 'dart:io';
+
 import 'package:flutter/material.dart';
-import '../widgets/waveform_painter.dart';
-import '../widgets/bottom_nav_bar.dart';
-import 'processing_screen.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:path/path.dart' as p;
+import 'package:permission_handler/permission_handler.dart';
+import 'package:record/record.dart';
+
+import '../services/api_service.dart';
+import '../services/audio_staging_service.dart';
+import '../services/user_session.dart';
+
+enum AudioInputState {
+  idle,
+  requestingPermission,
+  recording,
+  paused,
+  processing,
+  selecting,
+  staged,
+  uploading,
+  success,
+  failed,
+}
 
 class AudioTestScreen extends StatefulWidget {
-  const AudioTestScreen({super.key, this.genre});
-
-  /// Optional genre tag passed from the Owner flow
+  const AudioTestScreen({super.key, this.genre, this.selectFileOnOpen = false});
   final String? genre;
+  final bool selectFileOnOpen;
 
   @override
   State<AudioTestScreen> createState() => _AudioTestScreenState();
 }
 
-class _AudioTestScreenState extends State<AudioTestScreen>
-    with TickerProviderStateMixin {
-  bool _isRecording = false;
-  int _elapsedSeconds = 0;
-  final int _maxSeconds = 300; // 5 minutes
+class _AudioTestScreenState extends State<AudioTestScreen> {
+  static const _limit = Duration(minutes: 5);
+  final _recorder = AudioRecorder();
+  final _player = AudioPlayer();
+  final _staging = AudioStagingService();
+  AudioInputState _state = AudioInputState.idle;
+  Duration _elapsed = Duration.zero;
+  Duration _previewPosition = Duration.zero;
+  Duration _previewDuration = Duration.zero;
+  String? _previewPath;
+  late final StreamSubscription<PlayerState> _playerStateSubscription;
+  late final StreamSubscription<Duration> _positionSubscription;
+  late final StreamSubscription<Duration?> _durationSubscription;
   Timer? _timer;
-  int _selectedNavIndex = 1;
+  String? _message;
 
-  // Waveform data
-  final List<double> _waveformBars = List.filled(40, 0.05);
-  final Random _random = Random();
-  late AnimationController _pulseController;
+  bool get _busy => const {
+    AudioInputState.requestingPermission,
+    AudioInputState.processing,
+    AudioInputState.selecting,
+    AudioInputState.uploading,
+  }.contains(_state);
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat(reverse: true);
+    _playerStateSubscription = _player.playerStateStream.listen((state) {
+      if (!mounted) return;
+      if (state.processingState == ProcessingState.completed) {
+        _player.pause();
+        _player.seek(Duration.zero);
+      }
+      setState(() {});
+    });
+    _positionSubscription = _player.positionStream.listen((position) {
+      if (mounted) setState(() => _previewPosition = position);
+    });
+    _durationSubscription = _player.durationStream.listen((duration) {
+      if (mounted && duration != null) {
+        setState(() => _previewDuration = duration);
+      }
+    });
+    if (widget.selectFileOnOpen)
+      WidgetsBinding.instance.addPostFrameCallback((_) => _selectFile());
   }
 
   @override
   void dispose() {
     _timer?.cancel();
-    _pulseController.dispose();
+    _playerStateSubscription.cancel();
+    _positionSubscription.cancel();
+    _durationSubscription.cancel();
+    _recorder.dispose();
+    _player.dispose();
     super.dispose();
   }
 
-  void _startRecording() {
-    setState(() => _isRecording = true);
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_elapsedSeconds >= _maxSeconds) {
-        _stopRecording();
-        return;
-      }
-      setState(() {
-        _elapsedSeconds++;
-        _updateWaveform();
-      });
+  Future<void> _start() async {
+    if (_busy ||
+        _state == AudioInputState.recording ||
+        _state == AudioInputState.paused)
+      return;
+    setState(() {
+      _state = AudioInputState.requestingPermission;
+      _message = null;
     });
-  }
-
-  void _stopRecording() {
-    _timer?.cancel();
-    setState(() => _isRecording = false);
-    // Navigate to processing screen instead of showing a dialog
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const ProcessingScreen()),
-    );
-  }
-
-  void _updateWaveform() {
-    for (int i = 0; i < _waveformBars.length; i++) {
-      _waveformBars[i] = 0.1 + _random.nextDouble() * 0.9;
+    final permission = await Permission.microphone.request();
+    if (!permission.isGranted) {
+      if (!mounted) return;
+      setState(() {
+        _state = AudioInputState.failed;
+        _message = permission.isPermanentlyDenied
+            ? 'Microphone permission is permanently denied. Enable it in Settings.'
+            : 'Microphone permission is required to record audio.';
+      });
+      return;
+    }
+    try {
+      await _resetPreview();
+      await _staging.discard();
+      final dir = await _staging.recordingDirectory();
+      final path = p.join(
+        dir.path,
+        'recording_${DateTime.now().millisecondsSinceEpoch}.wav',
+      );
+      await _recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.wav,
+          sampleRate: 44100,
+          numChannels: 1,
+        ),
+        path: path,
+      );
+      _elapsed = Duration.zero;
+      _timer?.cancel();
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) async {
+        if (!mounted || _state != AudioInputState.recording) return;
+        setState(() => _elapsed += const Duration(seconds: 1));
+        if (_elapsed >= _limit) await _stop();
+      });
+      if (mounted) setState(() => _state = AudioInputState.recording);
+    } catch (e, st) {
+      developer.log(
+        'Recording initialization failed',
+        error: e,
+        stackTrace: st,
+      );
+      if (mounted)
+        setState(() {
+          _state = AudioInputState.failed;
+          _message = 'Recording could not be started.';
+        });
     }
   }
 
-
-
-  String _formatTime(int seconds) {
-    final m = seconds ~/ 60;
-    final s = seconds % 60;
-    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  Future<void> _pauseResume() async {
+    try {
+      if (_state == AudioInputState.recording) {
+        await _recorder.pause();
+        setState(() => _state = AudioInputState.paused);
+      } else if (_state == AudioInputState.paused) {
+        await _recorder.resume();
+        setState(() => _state = AudioInputState.recording);
+      }
+    } catch (e, st) {
+      developer.log('Pause/resume failed', error: e, stackTrace: st);
+      if (mounted) setState(() => _message = 'The recorder was interrupted.');
+    }
   }
 
-  double get _progressValue =>
-      _maxSeconds > 0 ? _elapsedSeconds / _maxSeconds : 0;
+  Future<void> _stop() async {
+    _timer?.cancel();
+    setState(() => _state = AudioInputState.processing);
+    try {
+      final path = await _recorder.stop();
+      if (path == null)
+        throw const AudioStagingException(
+          'The recorder did not create a file.',
+        );
+      await _staging.stagePath(
+        path,
+        AudioSourceType.recording,
+        temporary: true,
+      );
+      if (mounted) setState(() => _state = AudioInputState.staged);
+    } catch (e, st) {
+      developer.log(
+        'Stopping/staging recording failed',
+        error: e,
+        stackTrace: st,
+      );
+      if (mounted)
+        setState(() {
+          _state = AudioInputState.failed;
+          _message = e.toString();
+        });
+    }
+  }
+
+  Future<void> _cancelRecording() async {
+    _timer?.cancel();
+    try {
+      await _recorder.cancel();
+    } finally {
+      if (mounted)
+        setState(() {
+          _elapsed = Duration.zero;
+          _state = AudioInputState.idle;
+          _message = 'Recording cancelled.';
+        });
+    }
+  }
+
+  Future<bool> _confirmReplace() async {
+    if (_staging.current == null) return true;
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Replace staged audio?'),
+            content: const Text('The current staged file will be removed.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Keep'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Replace'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _selectFile() async {
+    if (_busy ||
+        _state == AudioInputState.recording ||
+        _state == AudioInputState.paused ||
+        !await _confirmReplace())
+      return;
+    setState(() {
+      _state = AudioInputState.selecting;
+      _message = null;
+    });
+    try {
+      await _resetPreview();
+      final item = await _staging.pickAudio();
+      if (!mounted) return;
+      setState(
+        () => _state = item == null
+            ? (_staging.current == null
+                  ? AudioInputState.idle
+                  : AudioInputState.staged)
+            : AudioInputState.staged,
+      );
+    } on AudioStagingException catch (e, st) {
+      developer.log(
+        'File selection validation failed',
+        error: e,
+        stackTrace: st,
+      );
+      if (mounted)
+        setState(() {
+          _state = AudioInputState.failed;
+          _message = e.message;
+        });
+    } catch (e, st) {
+      developer.log('File selection failed', error: e, stackTrace: st);
+      if (mounted)
+        setState(() {
+          _state = AudioInputState.failed;
+          _message = 'The selected file could not be opened.';
+        });
+    }
+  }
+
+  Future<void> _preview() async {
+    final item = _staging.current;
+    if (item == null) return;
+    try {
+      if (_player.playing) {
+        await _player.pause();
+        return;
+      }
+      if (_previewPath != item.path) {
+        final duration = await _player.setFilePath(item.path);
+        _previewPath = item.path;
+        _previewPosition = Duration.zero;
+        _previewDuration = duration ?? item.duration;
+      } else if (_player.processingState == ProcessingState.completed ||
+          _previewPosition >= _previewDuration) {
+        await _player.seek(Duration.zero);
+      }
+      unawaited(_player.play());
+    } catch (e, st) {
+      developer.log('Preview failed', error: e, stackTrace: st);
+      if (mounted) setState(() => _message = 'This audio could not be played.');
+    }
+  }
+
+  Future<void> _stopPreview() async {
+    await _player.pause();
+    await _player.seek(Duration.zero);
+  }
+
+  Future<void> _seekPreview(double milliseconds) async {
+    await _player.seek(Duration(milliseconds: milliseconds.round()));
+  }
+
+  Future<void> _resetPreview() async {
+    await _player.stop();
+    _previewPath = null;
+    _previewPosition = Duration.zero;
+    _previewDuration = Duration.zero;
+  }
+
+  Future<void> _remove() async {
+    await _resetPreview();
+    await _staging.discard();
+    if (mounted)
+      setState(() {
+        _state = AudioInputState.idle;
+        _elapsed = Duration.zero;
+        _message = null;
+      });
+  }
+
+  Future<void> _send() async {
+    final item = _staging.current;
+    if (item == null || _state == AudioInputState.uploading) return;
+    if (UserSession.instance.isGuest) {
+      setState(() => _message = 'Sign in before submitting audio.');
+      return;
+    }
+    if (!await File(item.path).exists()) {
+      setState(() {
+        _state = AudioInputState.failed;
+        _message = 'The staged file is no longer available.';
+      });
+      return;
+    }
+    setState(() {
+      _state = AudioInputState.uploading;
+      _message = null;
+    });
+    try {
+      await _resetPreview();
+      await ApiService().submitAudio(
+        filePath: item.path,
+        durationSeconds: item.duration.inSeconds,
+        genre: widget.genre,
+      );
+      await _staging.discard();
+      if (mounted)
+        setState(() {
+          _state = AudioInputState.success;
+          _message = 'Audio uploaded successfully and queued for processing.';
+        });
+    } on TimeoutException catch (e, st) {
+      developer.log('Audio upload timed out', error: e, stackTrace: st);
+      if (mounted)
+        setState(() {
+          _state = AudioInputState.failed;
+          _message =
+              'The upload timed out. Your staged file is ready to retry.';
+        });
+    } on ApiException catch (e, st) {
+      developer.log('Audio upload rejected', error: e, stackTrace: st);
+      if (mounted)
+        setState(() {
+          _state = AudioInputState.failed;
+          _message = e.statusCode == 401
+              ? 'Your session expired. Sign in and retry.'
+              : e.message;
+        });
+    } catch (e, st) {
+      developer.log(
+        'Unexpected audio upload failure',
+        error: e,
+        stackTrace: st,
+      );
+      if (mounted)
+        setState(() {
+          _state = AudioInputState.failed;
+          _message = 'Upload failed. Your staged file was kept for retry.';
+        });
+    }
+  }
+
+  String _time(Duration value) =>
+      '${value.inMinutes.toString().padLeft(2, '0')}:${(value.inSeconds % 60).toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
+    final item = _staging.current;
+    final recording =
+        _state == AudioInputState.recording || _state == AudioInputState.paused;
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0D),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.chevron_left, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Start Audio Test',
-          style: TextStyle(
-            color: Color(0xFF4A90D9),
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
+      appBar: AppBar(title: const Text('Audio Input'), centerTitle: true),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text(
+            '${_time(_elapsed)} / 05:00',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
           ),
-        ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.info_outline, color: Colors.white),
-            onPressed: () => _showInfoDialog(),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 20),
-            // Instruction text
-            const Text(
-              'Place the phone near the karaoke\nspeaker and record a sample',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Color(0xFFCCCCCC),
-                fontSize: 14,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 36),
-            // Microphone circle
-            _MicCircle(isRecording: _isRecording, pulseController: _pulseController),
-            const SizedBox(height: 32),
-            // Timer display
-            Text(
-              '${_formatTime(_elapsedSeconds)} / 5:00',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 28,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.5,
-              ),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Recording time 6 sec – 5 minutes',
-              style: TextStyle(color: Color(0xFF888888), fontSize: 12),
+          const SizedBox(height: 16),
+          if (recording) ...[
+            LinearProgressIndicator(
+              value: _elapsed.inSeconds / _limit.inSeconds,
+              color: const Color(0xFFE91E8C),
             ),
             const SizedBox(height: 20),
-            // Progress bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: _progressValue,
-                  minHeight: 4,
-                  backgroundColor: const Color(0xFF2A2A3E),
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    _isRecording ? const Color(0xFFE91E8C) : const Color(0xFF4A90D9),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _pauseResume,
+                    icon: Icon(
+                      _state == AudioInputState.paused
+                          ? Icons.play_arrow
+                          : Icons.pause,
+                    ),
+                    label: Text(
+                      _state == AudioInputState.paused ? 'Resume' : 'Pause',
+                    ),
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            // Waveform (visible while recording)
-            AnimatedOpacity(
-              opacity: _isRecording ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 400),
-              child: SizedBox(
-                height: 64,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: CustomPaint(
-                    painter: WaveformPainter(bars: _waveformBars),
-                    size: const Size(double.infinity, 64),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _stop,
+                    icon: const Icon(Icons.stop),
+                    label: const Text('Stop'),
                   ),
                 ),
-              ),
+              ],
             ),
-            const Spacer(),
-            // Start / Stop button
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-              child: _isRecording ? _StopButton(onTap: _stopRecording) : _StartButton(onTap: _startRecording),
+            TextButton.icon(
+              onPressed: _cancelRecording,
+              icon: const Icon(Icons.close),
+              label: const Text('Cancel recording'),
+            ),
+          ] else ...[
+            FilledButton.icon(
+              onPressed: _busy ? null : _start,
+              icon: const Icon(Icons.mic),
+              label: const Text('Record Audio'),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _busy ? null : _selectFile,
+              icon: const Icon(Icons.audio_file),
+              label: const Text('Select Audio File'),
             ),
           ],
-        ),
-      ),
-      bottomNavigationBar: BottomNavBar(
-        selectedIndex: _selectedNavIndex,
-        onTap: (i) => setState(() => _selectedNavIndex = i),
-      ),
-    );
-  }
-
-  void _showInfoDialog() {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1C1C2E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('How it works',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-        content: const Text(
-          '1. Place your phone near the karaoke speaker.\n'
-          '2. Press Start Recording.\n'
-          '3. Record between 6 seconds and 5 minutes.\n'
-          '4. Press Stop to analyze the audio quality.',
-          style: TextStyle(color: Color(0xFFAAAAAA), height: 1.6),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Got it', style: TextStyle(color: Color(0xFF4A90D9))),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Mic circle widget ─────────────────────────────────────────────────────────
-
-class _MicCircle extends StatelessWidget {
-  const _MicCircle({
-    required this.isRecording,
-    required this.pulseController,
-  });
-
-  final bool isRecording;
-  final AnimationController pulseController;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: pulseController,
-      builder: (_, __) {
-        final pulse = isRecording ? (0.94 + pulseController.value * 0.06) : 1.0;
-        return Transform.scale(
-          scale: pulse,
-          child: Container(
-            width: 140,
-            height: 140,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: const Color(0xFF2A2A2A),
-              boxShadow: isRecording
-                  ? [
-                      BoxShadow(
-                        color: const Color(0xFFE91E8C).withOpacity(0.35),
-                        blurRadius: 30,
-                        spreadRadius: 8,
+          if (_busy)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          if (item != null) ...[
+            const SizedBox(height: 24),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.fileName,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
                       ),
-                    ]
-                  : [],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${item.source == AudioSourceType.recording ? 'Recorded' : 'Selected'} • ${item.format} • ${(item.sizeBytes / 1024 / 1024).toStringAsFixed(2)} MB • ${_time(item.duration)}',
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Text(_time(_previewPosition)),
+                        Expanded(
+                          child: Slider(
+                            value: _previewDuration.inMilliseconds == 0
+                                ? 0
+                                : _previewPosition.inMilliseconds
+                                      .clamp(0, _previewDuration.inMilliseconds)
+                                      .toDouble(),
+                            max: _previewDuration.inMilliseconds > 0
+                                ? _previewDuration.inMilliseconds.toDouble()
+                                : item.duration.inMilliseconds.toDouble(),
+                            onChanged: _previewPath == item.path
+                                ? _seekPreview
+                                : null,
+                          ),
+                        ),
+                        Text(
+                          _time(
+                            _previewDuration == Duration.zero
+                                ? item.duration
+                                : _previewDuration,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        TextButton.icon(
+                          onPressed: _preview,
+                          icon: Icon(
+                            _player.playing ? Icons.pause : Icons.play_arrow,
+                          ),
+                          label: Text(
+                            _player.playing
+                                ? 'Pause preview'
+                                : _previewPosition > Duration.zero
+                                ? 'Resume preview'
+                                : 'Preview',
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed:
+                              _previewPath == item.path &&
+                                  _previewPosition > Duration.zero
+                              ? _stopPreview
+                              : null,
+                          icon: const Icon(Icons.stop),
+                          label: const Text('Stop'),
+                        ),
+                        TextButton.icon(
+                          onPressed: _state == AudioInputState.uploading
+                              ? null
+                              : _remove,
+                          icon: const Icon(Icons.delete_outline),
+                          label: const Text('Remove'),
+                        ),
+                        TextButton.icon(
+                          onPressed: _state == AudioInputState.uploading
+                              ? null
+                              : _selectFile,
+                          icon: const Icon(Icons.swap_horiz),
+                          label: const Text('Replace'),
+                        ),
+                      ],
+                    ),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _state == AudioInputState.uploading
+                            ? null
+                            : _send,
+                        icon: const Icon(Icons.cloud_upload),
+                        label: Text(
+                          _state == AudioInputState.uploading
+                              ? 'Uploading…'
+                              : 'Send for Processing',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            child: Icon(
-              Icons.mic,
-              size: 64,
-              color: isRecording ? const Color(0xFFE91E8C) : const Color(0xFF888888),
+          ],
+          if (_message != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: Text(
+                _message!,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _state == AudioInputState.success
+                      ? Colors.green
+                      : Colors.orange,
+                ),
+              ),
             ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-// ── Buttons ───────────────────────────────────────────────────────────────────
-
-class _StartButton extends StatelessWidget {
-  const _StartButton({required this.onTap});
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: 54,
-      child: ElevatedButton.icon(
-        onPressed: onTap,
-        icon: const Icon(Icons.fiber_manual_record, color: Color(0xFFE91E8C), size: 18),
-        label: const Text(
-          'Start Recording',
-          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700),
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF1E5BB5),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      ),
-    );
-  }
-}
-
-class _StopButton extends StatelessWidget {
-  const _StopButton({required this.onTap});
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: 54,
-      child: OutlinedButton(
-        onPressed: onTap,
-        style: OutlinedButton.styleFrom(
-          side: const BorderSide(color: Colors.white, width: 2),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          backgroundColor: Colors.transparent,
-        ),
-        child: const Text(
-          'Stop',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+          if (_message?.contains('Settings') == true)
+            TextButton(
+              onPressed: openAppSettings,
+              child: const Text('Open Settings'),
+            ),
+        ],
       ),
     );
   }

@@ -2,6 +2,27 @@
 
 All notable changes to KaraOK are documented here.
 
+## 2026-07-17 — APK build documentation
+
+### Documentation
+
+- Added a reproducible Android APK build guide with environment checks, dependency installation, debug and release build commands, output locations, installation, and artifact verification.
+- Added a concise APK build section to the Flutter README.
+- Documented API URL selection and the current debug-key limitation of release builds.
+
+## 2026-07-17 — Railway deployment preparation
+
+### Added
+
+- Added Railway config-as-code for Railpack, Gunicorn startup, database-backed health checks, restart behavior, and backend-only deploy watches.
+- Added a Python 3.12 runtime pin and Gunicorn production dependency.
+- Added a step-by-step Railway deployment guide covering MySQL references, secrets, schema import, persistent uploads, verification, and Flutter release builds.
+
+### Changed
+
+- Added direct fallbacks for Railway's `MYSQL*` variables while retaining the existing `DB_*` configuration contract.
+- Made audio uploads automatically use an attached Railway Volume when `RAILWAY_VOLUME_MOUNT_PATH` is available.
+
 ## 2026-07-14 — Security and operational database foundation
 
 ### Added

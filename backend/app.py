@@ -7,6 +7,7 @@ import os
 import re
 import secrets
 import smtplib
+import uuid
 from email.message import EmailMessage
 from typing import Any, Callable
 
@@ -19,12 +20,17 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import jwt
 import mysql.connector
+from mutagen import File as MutagenFile
 from mysql.connector import Error, IntegrityError
+from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.utils import secure_filename
 
 
 load_dotenv()
 
 app = Flask(__name__)
+if os.getenv("TRUST_PROXY", "false").lower() == "true":
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 allowed_origins = [
     origin.strip()
     for origin in os.getenv("CORS_ORIGINS", "http://localhost:*").split(",")
@@ -39,11 +45,13 @@ limiter = Limiter(
 )
 
 DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "localhost"),
-    "database": os.getenv("DB_NAME", "karaok_db"),
-    "user": os.getenv("DB_USER", "root"),
-    "password": os.getenv("DB_PASSWORD", ""),
-    "port": int(os.getenv("DB_PORT", "3306")),
+    # DB_* remains the application-level contract. MYSQL* fallbacks make the
+    # service work directly with variables referenced from Railway MySQL.
+    "host": os.getenv("DB_HOST") or os.getenv("MYSQLHOST", "localhost"),
+    "database": os.getenv("DB_NAME") or os.getenv("MYSQLDATABASE", "karaok_db"),
+    "user": os.getenv("DB_USER") or os.getenv("MYSQLUSER", "root"),
+    "password": os.getenv("DB_PASSWORD") or os.getenv("MYSQLPASSWORD", ""),
+    "port": int(os.getenv("DB_PORT") or os.getenv("MYSQLPORT", "3306")),
 }
 JWT_SECRET = os.getenv("JWT_SECRET", "")
 JWT_ISSUER = "karaok-api"
@@ -57,10 +65,21 @@ SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME)
 OTP_MINUTES = int(os.getenv("REGISTRATION_OTP_MINUTES", "10"))
 DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
 EXPOSE_REGISTRATION_OTP = os.getenv("EXPOSE_REGISTRATION_OTP", "false").lower() == "true"
+MAX_AUDIO_BYTES = int(os.getenv("MAX_AUDIO_BYTES", str(25 * 1024 * 1024)))
+MAX_AUDIO_SECONDS = 300
+AUDIO_UPLOAD_DIR = os.path.abspath(
+    os.getenv("AUDIO_UPLOAD_DIR")
+    or os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
+    or os.path.join(os.path.dirname(__file__), "uploads")
+)
+ALLOWED_AUDIO_EXTENSIONS = {"wav", "mp3", "m4a", "aac", "ogg", "flac"}
+app.config["MAX_CONTENT_LENGTH"] = MAX_AUDIO_BYTES + (1024 * 1024)
 
 password_hasher = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
-VALID_ROLES = {"technician", "owner"}
+VALID_ROLES = {"technician", "owner", "admin"}
+SELF_REGISTER_ROLES = {"owner", "technician"}
+RESET_TOKEN_MINUTES = int(os.getenv("PASSWORD_RESET_MINUTES", "15"))
 VALID_STATUSES = {"Acceptable", "Needs Improvement"}
 
 
@@ -86,6 +105,20 @@ def clean_text(value: Any, field: str, minimum: int, maximum: int) -> str:
     if not minimum <= len(cleaned) <= maximum:
         raise ValueError(f"{field} must be {minimum}-{maximum} characters")
     return cleaned
+
+
+def audio_duration_seconds(path: str) -> int:
+    """Return a validated whole-second duration for a readable audio stream."""
+    try:
+        audio_info = MutagenFile(path)
+    except Exception as error:
+        raise ValueError("No readable audio stream found") from error
+    if audio_info is None or audio_info.info is None:
+        raise ValueError("No readable audio stream found")
+    duration = int(round(float(audio_info.info.length)))
+    if duration < 1 or duration > MAX_AUDIO_SECONDS:
+        raise ValueError("Audio duration must be between 1 and 300 seconds")
+    return duration
 
 
 def clean_email(value: Any) -> str:
@@ -154,36 +187,22 @@ Thank you,
         server.send_message(message)
 
 
-def generate_temporary_password(length: int = 16) -> str:
-    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%"
-    characters = [
-        secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ"),
-        secrets.choice("abcdefghijkmnopqrstuvwxyz"),
-        secrets.choice("23456789"),
-        secrets.choice("!@#$%"),
-    ]
-    characters.extend(secrets.choice(alphabet) for _ in range(length - len(characters)))
-    secrets.SystemRandom().shuffle(characters)
-    return "".join(characters)
-
-
-def send_temporary_password_email(email: str, temporary_password: str) -> None:
+def send_password_reset_email(email: str, reset_token: str) -> None:
     if not all((SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM)):
         raise RuntimeError("SMTP is not configured")
     message = EmailMessage()
-    message["Subject"] = "Your temporary KaraOK password"
+    message["Subject"] = "Reset your KaraOK password"
     message["From"] = SMTP_FROM
     message["To"] = email
     message.set_content(
         f"""A password reset was requested for your KaraOK account.
 
-Your temporary password is:
+Enter this one-time reset token in the KaraOK application:
 
-{temporary_password}
+{reset_token}
 
-Use this password to sign in, then change it immediately when prompted. If you
-did not request this reset, contact the system administrator. Never share this
-password with anyone.
+The token expires in {RESET_TOKEN_MINUTES} minutes and can be used once. If you
+did not request this reset, you can ignore this message.
 """
     )
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
@@ -193,7 +212,7 @@ password with anyone.
 
 
 def client_ip() -> str:
-    return request.headers.get("X-Forwarded-For", request.remote_addr or "")[:45]
+    return (request.remote_addr or "")[:45]
 
 
 def audit(
@@ -228,23 +247,6 @@ def audit(
         conn.close()
     except Error:
         app.logger.exception("Could not write audit log")
-
-
-def password_change_required(user_id: int) -> bool:
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute(
-        """SELECT action FROM audit_log
-           WHERE user_id = %s
-             AND action IN ('temporary_password_issued', 'password_changed')
-             AND result = 'success'
-           ORDER BY audit_log_id DESC LIMIT 1""",
-        (user_id,),
-    )
-    event = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    return bool(event and event["action"] == "temporary_password_issued")
 
 
 def issue_access_token(user: dict[str, Any]) -> tuple[str, int]:
@@ -318,21 +320,35 @@ def require_auth(*roles: str) -> Callable:
                 g.user_id = int(payload["sub"])
                 g.user_role = payload["role"]
                 conn = get_db()
-                cursor = conn.cursor()
+                cursor = conn.cursor(dictionary=True)
                 cursor.execute("SELECT 1 FROM revoked_access_token WHERE jti = %s", (payload["jti"],))
                 revoked = cursor.fetchone() is not None
+                cursor.execute(
+                    "SELECT role, is_active, security_updated_at FROM user WHERE user_id = %s",
+                    (g.user_id,),
+                )
+                account = cursor.fetchone()
                 cursor.close()
                 conn.close()
                 if revoked:
                     raise jwt.InvalidTokenError("Access token was revoked")
+                issued_at = datetime.fromtimestamp(int(payload["iat"]), timezone.utc)
+                security_updated_at = account["security_updated_at"] if account else None
+                if security_updated_at and security_updated_at.tzinfo is None:
+                    security_updated_at = security_updated_at.replace(tzinfo=timezone.utc)
+                if (
+                    not account
+                    or not account["is_active"]
+                    or account["role"] != g.user_role
+                    or (security_updated_at and issued_at < security_updated_at.replace(microsecond=0))
+                ):
+                    raise jwt.InvalidTokenError("Account security state changed")
             except (jwt.PyJWTError, TypeError, ValueError):
                 audit("access_denied", "failure", details="Invalid or expired access token")
                 return jsonify({"error": "Invalid or expired access token"}), 401
             if roles and g.user_role not in roles:
                 audit("access_denied", "failure", user_id=g.user_id, details="Insufficient role")
                 return jsonify({"error": "Forbidden"}), 403
-            if request.path != "/api/auth/change-password" and password_change_required(g.user_id):
-                return jsonify({"error": "Password change required"}), 403
             return view(*args, **kwargs)
 
         return wrapped
@@ -383,8 +399,8 @@ def register():
     email = clean_email(data.get("email"))
     password = validate_password(data.get("password"))
     user_type = data.get("user_type", "owner")
-    if user_type not in VALID_ROLES:
-        raise ValueError("user_type must be technician or owner")
+    if user_type not in SELF_REGISTER_ROLES:
+        raise ValueError("public registration allows owner or technician accounts only")
 
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
@@ -496,13 +512,7 @@ def login():
     cursor.execute(
         f"""SELECT u.user_id, u.username, u.email, u.role AS user_type,
                    u.password AS password_hash, u.is_active,
-                   COALESCE((
-                       SELECT al.action FROM audit_log al
-                       WHERE al.user_id = u.user_id
-                         AND al.action IN ('temporary_password_issued', 'password_changed')
-                         AND al.result = 'success'
-                       ORDER BY al.audit_log_id DESC LIMIT 1
-                   ) = 'temporary_password_issued', FALSE) AS requires_password_change
+                   FALSE AS requires_password_change
             FROM user u WHERE u.{login_column} = %s LIMIT 1""",
         (identifier,),
     )
@@ -541,9 +551,9 @@ def refresh():
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
         """SELECT rt.refresh_token_id AS token_id, rt.user_id, rt.expires_at, rt.revoked_at,
-                  u.user_id AS id, u.username AS name, u.email, u.role AS user_type, u.is_active
+                  u.username, u.email, u.role AS user_type, u.is_active
            FROM refresh_token rt JOIN user u ON u.user_id = rt.user_id
-           WHERE rt.token_hash = %s""",
+           WHERE rt.token_hash = %s FOR UPDATE""",
         (hashed,),
     )
     row = cursor.fetchone()
@@ -600,73 +610,111 @@ def logout():
 @limiter.limit("3 per hour", exempt_when=lambda: DEV_MODE)
 def forgot_password():
     email = clean_email(json_body().get("email"))
+    audit_result = "success"
+    audit_details = "Password reset request accepted"
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT user_id AS id FROM user WHERE email = %s AND is_active = TRUE", (email,))
     user = cursor.fetchone()
     if user:
-        temporary_password = generate_temporary_password()
+        reset_token = secrets.token_urlsafe(32)
         try:
             cursor.execute(
-                "UPDATE user SET password = %s WHERE user_id = %s",
-                (password_hasher.hash(temporary_password), user["id"]),
-            )
-            cursor.execute(
-                "UPDATE refresh_token SET revoked_at = UTC_TIMESTAMP() WHERE user_id = %s AND revoked_at IS NULL",
+                "UPDATE password_reset_token SET used_at = UTC_TIMESTAMP() WHERE user_id = %s AND used_at IS NULL",
                 (user["id"],),
             )
             cursor.execute(
-                """INSERT INTO audit_log
-                   (user_id, action, result, ip_address, user_agent, details)
-                   VALUES (%s, 'temporary_password_issued', 'success', %s, %s, %s)""",
-                (
-                    user["id"],
-                    client_ip(),
-                    request.headers.get("User-Agent", "")[:255],
-                    "Password reset generated a temporary password",
-                ),
+                """INSERT INTO password_reset_token (user_id, token_hash, expires_at)
+                   VALUES (%s, %s, UTC_TIMESTAMP() + INTERVAL %s MINUTE)""",
+                (user["id"], token_hash(reset_token), RESET_TOKEN_MINUTES),
             )
             if SMTP_HOST and SMTP_USERNAME and SMTP_PASSWORD and SMTP_FROM:
-                send_temporary_password_email(email, temporary_password)
+                send_password_reset_email(email, reset_token)
             else:
                 raise RuntimeError("SMTP is not configured")
             conn.commit()
         except (smtplib.SMTPException, OSError, RuntimeError):
             conn.rollback()
-            app.logger.exception("Temporary password email delivery failed")
+            audit_result = "failure"
+            audit_details = "Password reset email delivery failed"
+            app.logger.exception("Password reset email delivery failed")
     cursor.close()
     conn.close()
-    audit("password_reset_requested", "success", user_id=user["id"] if user else None)
-    return jsonify({"message": "If the account exists, a temporary password has been sent."})
+    audit(
+        "password_reset_requested",
+        audit_result,
+        user_id=user["id"] if user else None,
+        details=audit_details,
+    )
+    return jsonify({"message": "If the account exists, password reset instructions have been sent."})
+
+
+@app.post("/api/auth/reset-password")
+@limiter.limit("5 per hour", exempt_when=lambda: DEV_MODE)
+def reset_password():
+    data = json_body()
+    raw_token = data.get("token")
+    if not isinstance(raw_token, str) or not 20 <= len(raw_token) <= 200:
+        raise ValueError("reset token is invalid")
+    new_password = validate_password(data.get("new_password"))
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            """SELECT prt.reset_token_id, prt.user_id, u.password
+               FROM password_reset_token prt
+               JOIN user u ON u.user_id = prt.user_id
+               WHERE prt.token_hash = %s AND prt.used_at IS NULL
+                 AND prt.expires_at > UTC_TIMESTAMP() AND u.is_active = TRUE
+               FOR UPDATE""",
+            (token_hash(raw_token),),
+        )
+        row = cursor.fetchone()
+        if not row:
+            audit("password_reset", "failure", details="Invalid or expired reset token")
+            return jsonify({"error": "Invalid or expired reset token"}), 400
+        try:
+            if password_hasher.verify(row["password"], new_password):
+                raise ValueError("new password must differ from the current password")
+        except VerifyMismatchError:
+            pass
+        except InvalidHashError:
+            pass
+        cursor.execute("UPDATE user SET password = %s WHERE user_id = %s", (password_hasher.hash(new_password), row["user_id"]))
+        cursor.execute("UPDATE password_reset_token SET used_at = UTC_TIMESTAMP() WHERE user_id = %s AND used_at IS NULL", (row["user_id"],))
+        cursor.execute("UPDATE refresh_token SET revoked_at = UTC_TIMESTAMP() WHERE user_id = %s AND revoked_at IS NULL", (row["user_id"],))
+        conn.commit()
+        audit("password_reset", "success", user_id=row["user_id"], resource_type="user", resource_id=row["user_id"])
+        return jsonify({"message": "Password reset successfully. Please log in."})
+    finally:
+        cursor.close()
+        conn.close()
 
 
 @app.post("/api/auth/change-password")
 @limiter.limit("10 per hour", exempt_when=lambda: DEV_MODE)
-@require_auth("technician", "owner")
+@require_auth("technician", "owner", "admin")
 def change_password():
     data = json_body()
     current_password = data.get("current_password")
     new_password = validate_password(data.get("new_password"))
-    forced_change = password_change_required(g.user_id)
-    if not forced_change:
-        if not isinstance(current_password, str) or len(current_password) > 128:
-            raise ValueError("current password is invalid")
-        if secrets.compare_digest(current_password, new_password):
-            raise ValueError("new password must be different from the current password")
+    if not isinstance(current_password, str) or len(current_password) > 128:
+        raise ValueError("current password is invalid")
+    if secrets.compare_digest(current_password, new_password):
+        raise ValueError("new password must be different from the current password")
 
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT password FROM user WHERE user_id = %s AND is_active = TRUE", (g.user_id,))
     user = cursor.fetchone()
-    if not forced_change:
-        try:
-            valid = bool(user) and password_hasher.verify(user["password"], current_password)
-        except (VerifyMismatchError, InvalidHashError):
-            valid = False
-        if not valid:
-            cursor.close()
-            conn.close()
-            return jsonify({"error": "Current password is incorrect"}), 401
+    try:
+        valid = bool(user) and password_hasher.verify(user["password"], current_password)
+    except (VerifyMismatchError, InvalidHashError):
+        valid = False
+    if not valid:
+        cursor.close()
+        conn.close()
+        return jsonify({"error": "Current password is incorrect"}), 401
 
     cursor.execute(
         "UPDATE user SET password = %s WHERE user_id = %s",
@@ -676,25 +724,15 @@ def change_password():
         "UPDATE refresh_token SET revoked_at = UTC_TIMESTAMP() WHERE user_id = %s AND revoked_at IS NULL",
         (g.user_id,),
     )
-    cursor.execute(
-        """INSERT INTO audit_log
-           (user_id, action, result, ip_address, user_agent, details)
-           VALUES (%s, 'password_changed', 'success', %s, %s, %s)""",
-        (
-            g.user_id,
-            client_ip(),
-            request.headers.get("User-Agent", "")[:255],
-            "User changed password inside the application",
-        ),
-    )
     conn.commit()
     cursor.close()
     conn.close()
+    audit("password_changed", "success", user_id=g.user_id, resource_type="user", resource_id=g.user_id)
     return jsonify({"message": "Password changed successfully. Please log in again."})
 
 
 @app.get("/api/users")
-@require_auth("owner")
+@require_auth("admin")
 def get_users():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
@@ -710,7 +748,11 @@ def get_users():
 def get_audio_tests():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM audio_tests WHERE user_id = %s ORDER BY created_at DESC", (g.user_id,))
+    cursor.execute("""SELECT a.assessment_id AS id, a.test_name, r.quality_score AS score,
+                      r.noise_level, r.distortion_level, a.result_status AS status,
+                      a.duration_seconds, a.assessment_date AS created_at
+                      FROM assessment a LEFT JOIN audio_analysis_result r ON r.assessment_id = a.assessment_id
+                      WHERE a.user_id = %s ORDER BY a.assessment_date DESC""", (g.user_id,))
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -722,7 +764,11 @@ def get_audio_tests():
 def get_audio_test(test_id: int):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM audio_tests WHERE id = %s AND user_id = %s", (test_id, g.user_id))
+    cursor.execute("""SELECT a.assessment_id AS id, a.test_name, r.quality_score AS score,
+                      r.noise_level, r.distortion_level, a.result_status AS status,
+                      a.duration_seconds, a.assessment_date AS created_at
+                      FROM assessment a LEFT JOIN audio_analysis_result r ON r.assessment_id = a.assessment_id
+                      WHERE a.assessment_id = %s AND a.user_id = %s""", (test_id, g.user_id))
     row = cursor.fetchone()
     cursor.close()
     conn.close()
@@ -744,13 +790,27 @@ def create_audio_test():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute(
-        """INSERT INTO audio_tests
-           (user_id, test_name, score, noise_level, distortion_level, status, duration_seconds)
-           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-        (g.user_id, test_name, score, noise, distortion, status, duration),
+        """INSERT INTO assessment (user_id, test_name, result_status, duration_seconds, assessment_status)
+           VALUES (%s, %s, %s, %s, 'Completed')""",
+        (g.user_id, test_name, status, duration),
+    )
+    test_id = cursor.lastrowid
+    cursor.execute("SELECT threshold_id FROM audio_quality_threshold ORDER BY threshold_id LIMIT 1")
+    threshold = cursor.fetchone()
+    cursor.execute("SELECT preset_id FROM genre_preset ORDER BY preset_id LIMIT 1")
+    preset = cursor.fetchone()
+    if not threshold or not preset:
+        conn.rollback()
+        cursor.close()
+        conn.close()
+        return jsonify({"error": "Audio reference data is not configured"}), 503
+    cursor.execute(
+        """INSERT INTO audio_analysis_result
+           (assessment_id, threshold_id, preset_id, quality_score, noise_level, distortion_level)
+           VALUES (%s, %s, %s, %s, %s, %s)""",
+        (test_id, threshold[0], preset[0], score, noise, distortion),
     )
     conn.commit()
-    test_id = cursor.lastrowid
     cursor.close()
     conn.close()
     audit("audio_test_created", "success", user_id=g.user_id, resource_type="audio_test", resource_id=test_id)
@@ -762,7 +822,7 @@ def create_audio_test():
 def delete_audio_test(test_id: int):
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM audio_tests WHERE id = %s AND user_id = %s", (test_id, g.user_id))
+    cursor.execute("DELETE FROM assessment WHERE assessment_id = %s AND user_id = %s", (test_id, g.user_id))
     deleted = cursor.rowcount
     conn.commit()
     cursor.close()
@@ -781,10 +841,10 @@ def get_genre_settings():
     cursor = conn.cursor(dictionary=True)
     if genre:
         genre = clean_text(genre, "genre", 2, 50)
-        cursor.execute("SELECT * FROM genre_settings WHERE genre = %s ORDER BY updated_at DESC LIMIT 1", (genre,))
+        cursor.execute("SELECT * FROM user_genre_setting WHERE genre_name = %s AND user_id = %s ORDER BY updated_at DESC LIMIT 1", (genre, g.user_id))
         result = cursor.fetchone()
     else:
-        cursor.execute("SELECT * FROM genre_settings ORDER BY genre")
+        cursor.execute("SELECT * FROM user_genre_setting WHERE user_id = %s ORDER BY genre_name", (g.user_id,))
         result = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -802,7 +862,7 @@ def save_genre_settings():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute(
-        """INSERT INTO genre_settings (user_id, genre, volume, bass, treble, flatness, sharpness)
+        """INSERT INTO user_genre_setting (user_id, genre_name, volume, bass, treble, flatness, sharpness)
            VALUES (%s, %s, %s, %s, %s, %s, %s)""",
         (g.user_id, genre, *values),
     )
@@ -819,7 +879,11 @@ def save_genre_settings():
 def get_audio_uploads():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM audio_uploads WHERE user_id = %s ORDER BY created_at DESC", (g.user_id,))
+    cursor.execute(
+        """SELECT upload_id AS id, file_name, genre_name AS genre, score, status, created_at
+           FROM audio_upload WHERE user_id = %s ORDER BY created_at DESC""",
+        (g.user_id,),
+    )
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -827,36 +891,86 @@ def get_audio_uploads():
 
 
 @app.post("/api/audio-uploads")
-@require_auth("owner")
+@require_auth("technician", "owner")
 def create_audio_upload():
-    data = json_body()
-    file_name = clean_text(data.get("file_name"), "file_name", 1, 255)
-    genre = clean_text(data.get("genre"), "genre", 2, 50) if data.get("genre") else None
-    score = int(bounded_number(data.get("score"), "score", 0, 100)) if data.get("score") is not None else None
-    status = data.get("status", "Acceptable")
-    if status not in VALID_STATUSES:
-        raise ValueError("status is invalid")
+    upload = request.files.get("audio")
+    if upload is None or not upload.filename:
+        return jsonify({"error": "A multipart audio file is required in the 'audio' field"}), 400
+    original_name = secure_filename(upload.filename)
+    extension = original_name.rsplit(".", 1)[-1].lower() if "." in original_name else ""
+    if extension not in ALLOWED_AUDIO_EXTENSIONS:
+        return jsonify({"error": "Unsupported audio format"}), 415
+    try:
+        client_duration = int(request.form.get("duration_seconds", "0"))
+    except ValueError:
+        return jsonify({"error": "duration_seconds must be an integer"}), 400
+    if client_duration < 1:
+        return jsonify({"error": "duration_seconds is required"}), 400
+    genre_value = request.form.get("genre")
+    genre = clean_text(genre_value, "genre", 2, 50) if genre_value else None
+
+    user_dir = os.path.join(AUDIO_UPLOAD_DIR, str(g.user_id))
+    os.makedirs(user_dir, exist_ok=True)
+    stored_name = f"{uuid.uuid4().hex}.{extension}"
+    stored_path = os.path.abspath(os.path.join(user_dir, stored_name))
+    if os.path.commonpath([AUDIO_UPLOAD_DIR, stored_path]) != AUDIO_UPLOAD_DIR:
+        return jsonify({"error": "Invalid upload path"}), 400
+    upload.save(stored_path)
+    size = os.path.getsize(stored_path)
+    if size == 0 or size > MAX_AUDIO_BYTES:
+        os.remove(stored_path)
+        return jsonify({"error": "Audio file is empty or exceeds the 25 MB limit"}), 413
+    try:
+        duration = audio_duration_seconds(stored_path)
+    except Exception:
+        os.remove(stored_path)
+        return jsonify({"error": "Audio file is corrupted or unreadable"}), 422
+
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO audio_uploads (user_id, file_name, genre, score, status) VALUES (%s, %s, %s, %s, %s)",
-        (g.user_id, file_name, genre, score, status),
-    )
-    conn.commit()
-    upload_id = cursor.lastrowid
-    cursor.close()
-    conn.close()
+    try:
+        cursor.execute(
+            """INSERT INTO assessment
+               (user_id, audio_file_path, assessment_status, test_name, duration_seconds, result_status)
+               VALUES (%s, %s, 'Pending', %s, %s, 'Acceptable')""",
+            (g.user_id, stored_path, original_name[:120], duration),
+        )
+        assessment_id = cursor.lastrowid
+        cursor.execute(
+            """INSERT INTO audio_upload
+               (user_id, assessment_id, file_name, genre_name, score, status)
+               VALUES (%s, %s, %s, %s, NULL, 'Acceptable')""",
+            (g.user_id, assessment_id, original_name, genre),
+        )
+        upload_id = cursor.lastrowid
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        if os.path.exists(stored_path):
+            os.remove(stored_path)
+        raise
+    finally:
+        cursor.close()
+        conn.close()
     audit("audio_upload_created", "success", user_id=g.user_id, resource_type="audio_upload", resource_id=upload_id)
-    return jsonify({"id": upload_id, "file_name": file_name, "genre": genre}), 201
+    return jsonify({
+        "id": upload_id,
+        "assessment_id": assessment_id,
+        "file_name": original_name,
+        "genre": genre,
+        "duration_seconds": duration,
+        "size_bytes": size,
+        "status": "Pending",
+    }), 201
 
 
 @app.get("/api/audit-logs")
-@require_auth("owner")
+@require_auth("admin")
 def get_audit_logs():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        """SELECT id, user_id, action, resource_type, resource_id, result, ip_address, created_at
+        """SELECT audit_log_id AS id, user_id, action, resource_type, resource_id, result, ip_address, created_at
            FROM audit_log ORDER BY created_at DESC LIMIT 200"""
     )
     rows = cursor.fetchall()

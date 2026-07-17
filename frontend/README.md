@@ -20,8 +20,7 @@ Repository: [github.com/jbl2023-2879-91296-cpu/KaraOK](https://github.com/jbl202
 - Audio-upload workflow and saved upload records
 - Saved audio-test history with individual result lookup and deletion
 
-> [!NOTE]
-> The current audio recording, processing, and upload screens simulate parts of the analysis workflow. They do not yet capture, upload, or analyze real audio files.
+Audio recording and file selection use a local single-file staging area before authenticated multipart submission to the API. Submitted assessments remain pending until the Python analysis worker processes them.
 
 ## Technology stack
 
@@ -111,6 +110,10 @@ A physical device must be on the same network as the API host, and the host fire
 
 ### 5. Install Flutter packages and run
 
+For Android Studio, open the `frontend` directory rather than only `frontend/android`. Enable the Flutter and Dart plugins, select the Flutter SDK, start an emulator, and choose the shared **KaraOK Android Emulator** run configuration.
+
+That configuration supplies `API_BASE_URL=http://10.0.2.2:5000/api`; the Android emulator maps `10.0.2.2` to the development computer. The debug manifest permits local HTTP traffic, while release builds remain protected. Run Flask on `0.0.0.0:5000`. For a physical device, replace `10.0.2.2` with the computer's LAN IP.
+
 ```bash
 cd frontend
 flutter pub get
@@ -123,6 +126,24 @@ To select a target explicitly:
 flutter devices
 flutter run -d chrome
 ```
+
+## Build an Android APK
+
+The complete, reproducible command sequence for debug and release APKs is in
+[`BUILDING_APK.md`](../BUILDING_APK.md). From the repository root, the shortest
+debug build is:
+
+```bash
+cd frontend
+flutter pub get
+flutter build apk --debug --dart-define=API_BASE_URL=http://10.0.2.2:5000/api
+```
+
+The generated file is `frontend/build/app/outputs/flutter-apk/app-debug.apk`.
+Use a LAN-accessible HTTPS API URL instead of `10.0.2.2` when building for a
+physical device. The current release build uses Android's debug signing key and
+is intended only for testing; configure a private release keystore before
+publishing the application.
 
 ## API overview
 
