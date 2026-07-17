@@ -1,0 +1,25 @@
+[Unit]
+Description=KaraOK Flask API
+After=network-online.target mysql.service
+Wants=network-online.target
+Requires=mysql.service
+
+[Service]
+Type=simple
+User=karaok
+Group=karaok
+WorkingDirectory=/opt/karaok/app/backend
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/karaok/app/backend/.venv/bin/gunicorn --bind 127.0.0.1:8000 --workers 2 --threads 4 --timeout 120 --access-logfile - --error-logfile - app:app
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/karaok/uploads
+
+[Install]
+WantedBy=multi-user.target

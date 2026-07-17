@@ -1,0 +1,9 @@
+[Unit]
+Description=Back up KaraOK MySQL data and audio uploads
+After=mysql.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/karaok-backup
+PrivateTmp=true
+NoNewPrivileges=true

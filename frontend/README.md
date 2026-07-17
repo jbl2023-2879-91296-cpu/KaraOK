@@ -184,6 +184,10 @@ The repository is configured for local development. Before production use:
 - Replace the in-memory rate-limit store with Redis or another shared persistent store.
 - Rotate the development MySQL and JWT secrets before deployment.
 
+The configured OVHcloud production endpoint is `https://139.99.89.112/api`. See
+[`OVH_DEPLOYMENT.md`](../OVH_DEPLOYMENT.md) for server provisioning, HTTPS, and
+the exact release build command.
+
 ## Project status
 
 KaraOK is under active development. Secure authentication, session rotation/revocation, RBAC, input validation, password reset, and audit logging are implemented. Real audio capture/analysis, reset-email delivery, and production deployment configuration remain development work.

@@ -16,13 +16,14 @@ python app.py
 
 The local API listens on `http://127.0.0.1:5000` by default. `GET /api/health` verifies both the API and database connection.
 
-## Railway deployment
+## OVHcloud production deployment
 
-The repository includes Railway config-as-code, a pinned Python runtime, Gunicorn,
-Railway MySQL variable fallbacks, and persistent-volume support for uploaded audio.
-Follow [`RAILWAY_DEPLOYMENT.md`](../RAILWAY_DEPLOYMENT.md) for the required Railway
-service settings, secrets, schema import, volume mount, health verification, and
-Flutter release build command.
+Production deployment for Ubuntu 26.04 on OVH VPS `139.99.89.112` is defined in
+[`deploy/ovh`](../deploy/ovh) and documented step-by-step in
+[`OVH_DEPLOYMENT.md`](../OVH_DEPLOYMENT.md). The deployment uses Nginx HTTPS,
+Gunicorn bound to loopback, local MySQL, systemd services, UFW, persistent upload
+storage, and automatic database/upload backups. Secrets remain in the ignored
+`backend/.env` file on the server.
 
 ## Security model
 
@@ -116,7 +117,7 @@ When `DEV_MODE=true`, the forgot-password request endpoint is exempt from its pr
 
 Audit records are written separately from business transactions so a failed audit write does not corrupt application data. They provide accountability metadata, but a mutable application database alone cannot guarantee legal non-repudiation. In production, grant the API database identity INSERT/SELECT-only access to `audit_log`, deny application UPDATE/DELETE privileges, and export logs to an access-controlled immutable or append-only logging service. Restrict audit-log reading to `admin` accounts.
 
-Client IP addresses come from the transport peer by default. Set `TRUST_PROXY=true` only when the API is directly behind one trusted reverse proxy that overwrites forwarded headers; otherwise forwarded headers are ignored to prevent spoofed audit attribution.
+Client IP addresses come directly from the transport peer. Forwarded client-IP headers are not trusted.
 
 Run the backend security regression tests from `backend` with:
 

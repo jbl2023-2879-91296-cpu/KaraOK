@@ -30,6 +30,7 @@ load_dotenv()
 
 app = Flask(__name__)
 if os.getenv("TRUST_PROXY", "false").lower() == "true":
+    # The production service accepts traffic only from one local Nginx proxy.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 allowed_origins = [
     origin.strip()
@@ -45,13 +46,11 @@ limiter = Limiter(
 )
 
 DB_CONFIG = {
-    # DB_* remains the application-level contract. MYSQL* fallbacks make the
-    # service work directly with variables referenced from Railway MySQL.
-    "host": os.getenv("DB_HOST") or os.getenv("MYSQLHOST", "localhost"),
-    "database": os.getenv("DB_NAME") or os.getenv("MYSQLDATABASE", "karaok_db"),
-    "user": os.getenv("DB_USER") or os.getenv("MYSQLUSER", "root"),
-    "password": os.getenv("DB_PASSWORD") or os.getenv("MYSQLPASSWORD", ""),
-    "port": int(os.getenv("DB_PORT") or os.getenv("MYSQLPORT", "3306")),
+    "host": os.getenv("DB_HOST", "localhost"),
+    "database": os.getenv("DB_NAME", "karaok_db"),
+    "user": os.getenv("DB_USER", "root"),
+    "password": os.getenv("DB_PASSWORD", ""),
+    "port": int(os.getenv("DB_PORT", "3306")),
 }
 JWT_SECRET = os.getenv("JWT_SECRET", "")
 JWT_ISSUER = "karaok-api"
@@ -69,7 +68,6 @@ MAX_AUDIO_BYTES = int(os.getenv("MAX_AUDIO_BYTES", str(25 * 1024 * 1024)))
 MAX_AUDIO_SECONDS = 300
 AUDIO_UPLOAD_DIR = os.path.abspath(
     os.getenv("AUDIO_UPLOAD_DIR")
-    or os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
     or os.path.join(os.path.dirname(__file__), "uploads")
 )
 ALLOWED_AUDIO_EXTENSIONS = {"wav", "mp3", "m4a", "aac", "ogg", "flac"}
