@@ -2,6 +2,20 @@
 
 All notable changes to KaraOK are documented here.
 
+## 2026-07-18 — Security and deployment documentation
+
+### Added
+
+- Added a tools, assets, and implementation-approaches column to the security controls table, covering Argon2id, JWT, session storage, RBAC, validation, recovery, auditing, and deployment controls.
+- Added a generated security implementation PDF containing the security-control summary, detailed decisions, tools and assets, RBAC matrix, and accountability limitations.
+- Added a reusable ReportLab generator for rebuilding the security PDF from the backend README tables.
+
+### Documentation
+
+- Expanded the OVH backend update section into a command-by-command SSH runbook with expected output and stop conditions.
+- Documented repository checks, production backups, incoming-commit review, dependency installation, one-time migrations, backend tests, service restart verification, health checks, and `502 Bad Gateway` diagnostics.
+- Clarified that Flutter-only releases require a new APK but do not require restarting the backend service.
+
 ## 2026-07-18 — Temporary-password account recovery
 
 ### Changed
