@@ -15,6 +15,11 @@ class SecurityValidationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             api.validate_password("short")
 
+    def test_temporary_password_meets_password_policy(self):
+        temporary_password = api.generate_temporary_password()
+        self.assertEqual(api.validate_password(temporary_password), temporary_password)
+        self.assertEqual(len(temporary_password), 20)
+
     def test_email_is_normalized(self):
         self.assertEqual(api.clean_email("  User@Example.COM "), "user@example.com")
 
@@ -75,6 +80,36 @@ class SecurityValidationTests(unittest.TestCase):
         self.assertEqual(payload["sub"], "7")
         self.assertEqual(payload["role"], "owner")
         self.assertIn("jti", payload)
+
+    def test_forgot_password_replaces_password_and_revokes_sessions(self):
+        connection = unittest.mock.MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.return_value = {"id": 7}
+        with patch.object(api, "get_db", return_value=connection), patch.object(
+            api, "send_temporary_password_email"
+        ) as send_email, patch.object(api, "SMTP_HOST", "smtp.example.com"), patch.object(
+            api, "SMTP_USERNAME", "user"
+        ), patch.object(api, "SMTP_PASSWORD", "password"), patch.object(
+            api, "SMTP_FROM", "no-reply@example.com"
+        ), patch.object(api, "audit"):
+            response = api.app.test_client().post(
+                "/api/auth/forgot-password",
+                json={"email": "user@example.com"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        send_email.assert_called_once()
+        self.assertTrue(connection.commit.called)
+        statements = "\n".join(call.args[0] for call in cursor.execute.call_args_list)
+        self.assertIn("requires_password_change = TRUE", statements)
+        self.assertIn("UPDATE refresh_token", statements)
+
+    def test_reset_token_endpoint_is_removed(self):
+        response = api.app.test_client().post(
+            "/api/auth/reset-password",
+            json={"token": "unused", "new_password": "Correct-Horse-7"},
+        )
+        self.assertEqual(response.status_code, 404)
 
 
 if __name__ == "__main__":

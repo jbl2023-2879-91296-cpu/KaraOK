@@ -16,9 +16,7 @@ class ApiService {
 
   static const _accessTokenKey = 'karaok_access_token';
   static const _refreshTokenKey = 'karaok_refresh_token';
-  static const _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+  static const _storage = FlutterSecureStorage();
 
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
@@ -224,16 +222,6 @@ class ApiService {
           }, authenticated: false)
           as Map,
     );
-  }
-
-  Future<void> resetPassword({
-    required String token,
-    required String newPassword,
-  }) async {
-    await _post('/auth/reset-password', {
-      'token': token,
-      'new_password': newPassword,
-    }, authenticated: false);
   }
 
   Future<void> changePassword({

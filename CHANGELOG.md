@@ -2,6 +2,23 @@
 
 All notable changes to KaraOK are documented here.
 
+## 2026-07-18 — Temporary-password account recovery
+
+### Changed
+
+- Changed forgot-password recovery to email a generated temporary password instead of a reset token.
+- Added mandatory password replacement immediately after signing in with a temporary password.
+- Revoked existing refresh sessions during recovery and blocked other protected API operations until the password is changed.
+- Removed the reset-token endpoint and token-entry fields from the Flutter application.
+
+## 2026-07-18 — Flutter Android plugin modernization
+
+### Changed
+
+- Replaced `file_picker` with Flutter's maintained `file_selector` 1.1.0 because the latest stable `file_picker` still applies the legacy Kotlin Gradle Plugin.
+- Updated `record` to 7.1.1, which uses the current Android Gradle and built-in Kotlin-compatible plugin setup.
+- Updated `flutter_secure_storage` to 10.3.1, adopted its automatic Android cipher migration, and set Android API 23 as the minimum supported version.
+
 ## 2026-07-18 — OVHcloud VPS deployment
 
 ### Added

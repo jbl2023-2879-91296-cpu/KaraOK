@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS user (
 
     -- Merged from the former user_security table.
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    requires_password_change BOOLEAN NOT NULL DEFAULT FALSE,
     security_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -153,21 +154,6 @@ CREATE TABLE IF NOT EXISTS refresh_token (
 );
 
 -- ==========================================
--- ADDITIVE TABLE: PASSWORD RESET TOKEN
--- ==========================================
-
-CREATE TABLE IF NOT EXISTS password_reset_token (
-    reset_token_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    token_hash CHAR(64) NOT NULL UNIQUE,
-    expires_at DATETIME NOT NULL,
-    used_at DATETIME NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_password_reset_user
-        FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE CASCADE
-);
-
--- ==========================================
 -- ADDITIVE TABLE: REVOKED ACCESS TOKEN
 -- ==========================================
 
@@ -246,8 +232,6 @@ CREATE INDEX idx_assessment_user_date
     ON assessment (user_id, assessment_date);
 CREATE INDEX idx_refresh_token_user
     ON refresh_token (user_id, revoked_at, expires_at);
-CREATE INDEX idx_password_reset_user
-    ON password_reset_token (user_id, used_at, expires_at);
 CREATE INDEX idx_audit_log_created
     ON audit_log (created_at);
 CREATE INDEX idx_audio_upload_user_date

@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -48,15 +48,16 @@ class AudioStagingService {
   StagedAudio? current;
 
   Future<StagedAudio?> pickAudio() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: supportedExtensions.toList(),
-      allowMultiple: false,
+    final selectedFile = await openFile(
+      acceptedTypeGroups: [
+        XTypeGroup(
+          label: 'audio',
+          extensions: supportedExtensions.toList(),
+        ),
+      ],
     );
-    if (result == null) return null;
-    final selectedPath = result.files.single.path;
-    if (selectedPath == null)
-      throw const AudioStagingException('The selected file is not accessible.');
+    if (selectedFile == null) return null;
+    final selectedPath = selectedFile.path;
     final source = File(selectedPath);
     if (!await source.exists())
       throw const AudioStagingException('The selected file no longer exists.');

@@ -253,10 +253,16 @@ cd /opt/karaok/app
 git status --short
 git pull --ff-only
 backend/.venv/bin/python -m pip install -r backend/requirements.txt
+sudo mysql < database/migrations/20260718_temporary_password_recovery.sql
 backend/.venv/bin/python -m unittest discover -s backend/tests -v
 sudo systemctl restart karaok-api
 curl https://139.99.89.112/api/health
 ```
+
+The temporary-password migration command is required once when deploying this
+recovery-flow update to an existing database. Do not rerun that one-time `ALTER
+TABLE` after the column has been added. Future releases should run only the new
+migrations included with that release.
 
 Copy database and upload backups to an encrypted off-server destination. Backups
 stored only on the same VPS do not protect against VPS loss or account compromise.

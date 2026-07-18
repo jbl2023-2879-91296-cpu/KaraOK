@@ -77,7 +77,6 @@ password_hasher = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 VALID_ROLES = {"technician", "owner", "admin"}
 SELF_REGISTER_ROLES = {"owner", "technician"}
-RESET_TOKEN_MINUTES = int(os.getenv("PASSWORD_RESET_MINUTES", "15"))
 VALID_STATUSES = {"Acceptable", "Needs Improvement"}
 
 
@@ -136,6 +135,24 @@ def validate_password(password: Any) -> str:
     return password
 
 
+def generate_temporary_password(length: int = 20) -> str:
+    """Generate a policy-compliant password intended for one-time login."""
+    uppercase = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+    lowercase = "abcdefghijkmnopqrstuvwxyz"
+    digits = "23456789"
+    symbols = "!@#$%&*-_"
+    characters = uppercase + lowercase + digits + symbols
+    password = [
+        secrets.choice(uppercase),
+        secrets.choice(lowercase),
+        secrets.choice(digits),
+        secrets.choice(symbols),
+    ]
+    password.extend(secrets.choice(characters) for _ in range(length - len(password)))
+    secrets.SystemRandom().shuffle(password)
+    return "".join(password)
+
+
 def bounded_number(value: Any, field: str, minimum: float, maximum: float) -> float:
     if isinstance(value, bool):
         raise ValueError(f"{field} must be numeric")
@@ -185,22 +202,23 @@ Thank you,
         server.send_message(message)
 
 
-def send_password_reset_email(email: str, reset_token: str) -> None:
+def send_temporary_password_email(email: str, temporary_password: str) -> None:
     if not all((SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM)):
         raise RuntimeError("SMTP is not configured")
     message = EmailMessage()
-    message["Subject"] = "Reset your KaraOK password"
+    message["Subject"] = "Your temporary KaraOK password"
     message["From"] = SMTP_FROM
     message["To"] = email
     message.set_content(
         f"""A password reset was requested for your KaraOK account.
 
-Enter this one-time reset token in the KaraOK application:
+Use this temporary password to sign in to the KaraOK application:
 
-{reset_token}
+{temporary_password}
 
-The token expires in {RESET_TOKEN_MINUTES} minutes and can be used once. If you
-did not request this reset, you can ignore this message.
+You will be required to choose a new password immediately after signing in. Do
+not share this temporary password. If you did not request this reset, contact
+the KaraOK administrator.
 """
     )
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
@@ -322,7 +340,9 @@ def require_auth(*roles: str) -> Callable:
                 cursor.execute("SELECT 1 FROM revoked_access_token WHERE jti = %s", (payload["jti"],))
                 revoked = cursor.fetchone() is not None
                 cursor.execute(
-                    "SELECT role, is_active, security_updated_at FROM user WHERE user_id = %s",
+                    """SELECT role, is_active, security_updated_at,
+                              requires_password_change
+                       FROM user WHERE user_id = %s""",
                     (g.user_id,),
                 )
                 account = cursor.fetchone()
@@ -347,6 +367,15 @@ def require_auth(*roles: str) -> Callable:
             if roles and g.user_role not in roles:
                 audit("access_denied", "failure", user_id=g.user_id, details="Insufficient role")
                 return jsonify({"error": "Forbidden"}), 403
+            g.requires_password_change = bool(account["requires_password_change"])
+            if g.requires_password_change and request.endpoint != "change_password":
+                audit(
+                    "access_denied",
+                    "failure",
+                    user_id=g.user_id,
+                    details="Password change required",
+                )
+                return jsonify({"error": "Password change required"}), 403
             return view(*args, **kwargs)
 
         return wrapped
@@ -510,7 +539,7 @@ def login():
     cursor.execute(
         f"""SELECT u.user_id, u.username, u.email, u.role AS user_type,
                    u.password AS password_hash, u.is_active,
-                   FALSE AS requires_password_change
+                   u.requires_password_change
             FROM user u WHERE u.{login_column} = %s LIMIT 1""",
         (identifier,),
     )
@@ -549,7 +578,8 @@ def refresh():
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
         """SELECT rt.refresh_token_id AS token_id, rt.user_id, rt.expires_at, rt.revoked_at,
-                  u.username, u.email, u.role AS user_type, u.is_active
+                  u.username, u.email, u.role AS user_type, u.is_active,
+                  u.requires_password_change
            FROM refresh_token rt JOIN user u ON u.user_id = rt.user_id
            WHERE rt.token_hash = %s FOR UPDATE""",
         (hashed,),
@@ -615,19 +645,21 @@ def forgot_password():
     cursor.execute("SELECT user_id AS id FROM user WHERE email = %s AND is_active = TRUE", (email,))
     user = cursor.fetchone()
     if user:
-        reset_token = secrets.token_urlsafe(32)
+        temporary_password = generate_temporary_password()
         try:
             cursor.execute(
-                "UPDATE password_reset_token SET used_at = UTC_TIMESTAMP() WHERE user_id = %s AND used_at IS NULL",
-                (user["id"],),
+                """UPDATE user
+                   SET password = %s, requires_password_change = TRUE
+                   WHERE user_id = %s""",
+                (password_hasher.hash(temporary_password), user["id"]),
             )
             cursor.execute(
-                """INSERT INTO password_reset_token (user_id, token_hash, expires_at)
-                   VALUES (%s, %s, UTC_TIMESTAMP() + INTERVAL %s MINUTE)""",
-                (user["id"], token_hash(reset_token), RESET_TOKEN_MINUTES),
+                """UPDATE refresh_token SET revoked_at = UTC_TIMESTAMP()
+                   WHERE user_id = %s AND revoked_at IS NULL""",
+                (user["id"],),
             )
             if SMTP_HOST and SMTP_USERNAME and SMTP_PASSWORD and SMTP_FROM:
-                send_password_reset_email(email, reset_token)
+                send_temporary_password_email(email, temporary_password)
             else:
                 raise RuntimeError("SMTP is not configured")
             conn.commit()
@@ -644,49 +676,7 @@ def forgot_password():
         user_id=user["id"] if user else None,
         details=audit_details,
     )
-    return jsonify({"message": "If the account exists, password reset instructions have been sent."})
-
-
-@app.post("/api/auth/reset-password")
-@limiter.limit("5 per hour", exempt_when=lambda: DEV_MODE)
-def reset_password():
-    data = json_body()
-    raw_token = data.get("token")
-    if not isinstance(raw_token, str) or not 20 <= len(raw_token) <= 200:
-        raise ValueError("reset token is invalid")
-    new_password = validate_password(data.get("new_password"))
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    try:
-        cursor.execute(
-            """SELECT prt.reset_token_id, prt.user_id, u.password
-               FROM password_reset_token prt
-               JOIN user u ON u.user_id = prt.user_id
-               WHERE prt.token_hash = %s AND prt.used_at IS NULL
-                 AND prt.expires_at > UTC_TIMESTAMP() AND u.is_active = TRUE
-               FOR UPDATE""",
-            (token_hash(raw_token),),
-        )
-        row = cursor.fetchone()
-        if not row:
-            audit("password_reset", "failure", details="Invalid or expired reset token")
-            return jsonify({"error": "Invalid or expired reset token"}), 400
-        try:
-            if password_hasher.verify(row["password"], new_password):
-                raise ValueError("new password must differ from the current password")
-        except VerifyMismatchError:
-            pass
-        except InvalidHashError:
-            pass
-        cursor.execute("UPDATE user SET password = %s WHERE user_id = %s", (password_hasher.hash(new_password), row["user_id"]))
-        cursor.execute("UPDATE password_reset_token SET used_at = UTC_TIMESTAMP() WHERE user_id = %s AND used_at IS NULL", (row["user_id"],))
-        cursor.execute("UPDATE refresh_token SET revoked_at = UTC_TIMESTAMP() WHERE user_id = %s AND revoked_at IS NULL", (row["user_id"],))
-        conn.commit()
-        audit("password_reset", "success", user_id=row["user_id"], resource_type="user", resource_id=row["user_id"])
-        return jsonify({"message": "Password reset successfully. Please log in."})
-    finally:
-        cursor.close()
-        conn.close()
+    return jsonify({"message": "If the account exists, a temporary password has been sent."})
 
 
 @app.post("/api/auth/change-password")
@@ -696,26 +686,41 @@ def change_password():
     data = json_body()
     current_password = data.get("current_password")
     new_password = validate_password(data.get("new_password"))
-    if not isinstance(current_password, str) or len(current_password) > 128:
+    if not g.requires_password_change and (
+        not isinstance(current_password, str) or len(current_password) > 128
+    ):
         raise ValueError("current password is invalid")
-    if secrets.compare_digest(current_password, new_password):
+    if isinstance(current_password, str) and secrets.compare_digest(current_password, new_password):
         raise ValueError("new password must be different from the current password")
 
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT password FROM user WHERE user_id = %s AND is_active = TRUE", (g.user_id,))
     user = cursor.fetchone()
-    try:
-        valid = bool(user) and password_hasher.verify(user["password"], current_password)
-    except (VerifyMismatchError, InvalidHashError):
-        valid = False
-    if not valid:
+    if not user:
         cursor.close()
         conn.close()
-        return jsonify({"error": "Current password is incorrect"}), 401
+        return jsonify({"error": "Account is unavailable"}), 401
+    if g.requires_password_change:
+        try:
+            if password_hasher.verify(user["password"], new_password):
+                raise ValueError("new password must be different from the temporary password")
+        except (VerifyMismatchError, InvalidHashError):
+            pass
+    else:
+        try:
+            valid = password_hasher.verify(user["password"], current_password)
+        except (VerifyMismatchError, InvalidHashError):
+            valid = False
+        if not valid:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Current password is incorrect"}), 401
 
     cursor.execute(
-        "UPDATE user SET password = %s WHERE user_id = %s",
+        """UPDATE user
+           SET password = %s, requires_password_change = FALSE
+           WHERE user_id = %s""",
         (password_hasher.hash(new_password), g.user_id),
     )
     cursor.execute(

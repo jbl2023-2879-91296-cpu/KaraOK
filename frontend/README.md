@@ -194,7 +194,7 @@ KaraOK is under active development. Secure authentication, session rotation/revo
 
 ## Security and database documentation
 
-The backend provides Argon2id password hashing, token-based sessions, role-based API authorization, password reset tokens, rate limiting, input validation, and audit logging. See [`backend/README.md`](../../backend/README.md) for the security model and table-by-table schema explanation.
+The backend provides Argon2id password hashing, token-based sessions, role-based API authorization, forced temporary-password recovery, rate limiting, input validation, and audit logging. See [`backend/README.md`](../../backend/README.md) for the security model and table-by-table schema explanation.
 
 Registration asks for a username instead of a full name. After submitting the form, the app opens a separate verification screen where the user enters the six-digit OTP delivered to the supplied email address. The backend must have SMTP settings configured before registration emails can be sent. Login accepts either the username or email address.
 
