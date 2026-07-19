@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -105,8 +106,9 @@ class ApiService {
       String message = response.body;
       try {
         final decoded = jsonDecode(response.body);
-        if (decoded is Map && decoded['error'] is String)
+        if (decoded is Map && decoded['error'] is String) {
           message = decoded['error'];
+        }
       } catch (_) {}
       throw ApiException(response.statusCode, message);
     }
@@ -229,7 +231,7 @@ class ApiService {
     required String newPassword,
   }) async {
     await _post('/auth/change-password', {
-      if (currentPassword != null) 'current_password': currentPassword,
+      'current_password': ?currentPassword,
       'new_password': newPassword,
     });
   }
@@ -294,6 +296,11 @@ class ApiService {
   Future<List<dynamic>> getAudioUploads() async =>
       List<dynamic>.from(await _get('/audio-uploads') as List);
 
+  Future<Map<String, dynamic>> getAudioAnalysisDump(int uploadId) async =>
+      Map<String, dynamic>.from(
+        await _get('/audio-uploads/$uploadId/analysis-dump') as Map,
+      );
+
   Future<Map<String, dynamic>> createAudioUpload({
     required String fileName,
     String? genre,
@@ -311,24 +318,41 @@ class ApiService {
 
   Future<Map<String, dynamic>> submitAudio({
     required String filePath,
+    required String fileName,
+    Uint8List? fileBytes,
     required int durationSeconds,
     String? genre,
+    String analysisPurpose = 'quality_evaluation',
   }) async {
     final request = http.MultipartRequest('POST', _uri('/audio-uploads'));
-    request.headers.addAll(await _headers());
-    request.fields['duration_seconds'] = durationSeconds.toString();
-    if (genre != null && genre.trim().isNotEmpty)
+    final headers = await _headers();
+    headers.remove('Content-Type');
+    request.headers.addAll(headers);
+    request.fields['duration_seconds'] =
+        (durationSeconds < 1 ? 1 : durationSeconds).toString();
+    request.fields['analysis_purpose'] = analysisPurpose;
+    if (genre != null && genre.trim().isNotEmpty) {
       request.fields['genre'] = genre.trim();
-    request.files.add(await http.MultipartFile.fromPath('audio', filePath));
+    }
+    request.files.add(
+      fileBytes == null
+          ? await http.MultipartFile.fromPath('audio', filePath)
+          : http.MultipartFile.fromBytes(
+              'audio',
+              fileBytes,
+              filename: fileName,
+            ),
+    );
     try {
       final streamed = await request.send().timeout(
-        const Duration(seconds: 90),
+        const Duration(seconds: 360),
       );
       final response = await http.Response.fromStream(streamed);
       _checkStatus(response);
       final decoded = _decode(response);
-      if (decoded is! Map)
+      if (decoded is! Map) {
         throw const FormatException('Invalid upload response');
+      }
       return Map<String, dynamic>.from(decoded);
     } on SocketException catch (e) {
       throw ApiException(0, 'The backend server is unreachable: ${e.message}');

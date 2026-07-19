@@ -25,7 +25,8 @@ estimates. It is not automatically invoked by the Flask upload endpoints.
 The analyzer supports WAV, MP3, FLAC, and OGG files and measures:
 
 - bass and treble RMS plus their percentages of active-frame spectral energy;
-- RMS loudness statistics in approximate dBFS (not LUFS);
+- RMS loudness statistics in dBFS plus ITU-R BS.1770-5-aligned integrated,
+  momentary, and short-term mono loudness and an oversampled true peak;
 - spectral flatness and approximate normalized sharpness;
 - estimated noise RMS, noise floor in dBFS, and signal-to-noise ratio;
 - clipping, crest factor, high-frequency energy, harmonic-to-percussive energy,
@@ -34,6 +35,12 @@ The analyzer supports WAV, MP3, FLAC, and OGG files and measures:
 Noise, SNR, sharpness, and distortion are estimates. The distortion score is not
 laboratory THD or THD+N, and the quality status is a configurable deterministic
 threshold result rather than a trained classifier.
+
+Controlled phone-recording mode additionally measures noise and SNR from a
+separate system-on/no-program recording and measures end-to-end THD and THD+N
+from a separate known test tone. These measurements cover the complete playback
+device, room, phone microphone, and phone-processing chain; they do not isolate
+the speaker or source device.
 
 ### Running an analysis
 
@@ -59,16 +66,68 @@ python backend\audio_analyzer.py input.wav `
 
 Use `python backend\audio_analyzer.py --help` for the complete command list.
 
+### Controlled phone recordings
+
+Use mono PCM WAV or FLAC recordings made with the same phone, recorder settings,
+position, orientation, room, playback volume, and input gain. Disable automatic
+gain, noise suppression, voice enhancement, and normalization when the recorder
+allows it. The default protocol discards one second from each end of the noise
+and tone recordings and requires at least three usable seconds, so each auxiliary
+recording must be at least five seconds. Ten seconds is recommended.
+The default controlled-measurement maximum after trimming is 30 seconds to keep
+tone fitting bounded and focused on a stable test interval.
+
+Prepare:
+
+1. `program.wav`: the music or karaoke phone recording;
+2. `noise.wav`: the system on in the same setup, with no program playing;
+3. `tone_1khz.wav`: the same setup playing a clean 1 kHz tone.
+
+Run:
+
+```powershell
+python backend\audio_analyzer.py program.wav `
+  --phone-recording `
+  --noise-file noise.wav `
+  --tone-file tone_1khz.wav `
+  --output-dir results\program
+```
+
+If an external SPL meter beside the phone reads the test tone at, for example,
+80 dB SPL, add `--reference-spl-db 80`. This provides a single-point field
+calibration; it is not a certified phone-microphone calibration.
+
+Phone mode rejects lossy inputs, stereo inputs, partially recovered files, short
+auxiliary recordings, and a test tone that is not dominant within the configured
+frequency tolerance. It reports:
+
+- separate-recording noise in dBFS and program-to-noise SNR;
+- detected fundamental and harmonics;
+- end-to-end THD and THD+N percentages;
+- non-harmonic tone SNR and clipping;
+- optional field-calibrated program/noise SPL;
+- protocol and reliability warnings.
+
+Set `processing_disabled_confirmed` and `fixed_setup_confirmed` to `true` in the
+settings file only after those conditions have actually been controlled. Also
+record `phone_model`, `recording_app`, `phone_to_source_distance_meters`, and
+`microphone_orientation` there so later recordings can reproduce the setup. DIN
+45692 sharpness in acum remains explicitly unmeasured: a validated
+psychoacoustic implementation plus calibrated pressure and microphone-frequency
+response are still required. The existing normalized sharpness score remains a
+separate comparative feature.
+
 ### Settings and fail-safes
 
-The versioned JSON settings file has four sections:
+The versioned JSON settings file has five sections:
 
 | Section | Purpose | Important defaults |
 | --- | --- | --- |
-| `analysis` | Feature-extraction windows, frequency bands, silence/clipping limits, and distortion weights | 2,048-sample frames, 512-sample hop, 15th noise percentile, 0.99 clipping threshold |
+| `analysis` | Feature-extraction windows, frequency bands, silence/clipping limits, HPSS work limit, and distortion weights | 2,048-sample frames, 512-sample hop, 15th noise percentile, 0.99 clipping threshold, at most 2,048 uniformly sampled active frames for the auxiliary HPSS ratio |
 | `safety` | Resource and damaged-file acceptance limits | 100 MB, 15 minutes, at least 90% and 5 seconds recovered, at least 10 active frames |
 | `quality_thresholds` | Deterministic warning/failure boundaries | SNR warning below 10 dB and failure below 5 dB; distortion warning above 20 and failure above 50; clipping failure above 0.5% |
 | `failure_behavior` | Output retention, cleanup, failure logging, and quality-failure exit code | retain quality-failure outputs, clean incomplete technical-failure outputs, record errors in CSV, exit 3 on quality failure |
+| `phone_recording` | Controlled phone protocol, tone/band parameters, trimming, optional SPL calibration, and setup confirmations | 1 kHz tone, 20 Hz-20 kHz band, harmonics 2-10, one second trimmed at each end, lossless mono required |
 
 Unknown setting names, malformed JSON, invalid types, unsafe ranges, and reversed
 warning/failure thresholds are rejected with clear messages. Each completed
@@ -108,6 +167,11 @@ type, message, input path, and settings path. If JSON or plot generation fails,
 only files bearing that run's unique prefix are removed; prior results and the
 shared CSV remain intact.
 
+Pressing `Ctrl+C` returns exit code `130` and cleans incomplete files, but is not
+recorded as a technical failure in the shared CSV. The spectral-flatness plot
+uses active frames and a data-dependent vertical scale so small tonal values do
+not appear blank. The numerical flatness calculation is unchanged.
+
 | Exit code | Meaning |
 | ---: | --- |
 | `0` | Analysis completed and configured quality thresholds passed or produced only warnings |
@@ -115,6 +179,70 @@ shared CSV remain intact.
 | `2` | Invalid input or configuration |
 | `3` | Analysis completed and outputs were saved, but a quality failure threshold was crossed |
 | `130` | User cancellation |
+
+Quiet-frame SNR from an ordinary single recording is advisory-only because quiet
+music can be mistaken for noise. It can produce quality status `warning`, but it
+cannot produce exit code `3`. SNR failure thresholds are enforced only in
+controlled phone mode with a separate noise recording. Distortion-risk and
+clipping failure thresholds remain enforced in both modes.
+
+### Empirical good-audio reference
+
+[`good_audio_thresholds`](good_audio_thresholds/README.md) is an isolated NumPy
+package that derives provisional reference ranges from the 30 completed rows in
+`results/results.csv` whose inputs are in `audio sample(good)`. It does not
+change or replace feature extraction in `audio_analyzer.py`.
+
+Regenerate the checked threshold artifact from the repository root:
+
+```powershell
+backend\.venv\Scripts\python.exe backend\good_audio_thresholds\derive_thresholds.py
+```
+
+The generated
+[`good_audio_thresholds.json`](good_audio_thresholds/good_audio_thresholds.json)
+contains P05, median, P95, observed minimum/maximum, MAD, IQR, fixed-seed
+bootstrap intervals, Spearman correlations, recovery sensitivity, cohort
+provenance, and the source CSV SHA-256. Feature interpretation is:
+
+- P05-P95 inclusive: `good`;
+- outside P05-P95 but inside the observed envelope: `good_but_needs_improvement`;
+- strictly outside the observed envelope: `bad`;
+- missing or non-finite: `not_evaluated`.
+
+Continuous feature scores use 100 at the median, 80 at P05/P95, and 50 at the
+observed minimum/maximum. The weighted overall score uses loudness 30%, bass
+25%, treble 20%, sharpness 15%, and flatness 10%. A separate worst-feature
+status keeps individual weaknesses visible without replacing the weighted
+overall result. These are engineering defaults derived from a good-only cohort,
+not validated perceptual weights or diagnostic limits.
+
+Score a set of already-extracted values from Python:
+
+```python
+from backend.good_audio_thresholds import evaluate_features
+
+assessment = evaluate_features(
+    {
+        "loudness": -11.2,
+        "bass": 70.7,
+        "treble": 0.13,
+        "sharpness": 0.00075,
+        "flatness": 0.000032,
+    }
+)
+
+print(assessment["overall_score"])
+print(assessment["overall_status"])
+print(assessment["worst_feature_status"])
+print(assessment["worst_features"])
+```
+
+All five inputs are required and must be finite. On the current reference
+cohort, weighted scoring produces 26 `good` and 4
+`good_but_needs_improvement` overall results, with no `bad` results. The
+worst-feature field separately identifies 10 recordings with at least one
+feature outside P05-P95 but still inside the observed envelope.
 
 ### Analyzer regression tests
 
@@ -124,16 +252,51 @@ From `backend`, run:
 python -m unittest discover -s tests -v
 ```
 
-The suite includes settings validation, quality pass/warning/failure decisions,
+The suite includes settings validation, controlled phone THD/THD+N and noise
+measurements, BS.1770 loudness output, quality pass/warning/failure decisions,
 pre-decode file-size enforcement, shared CSV behavior, prefix-scoped cleanup,
-audio upload validation, and security regressions. A successful run currently
-ends with `Ran 17 tests` and `OK`.
+empirical-threshold derivation and scoring, audio upload validation, and security
+regressions. The current suite completes 38 tests, including eight dedicated
+empirical-threshold tests.
+
+### API upload analysis and output dump
+
+`POST /api/audio-uploads` accepts an authenticated multipart audio upload and an
+`analysis_purpose` of `quality_evaluation` or `settings_suggestion`. After the
+server validates and stores the file, it invokes `audio_analyzer.py` in an
+isolated subprocess using the same Python executable as Flask. API analysis
+disables plots and shared CSV writes to reduce server latency; the analyzer's
+nested JSON feature output is retained.
+
+Each request writes:
+
+```text
+AUDIO_ANALYSIS_OUTPUT_DIR/<user_id>/<assessment_id>/analysis_dump.json
+```
+
+The placeholder dump includes process status, exit code, bounded stdout/stderr,
+analysis purpose, and the complete analyzer JSON. Exit code `3` means feature
+extraction completed but quality thresholds failed, so it is stored as a
+completed analysis. Technical failures are stored with `analysis_status` set to
+`failed`. The same dump is returned in the upload response and is available
+later through `GET /api/audio-uploads/<id>/analysis-dump`; ownership is enforced.
+
+The API maps noise, distortion, bass, treble, loudness, sharpness, and flatness
+into `audio_analysis_result`. No placeholder numerical quality score is
+invented; `quality_score` remains null until the empirical scorer is connected
+to this request path.
+
+Configure `AUDIO_ANALYSIS_OUTPUT_DIR` and
+`AUDIO_ANALYSIS_TIMEOUT_SECONDS` in `.env`. Production currently uses a
+300-second analyzer limit, a 360-second Flutter timeout, and 420-second Gunicorn
+and Nginx request windows. This synchronous implementation is suitable for validation; a durable
+background queue should replace it before high-concurrency use.
 
 ## OVHcloud production deployment
 
 Production deployment for Ubuntu 26.04 on OVH VPS `139.99.89.112` is defined in
 [`deploy/ovh`](../deploy/ovh) and documented step-by-step in
-[`OVH_DEPLOYMENT.md`](../OVH_DEPLOYMENT.md). The deployment uses Nginx HTTPS,
+[`DeployOVH.md`](../DeployOVH.md). The deployment uses Nginx HTTPS,
 Gunicorn bound to loopback, local MySQL, systemd services, UFW, persistent upload
 storage, and automatic database/upload backups. Secrets remain in the ignored
 `backend/.env` file on the server.
@@ -220,6 +383,22 @@ sudo mysql < /opt/karaok/app/database/migrations/20260718_temporary_password_rec
 No output means the migration succeeded. `ERROR 1060 ... Duplicate column name`
 means the column already existed; do not run the migration again.
 
+For the registration-OTP user foreign key, check the verification column:
+
+```bash
+sudo mysql -D karaok_db -e "SHOW COLUMNS FROM user LIKE 'email_verified_at';"
+```
+
+If it displays no row, run this migration once before restarting the backend:
+
+```bash
+sudo mysql < /opt/karaok/app/database/migrations/20260720_registration_otp_user_fk.sql
+```
+
+This migration marks existing accounts as verified and recreates the
+`registration_otp` table with a `user_id` foreign key. Recreating the table
+invalidates unfinished OTPs; affected users must submit registration again.
+
 #### 7. Run the backend tests
 
 ```bash
@@ -278,7 +457,7 @@ The production `backend/.env` is intentionally ignored by Git and must be
 maintained directly on the VPS; `git pull` does not replace it. Database data and
 persistent uploads must remain outside the Git working tree so application updates
 cannot replace them. See the complete update, backup, and rollback preparation in
-[`OVH_DEPLOYMENT.md`](../OVH_DEPLOYMENT.md).
+[`DeployOVH.md`](../DeployOVH.md).
 
 ## Security model
 
@@ -293,7 +472,10 @@ cannot replace them. See the complete update, backup, and rollback preparation i
 - Authentication endpoints are rate limited, and sensitive responses use `Cache-Control: no-store`.
 - Authentication, authorization failures, password recovery, and data changes are recorded in `audit_log`.
 - Login accepts either the account username or verified email address through the `identifier` field.
-- Registration uses a six-digit, expiring OTP. The code is emailed through the configured SMTP provider and only its hash is stored in `registration_otp`.
+- Registration uses a six-digit, expiring OTP. Registration creates an
+  unverified `user`, and `registration_otp.user_id` references that account.
+  The code is delivered to the user's normalized email, and only its hash is
+  stored. The server returns the canonical email for client verification.
 
 ## Security implementation status and decisions
 
@@ -310,7 +492,7 @@ All requested application-level security controls are implemented. The database 
 | Forgot/reset password              | Implemented                                                   | Requests are rate-limited and return a uniform response. A random temporary password replaces the old password, active refresh sessions are revoked, and the temporary password is emailed. Login requires immediate password replacement and other protected operations are blocked until it is completed. | Flask-Limiter; Python`secrets` and `SystemRandom`; Argon2id hashing; SMTP with `EmailMessage` and STARTTLS; MySQL `requires_password_change`; session revocation; uniform API responses; mandatory-change screen in Flutter.                                  | Uniform responses reduce enumeration. Forced replacement limits the temporary credential to account recovery and prevents normal application use until the user establishes a private password.                                                                                                   |
 | Audit logging                      | Implemented                                                   | Authentication outcomes, refresh/logout, access denial, validation failure, password recovery, registration, password changes, and mutations record actor, action, result, resource, IP, user agent, details, and server time. Audit-log access requires admin.                                             | Central`audit()` helper; MySQL `audit_log`; UTC server timestamps; authenticated actor ID; client IP and user-agent metadata; parameterized inserts; admin-only audit endpoint; secret-field exclusion.                                                       | Security events are separate rows so history is not overwritten by current entity state. Passwords, OTPs, temporary passwords, and bearer tokens are excluded from logs.                                                                                                                          |
 | Accountability and non-repudiation | Application support implemented; deployment controls required | The application records attributable events and ignores forwarded IP headers unless configured behind a trusted proxy. Production must deny audit updates/deletes and export records to immutable or append-only storage.                                                                                   | `audit_log`; JWT identity; trusted-proxy configuration with Werkzeug `ProxyFix`; Nginx; database privilege separation; protected backups and recommended off-server append-only log export.                                                                   | A mutable database controlled by one operator cannot alone establish strong or legal non-repudiation. That requires separation of duties, restricted privileges, trustworthy attribution, retention controls, and an independently protected log destination.                                     |
-| Documentation and verification     | Implemented                                                   | This section records the control, mechanism, and reason for every feature. Regression tests cover password policy, normalization, token hashing, JWT claims, technician registration, and rejection of public admin registration.                                                                           | `backend/README.md`; `OVH_DEPLOYMENT.md`; `database/schema.sql`; Python `unittest`; Flask test client; `flutter analyze`; `flutter test`; production health checks.                                                                                           | Tests prevent silent policy regression, while documentation makes code assumptions and deployment responsibilities explicit.                                                                                                                                                                      |
+| Documentation and verification     | Implemented                                                   | This section records the control, mechanism, and reason for every feature. Regression tests cover password policy, normalization, token hashing, JWT claims, technician registration, and rejection of public admin registration.                                                                           | `backend/README.md`; `DeployOVH.md`; `database/schema.sql`; Python `unittest`; Flask test client; `flutter analyze`; `flutter test`; production health checks.                                                                                           | Tests prevent silent policy regression, while documentation makes code assumptions and deployment responsibilities explicit.                                                                                                                                                                      |
 
 ### RBAC matrix
 
@@ -335,7 +517,7 @@ The active schema is [`database/schema.sql`](../database/schema.sql). It keeps t
 
 | Table                     | What it stores                                                                                                                                                                                                 | How the application uses it                                                                                                                                                                                                                                                                    |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `user`                    | One account per row: login name, password hash, email, role, active status, mandatory-password-change state, security-update time, and creation time. The`user_id` value is the identity used by foreign keys. | Authentication looks up the account by`username` or `email`; the `password` column stores the Argon2id hash; `requires_password_change` restricts temporary-password sessions; `role` is re-checked on protected requests. Application roles are lowercase `owner`, `technician`, and `admin`. |
+| `user`                    | One account per row: login name, password hash, email, email-verification time, role, active status, mandatory-password-change state, security-update time, and creation time. The`user_id` value is the identity used by foreign keys. | Authentication looks up the account by`username` or `email`; `email_verified_at` remains null until OTP verification; the `password` column stores the Argon2id hash; `requires_password_change` restricts temporary-password sessions; `role` is re-checked on protected requests. Application roles are lowercase `owner`, `technician`, and `admin`. |
 | `genre_preset`            | Shared recommended sound values for a genre, including bass, treble, loudness, sharpness, and flatness.`genre_name` is unique so one shared preset cannot be accidentally duplicated.                          | The analysis result points to a preset through`preset_id`. This preserves which recommendation was used for an assessment.                                                                                                                                                                     |
 | `audio_quality_threshold` | Named quality rules: maximum noise, maximum distortion, and minimum quality score.                                                                                                                             | An analysis result points to the threshold used through`threshold_id`, making the decision reproducible if thresholds change later.                                                                                                                                                            |
 | `assessment`              | The uploaded-audio job itself: owner (`user_id`), file path, processing status, date, external API reference, processing time, display name, duration, and result status.                                      | This is the parent record for one audio assessment. Its lifecycle is represented by`assessment_status`; application metadata is stored on the same row because it depends directly on `assessment_id`; detailed measurements belong in `audio_analysis_result`.                                |
@@ -352,10 +534,16 @@ These tables do not replace the original tables. They add capabilities that the 
 | `audit_log`            | Security and accountability events such as login failures, authorization failures, password resets, and data changes, including actor, action, result, client information, and timestamp. | Audit records are append-only events. They should not be columns on`user` or `assessment`, because one actor can create many events across many resource types. |
 | `user_genre_setting`   | A user's saved genre adjustment, optionally linked to the shared`genre_preset`, including volume and tone values.                                                                         | Shared presets and user-specific overrides have different ownership and lifecycles, so overrides belong in a child table.                                       |
 | `audio_upload`         | An upload record with owner, optional assessment, filename, genre label, score, status, and creation time.                                                                                | An upload may exist before processing creates an`assessment`; the nullable relationship supports that workflow without changing the original assessment table.  |
+| `registration_otp`     | A hashed, expiring six-digit code, attempt count, and `user_id` foreign key for one unverified account.                                                                                   | OTP state is short-lived and separate from the account; the foreign key enforces that every pending OTP belongs to a real user row.                              |
 
 ### Relationships and normalization
 
-The schema uses `user.user_id` as the account key. `assessment.user_id`, security tables, and upload records reference it with foreign keys. `audio_analysis_result` references `assessment`, `audio_quality_threshold`, and `genre_preset`, while upload records reference `assessment` when applicable. Account security state and assessment application metadata are stored directly on their one-to-one parent rows.
+The schema uses `user.user_id` as the account key. `registration_otp.user_id`,
+`assessment.user_id`, security tables, and upload records reference it with
+foreign keys. `audio_analysis_result` references `assessment`,
+`audio_quality_threshold`, and `genre_preset`, while upload records reference
+`assessment` when applicable. Account security state and assessment application
+metadata are stored directly on their one-to-one parent rows.
 
 The design is approximately in third normal form: each table describes one subject or event, non-key attributes depend on that table's key, and cross-table relationships are represented by foreign keys. `user_security` and `assessment_metadata` were merged because their columns depended directly and exclusively on `user_id` and `assessment_id`, respectively. Historical measurements such as `quality_score`, `noise_level`, and `bass` intentionally remain on `audio_analysis_result`; they are snapshots of a completed assessment and must not change when a newer preset or threshold is created. That is controlled historical duplication, not an accidental normalization violation.
 
@@ -385,6 +573,7 @@ Public endpoints:
 
 - `GET /api/health`
 - `POST /api/auth/register`
+- `POST /api/auth/register/verify`
 - `POST /api/auth/login`
 - `POST /api/auth/refresh`
 - `POST /api/auth/logout`
@@ -401,7 +590,8 @@ Authenticated endpoints:
 - `GET /api/genre-settings` — owner or technician
 - `POST /api/genre-settings` — owner only
 - `GET /api/audio-uploads` — owner upload history, scoped to the authenticated user
-- `POST /api/audio-uploads` — owner or technician; authenticated `multipart/form-data` upload using file field `audio`, required `duration_seconds` (1–300), and optional `genre`. Accepted extensions are WAV, MP3, M4A, AAC, OGG, and FLAC; the default maximum is 25 MB. A successful request returns HTTP 201 with the upload and assessment IDs and a `Pending` status.
+- `POST /api/audio-uploads` — owner or technician; authenticated `multipart/form-data` upload using file field `audio`, required `duration_seconds` (1–300), `analysis_purpose` (`quality_evaluation` or `settings_suggestion`), and optional `genre`. Accepted extensions are WAV, MP3, M4A, AAC, OGG, and FLAC; the default maximum is 25 MB. The server runs `audio_analyzer.py` and returns HTTP 201 with `Completed` or `Failed` plus the placeholder `analysis_dump`.
+- `GET /api/audio-uploads/<id>/analysis-dump` — owner or technician; returns the stored raw analyzer dump when the upload belongs to the authenticated user
 - `GET /api/audit-logs` — admin only
 
 Send the access token on protected requests:
@@ -422,8 +612,20 @@ Authorization: Bearer <access-token>
 
 ## Email-verified registration
 
-Registration is two-step: `POST /api/auth/register` validates the account details and sends a six-digit OTP through SMTP; `POST /api/auth/register/verify` accepts the email and code and then creates the account. The Flutter client presents verification on a dedicated OTP screen after the registration form is submitted. The code is hashed before storage and is never logged in plaintext.
+Registration is two-step: `POST /api/auth/register` validates the account
+details, creates a `user` with `email_verified_at = NULL`, links an OTP through
+`registration_otp.user_id`, and sends the code through SMTP.
+`POST /api/auth/register/verify` joins the OTP to that user by foreign key,
+matches the normalized email and code, and sets `email_verified_at`. Unverified
+accounts cannot log in, refresh tokens, or access protected routes. The Flutter
+client presents verification on a dedicated OTP screen after registration. The
+code is hashed before storage and is never logged in plaintext.
 
 Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, and `REGISTRATION_OTP_MINUTES` in `backend/.env`. The SQL seed section adds baseline genre presets and quality thresholds with `INSERT IGNORE`, so it can be rerun safely.
 
-`registration_otp` is a staging table and intentionally has no foreign key to `user`: no user row exists before verification. When verification succeeds, the API inserts the pending account into `user` and deletes the staging row in the same database transaction. Invalid codes increment `attempts`, and verification is rejected after five failed attempts.
+`registration_otp.user_id` is non-null, unique, and references `user.user_id`
+with `ON DELETE CASCADE`. The API joins through this relationship and matches
+the user's normalized email before comparing the code. Successful verification
+updates that linked user's `email_verified_at` and deletes the OTP in the same
+transaction. Invalid codes increment `attempts`, and verification is rejected
+after five failed attempts.

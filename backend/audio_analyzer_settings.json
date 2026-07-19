@@ -16,6 +16,7 @@
     "severe_clipped_sample_percentage": 0.5,
     "severe_clipped_frame_percentage": 20.0,
     "severe_spectral_irregularity": 0.35,
+    "hpss_max_frames": 2048,
     "distortion_weights": {
       "clipping": 0.35,
       "high_frequency": 0.25,
@@ -42,5 +43,25 @@
     "quality_failure_exit_code": 3,
     "record_technical_failures_in_csv": true,
     "cleanup_incomplete_outputs": true
+  },
+  "phone_recording": {
+    "test_tone_frequency_hz": 1000.0,
+    "analysis_minimum_frequency_hz": 20.0,
+    "analysis_maximum_frequency_hz": 20000.0,
+    "maximum_harmonic": 10,
+    "tone_search_tolerance_hz": 20.0,
+    "discard_start_seconds": 1.0,
+    "discard_end_seconds": 1.0,
+    "minimum_measurement_seconds": 3.0,
+    "maximum_measurement_seconds": 30.0,
+    "reference_spl_db": null,
+    "require_lossless": true,
+    "require_mono": true,
+    "processing_disabled_confirmed": false,
+    "fixed_setup_confirmed": false,
+    "phone_model": "",
+    "recording_app": "",
+    "phone_to_source_distance_meters": null,
+    "microphone_orientation": ""
   }
 }

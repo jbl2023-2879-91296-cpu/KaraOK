@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
@@ -47,9 +48,10 @@ class SecurityValidationTests(unittest.TestCase):
         connection = unittest.mock.MagicMock()
         cursor = connection.cursor.return_value
         cursor.fetchone.return_value = None
+        cursor.lastrowid = 31
         with patch.object(api, "get_db", return_value=connection), patch.object(
             api, "send_registration_otp"
-        ), patch.object(api, "SMTP_HOST", "smtp.example.com"), patch.object(
+        ) as send_otp, patch.object(api, "SMTP_HOST", "smtp.example.com"), patch.object(
             api, "SMTP_USERNAME", "user"
         ), patch.object(api, "SMTP_PASSWORD", "password"), patch.object(
             api, "SMTP_FROM", "no-reply@example.com"
@@ -58,14 +60,91 @@ class SecurityValidationTests(unittest.TestCase):
                 "/api/auth/register",
                 json={
                     "name": "new-tech",
-                    "email": "tech@example.com",
+                    "email": "  Tech@Example.COM ",
                     "password": "Correct-Horse-7",
                     "user_type": "technician",
                 },
-            )
+        )
         self.assertEqual(response.status_code, 202)
-        inserted_values = cursor.execute.call_args_list[-1].args[1]
-        self.assertEqual(inserted_values[3], "technician")
+        self.assertEqual(response.get_json()["email"], "tech@example.com")
+        insert_user = next(
+            call
+            for call in cursor.execute.call_args_list
+            if "INSERT INTO user" in call.args[0]
+        )
+        self.assertEqual(insert_user.args[1][1], "tech@example.com")
+        self.assertEqual(insert_user.args[1][3], "technician")
+        insert_otp = next(
+            call
+            for call in cursor.execute.call_args_list
+            if "INSERT INTO registration_otp" in call.args[0]
+        )
+        self.assertEqual(insert_otp.args[1][0], 31)
+        send_otp.assert_called_once()
+        self.assertEqual(send_otp.call_args.args[0], "tech@example.com")
+
+    def test_registration_otp_schema_has_user_foreign_key(self):
+        schema = (
+            Path(__file__).resolve().parents[2] / "database" / "schema.sql"
+        ).read_text(encoding="utf-8")
+        otp_table = schema.split("CREATE TABLE IF NOT EXISTS registration_otp", 1)[1]
+        self.assertIn("user_id INT NOT NULL", otp_table)
+        self.assertIn("FOREIGN KEY (user_id) REFERENCES user(user_id)", otp_table)
+        self.assertIn("email_verified_at DATETIME NULL", schema)
+
+    def test_verification_marks_linked_user_email_as_verified(self):
+        connection = unittest.mock.MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.return_value = {
+            "registration_id": 9,
+            "code_hash": api.token_hash("123456"),
+            "attempts": 0,
+            "user_id": 31,
+            "username": "new-tech",
+            "email": "tech@example.com",
+            "role": "technician",
+        }
+        with patch.object(api, "get_db", return_value=connection), patch.object(
+            api, "auth_response", return_value=({"verified": True}, 201)
+        ), patch.object(api, "audit"):
+            response = api.app.test_client().post(
+                "/api/auth/register/verify",
+                json={"email": "tech@example.com", "code": "123456"},
+            )
+
+        self.assertEqual(response.status_code, 201)
+        statements = "\n".join(
+            call.args[0] for call in cursor.execute.call_args_list
+        )
+        self.assertIn("JOIN user ON user.user_id = registration_otp.user_id", statements)
+        self.assertIn("UPDATE user SET email_verified_at", statements)
+        self.assertNotIn("INSERT INTO user", statements)
+
+    def test_login_rejects_unverified_email_account(self):
+        connection = unittest.mock.MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.return_value = {
+            "user_id": 31,
+            "username": "new-tech",
+            "email": "tech@example.com",
+            "user_type": "technician",
+            "password_hash": api.password_hasher.hash("Correct-Horse-7"),
+            "is_active": True,
+            "email_verified_at": None,
+            "requires_password_change": False,
+        }
+        with patch.object(api, "get_db", return_value=connection), patch.object(
+            api, "audit"
+        ):
+            response = api.app.test_client().post(
+                "/api/auth/login",
+                json={
+                    "identifier": "tech@example.com",
+                    "password": "Correct-Horse-7",
+                },
+            )
+
+        self.assertEqual(response.status_code, 401)
 
     def test_auth_token_has_required_security_claims(self):
         token, _ = api.issue_access_token(
@@ -80,6 +159,13 @@ class SecurityValidationTests(unittest.TestCase):
         self.assertEqual(payload["sub"], "7")
         self.assertEqual(payload["role"], "owner")
         self.assertIn("jti", payload)
+
+    def test_security_update_comparison_uses_epoch_seconds(self):
+        payload = {"iat": 1_721_400_000}
+        current = {"security_updated_at_epoch": 1_721_400_000}
+        newer = {"security_updated_at_epoch": 1_721_400_001}
+        self.assertFalse(api._token_precedes_security_update(payload, current))
+        self.assertTrue(api._token_precedes_security_update(payload, newer))
 
     def test_forgot_password_replaces_password_and_revokes_sessions(self):
         connection = unittest.mock.MagicMock()

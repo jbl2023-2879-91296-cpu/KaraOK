@@ -11,14 +11,14 @@ class SignUpScreen extends StatefulWidget {
 }
 
 class _SignUpScreenState extends State<SignUpScreen> {
-  final _formKey      = GlobalKey<FormState>();
-  final _nameCtrl     = TextEditingController();
-  final _emailCtrl    = TextEditingController();
-  final _passCtrl     = TextEditingController();
-  final _confirmCtrl  = TextEditingController();
-  bool  _obscurePass  = true;
-  bool  _obscureConf  = true;
-  bool  _loading      = false;
+  final _formKey = GlobalKey<FormState>();
+  final _nameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
+  bool _obscurePass = true;
+  bool _obscureConf = true;
+  bool _loading = false;
   String? _error;
   String _userType = 'owner';
 
@@ -35,21 +35,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   Future<void> _signUp() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final response = await ApiService().startRegistration(
-        name:     _nameCtrl.text.trim(),
-        email:    _emailCtrl.text.trim(),
+        name: _nameCtrl.text.trim(),
+        email: _emailCtrl.text.trim(),
         password: _passCtrl.text,
         userType: _userType,
       );
       if (!mounted) return;
+      final serverEmail = response['email'];
+      final verificationEmail = serverEmail is String && serverEmail.isNotEmpty
+          ? serverEmail
+          : _emailCtrl.text.trim().toLowerCase();
       setState(() => _loading = false);
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => OtpVerificationScreen(
-            email: _emailCtrl.text.trim(),
+            email: verificationEmail,
             developmentCode: response['development_code'] as String?,
           ),
         ),
@@ -64,7 +71,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() { _error = 'Could not connect to server.'; _loading = false; });
+      setState(() {
+        _error = 'Could not connect to server.';
+        _loading = false;
+      });
     }
   }
 
@@ -100,7 +110,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 Text(
                   'Create an account to save your results',
                   style: const TextStyle(
-                      color: Color(0xFF888888), fontSize: 14),
+                    color: Color(0xFF888888),
+                    fontSize: 14,
+                  ),
                 ),
                 const SizedBox(height: 32),
                 _FieldLabel('Account type'),
@@ -109,12 +121,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   initialValue: _userType,
                   items: const [
                     DropdownMenuItem(value: 'owner', child: Text('Owner')),
-                    DropdownMenuItem(value: 'technician', child: Text('Technician')),
+                    DropdownMenuItem(
+                      value: 'technician',
+                      child: Text('Technician'),
+                    ),
                   ],
                   onChanged: _loading
                       ? null
                       : (value) => setState(() => _userType = value ?? 'owner'),
-                  decoration: const InputDecoration(hintText: 'Select account type'),
+                  decoration: const InputDecoration(
+                    hintText: 'Select account type',
+                  ),
                 ),
                 const SizedBox(height: 16),
                 // Username
@@ -159,7 +176,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                   validator: (v) {
                     if (v == null || v.isEmpty) return 'Enter a password';
-                    if (v.length < 12) return 'Password must be at least 12 characters';
+                    if (v.length < 12) {
+                      return 'Password must be at least 12 characters';
+                    }
                     if (!RegExp(r'[A-Z]').hasMatch(v) ||
                         !RegExp(r'[a-z]').hasMatch(v) ||
                         !RegExp(r'\d').hasMatch(v) ||
@@ -197,9 +216,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 if (_error != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: Text(_error!,
-                        style: const TextStyle(
-                            color: Color(0xFFF44336), fontSize: 13)),
+                    child: Text(
+                      _error!,
+                      style: const TextStyle(
+                        color: Color(0xFFF44336),
+                        fontSize: 13,
+                      ),
+                    ),
                   ),
                 const SizedBox(height: 10),
                 // Sign Up button
@@ -211,20 +234,26 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _accentColor,
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                     child: _loading
                         ? const SizedBox(
                             width: 22,
                             height: 22,
                             child: CircularProgressIndicator(
-                                color: Colors.white, strokeWidth: 2.5),
+                              color: Colors.white,
+                              strokeWidth: 2.5,
+                            ),
                           )
-                        : const Text('Send Verification Code',
+                        : const Text(
+                            'Send Verification Code',
                             style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700)),
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -232,16 +261,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text('Already have an account? ',
-                        style: TextStyle(
-                            color: Color(0xFF888888), fontSize: 14)),
+                    const Text(
+                      'Already have an account? ',
+                      style: TextStyle(color: Color(0xFF888888), fontSize: 14),
+                    ),
                     GestureDetector(
                       onTap: () => Navigator.pushReplacement(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              const LoginScreen(),
-                        ),
+                        MaterialPageRoute(builder: (_) => const LoginScreen()),
                       ),
                       child: Text(
                         'Log In',
@@ -272,12 +299,13 @@ class _FieldLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Text(
-        text,
-        style: const TextStyle(
-            color: Color(0xFFCCCCCC),
-            fontSize: 13,
-            fontWeight: FontWeight.w600),
-      );
+    text,
+    style: const TextStyle(
+      color: Color(0xFFCCCCCC),
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+    ),
+  );
 }
 
 class _AuthField extends StatelessWidget {
@@ -316,8 +344,10 @@ class _AuthField extends StatelessWidget {
           borderSide: BorderSide.none,
         ),
         errorStyle: const TextStyle(color: Color(0xFFF44336)),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
     );
   }

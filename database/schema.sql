@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS user (
     username VARCHAR(50) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
     email VARCHAR(100) NOT NULL UNIQUE,
+    email_verified_at DATETIME NULL,
 
     -- Kept as a string so roles are extensible; no user-type ENUM is used.
     role VARCHAR(30) NOT NULL DEFAULT 'Consumer',
@@ -239,21 +240,19 @@ CREATE INDEX idx_audio_upload_user_date
 
 -- ==========================================
 -- ADDITIVE TABLE: REGISTRATION OTP
--- Stores only pending registration data and a hash of the email code.
+-- Connects each pending email code to one unverified user account.
 -- ==========================================
 
 CREATE TABLE IF NOT EXISTS registration_otp (
     registration_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL,
-    email VARCHAR(100) NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(30) NOT NULL DEFAULT 'Consumer',
+    user_id INT NOT NULL,
     code_hash CHAR(64) NOT NULL,
     expires_at DATETIME NOT NULL,
-    verified_at DATETIME NULL,
     attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_registration_otp_email (email)
+    UNIQUE KEY uq_registration_otp_user (user_id),
+    CONSTRAINT fk_registration_otp_user
+        FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE CASCADE
 );
 
 -- ==========================================

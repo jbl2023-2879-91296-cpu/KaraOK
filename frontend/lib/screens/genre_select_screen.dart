@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../widgets/bottom_nav_bar.dart';
+import '../widgets/app_navigation_drawer.dart';
 import 'audio_test_screen.dart';
 
 class GenreSelectScreen extends StatefulWidget {
@@ -10,23 +10,21 @@ class GenreSelectScreen extends StatefulWidget {
 }
 
 class _GenreSelectScreenState extends State<GenreSelectScreen> {
-  int _selectedNavIndex = 1;
   String _searchQuery = '';
 
   final List<_Genre> _genres = const [
-    _Genre(name: 'Rock',    color: Color(0xFFE53935)),
+    _Genre(name: 'Rock', color: Color(0xFFE53935)),
     _Genre(name: 'Classic', color: Color(0xFF43A047)),
-    _Genre(name: 'Pop',     color: Color(0xFF5C6BC0)),
-    _Genre(name: 'Ballad',  color: Color(0xFFD4C03A)),
-    _Genre(name: 'HipHop',  color: Color(0xFF8E24AA)),
-    _Genre(name: 'R&B',     color: Color(0xFFE07B00)),
+    _Genre(name: 'Pop', color: Color(0xFF5C6BC0)),
+    _Genre(name: 'Ballad', color: Color(0xFFD4C03A)),
+    _Genre(name: 'HipHop', color: Color(0xFF8E24AA)),
+    _Genre(name: 'R&B', color: Color(0xFFE07B00)),
   ];
 
   List<_Genre> get _filtered {
     if (_searchQuery.isEmpty) return _genres;
     return _genres
-        .where((g) =>
-            g.name.toLowerCase().contains(_searchQuery.toLowerCase()))
+        .where((g) => g.name.toLowerCase().contains(_searchQuery.toLowerCase()))
         .toList();
   }
 
@@ -34,13 +32,11 @@ class _GenreSelectScreenState extends State<GenreSelectScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
+      drawer: const AppNavigationDrawer(),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D0D0D),
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.menu, color: Colors.white),
-          onPressed: () {},
-        ),
+        leading: const AppDrawerButton(),
         title: _buildLogoTitle(),
         centerTitle: true,
         actions: [
@@ -73,15 +69,20 @@ class _GenreSelectScreenState extends State<GenreSelectScreen> {
                 decoration: InputDecoration(
                   hintText: 'Value',
                   hintStyle: const TextStyle(color: Color(0xFF555555)),
-                  suffixIcon: const Icon(Icons.search, color: Color(0xFF555555)),
+                  suffixIcon: const Icon(
+                    Icons.search,
+                    color: Color(0xFF555555),
+                  ),
                   filled: true,
                   fillColor: const Color(0xFF1C1C2E),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                     borderSide: BorderSide.none,
                   ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
@@ -124,10 +125,6 @@ class _GenreSelectScreenState extends State<GenreSelectScreen> {
             ],
           ),
         ),
-      ),
-      bottomNavigationBar: BottomNavBar(
-        selectedIndex: _selectedNavIndex,
-        onTap: (i) => setState(() => _selectedNavIndex = i),
       ),
     );
   }

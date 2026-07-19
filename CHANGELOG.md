@@ -23,30 +23,96 @@ All notable changes to KaraOK are documented here.
   prefix-scoped incomplete-output cleanup, and documented exit codes.
 - Added analyzer safety regression coverage for settings validation, file-size
   rejection, quality status, shared CSV appending, and output cleanup.
+- Added controlled phone-recording mode with required separate lossless mono
+  noise and 1 kHz tone recordings, end-to-end THD/THD+N, measured SNR, optional
+  field SPL calibration, protocol confirmations, and reliability warnings.
+- Added ITU-R BS.1770-5-aligned mono integrated/momentary/short-term loudness and
+  oversampled true-peak reporting while retaining the existing RMS dBFS values.
+- Added `backend/good_audio_thresholds`, a separate NumPy-based package that
+  derives auditable P05/P95 and observed-envelope references for loudness, bass,
+  treble, normalized sharpness, and spectral flatness from the 30 completed
+  known-good recordings.
+- Added continuous per-feature scores, configurable ranked weights, a weighted
+  overall score/status, and separate worst-feature reporting. The generated JSON
+  records robust statistics, fixed-seed bootstrap intervals, correlations,
+  recovery sensitivity, cohort selection, and the source CSV SHA-256.
+- Added regression tests for empirical cohort selection, exact inclusive status
+  boundaries, score anchors, weighting, missing-value handling, and deterministic
+  artifact generation.
 
 ### Changed
 
+- Replaced the owner and technician home-screen `Start Audio Test` and separate
+  upload actions with `Evaluate Audio Quality` and `Generate Audio Settings
+  Suggestion`. Both authenticated and guest dashboards now open distinct pages
+  that reuse the complete record, pause, preview, replace, and file-selection
+  workflow while submitting a distinct analysis-purpose value.
+- Consolidated Home, Reports, account Settings, and Sign In/Log Out into a shared
+  upper-left hamburger drawer on every screen using the main navigation shell.
+  Removed the duplicated top-right account menu and bottom navigation. Audio
+  recording remains available from both dashboard feature cards.
+- Added the signed-in user's username, email, and account type to the Settings
+  screen above the existing password-change form.
+- Corrected the owner View all and Reports destination to show audio-test
+  Analysis History instead of recommendation-upload records.
+- Added a database-enforced registration relationship: pending accounts are
+  stored in `user` with a null `email_verified_at`, and
+  `registration_otp.user_id` references them through a cascading foreign key.
+  The server-normalized email is carried through Flutter verification.
+- Connected authenticated multipart uploads to `audio_analyzer.py` through an
+  isolated, timeout-bounded server subprocess. Each assessment now stores and
+  returns an inspectable placeholder `analysis_dump.json`, with an
+  ownership-protected retrieval endpoint and extracted feature persistence.
+- Changed mobile microphone recordings from temporary staging to the app's
+  private documents storage; successfully uploaded recordings remain local.
+- Increased Flutter, Gunicorn, and Nginx analysis request windows for live
+  uploads while retaining a shorter configurable analyzer-process timeout.
+- Fixed immediate post-login 401 responses by comparing JWT issue time with the
+  MySQL account-security timestamp as Unix epoch seconds instead of treating a
+  timezone-naive database value as UTC.
+- Added Flutter Web audio staging and multipart upload support. Browser-selected
+  files and browser recordings now use Blob URLs and in-memory bytes instead of
+  native filesystem paths, and multipart requests leave boundary generation to
+  the HTTP client.
 - Changed CSV output from one timestamped file per recording to one appended
   `results/results.csv`, while keeping JSON and plots in per-recording folders.
 - Changed decoder diagnostics to clear recovery metadata and progress messages
   so recoverable MPEG damage is not presented as an unexplained fatal error.
 - Changed numerical loading to `float32` and added type-safe SoundFile/SciPy
   calls while preserving the feature formulas and stable aggregate arithmetic.
+- Changed quality SNR evaluation to prefer the separate noise recording when
+  controlled phone mode is active; ordinary runs retain quiet-frame estimation.
+- Changed no-reference quiet-frame SNR to advisory-only so continuous music is
+  not failed when quiet passages are mistaken for noise. Hard SNR failures now
+  require controlled phone mode with a separate noise recording; distortion and
+  clipping failure thresholds remain enforced.
+- Bounded the auxiliary HPSS harmonic/percussive calculation to uniformly
+  sampled active frames, retaining the reported feature while preventing it
+  from dominating full-song runtime. The sampling count and method are recorded.
+- Changed spectral-flatness plots to exclude inactive frames and scale to active
+  data, preventing small tonal measurements from appearing blank.
+- Changed user cancellation to clean incomplete per-run files and return exit
+  code 130 without appending a misleading technical-failure CSV row.
+- Applied all Dart analyzer fixes across the audio workflow, API client, staging
+  service, login, results, and detailed-report screens, including explicit
+  control-flow braces and current color-alpha APIs.
 - Expanded the backend and Flutter READMEs with analyzer setup, settings,
-  measurement limitations, output layout, recovery behavior, and test commands.
+  measurement limitations, output layout, recovery behavior, empirical reference
+  derivation/scoring, and test commands.
 
 ### Removed
 
-- Removed the abandoned empirical audio-dataset preparation package, CLI,
+- Removed the earlier abandoned empirical audio-dataset preparation package, CLI,
   tests, duplicate recording tree, source archive, and dataset-specific ignore
-  rules. The original recordings in `audio sample(good)` remain unchanged.
+  rules. It was not the isolated threshold package added above. The original
+  recordings in `audio sample(good)` remain unchanged.
 
 ### Validation
 
 - Verified normal and corrupted decoding, strict recovery rejection, quality
   pass/failure exit codes, invalid settings, oversized input, unwritable output,
-  simulated plot failure cleanup, all six plot exports, shared CSV history, and
-  the complete 17-test backend suite.
+  simulated plot failure cleanup, all six plot exports, shared CSV history, the
+  complete 21-test backend suite, clean Dart analysis, and the Flutter widget test.
 
 ## 2026-07-18 — Security and deployment documentation
 

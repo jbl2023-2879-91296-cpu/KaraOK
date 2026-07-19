@@ -1,6 +1,9 @@
 BUILDING_APK.md
 audio sample(good)
-OVH_DEPLOYMENT.md
+DeployOVH.md
 SECURITY_IMPLEMENTATION.pdf
 results
-tests
+backend/uploads/
+/tests/
+__pycache__/
+*.py[cod]
