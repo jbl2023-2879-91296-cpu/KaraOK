@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../widgets/bottom_nav_bar.dart';
+import '../widgets/app_navigation_drawer.dart';
 import '../widgets/guest_banner.dart';
 import '../services/user_session.dart';
 import 'detailed_report_screen.dart';
@@ -27,8 +27,6 @@ class ResultsScreen extends StatefulWidget {
 }
 
 class _ResultsScreenState extends State<ResultsScreen> {
-  int _selectedNavIndex = 0;
-
   String get _grade {
     if (widget.score >= 80) return 'GOOD';
     if (widget.score >= 60) return 'FAIR';
@@ -49,13 +47,11 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
+      drawer: const AppNavigationDrawer(),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D0D0D),
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.chevron_left, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: const AppDrawerButton(),
         title: const Text(
           'Results',
           style: TextStyle(
@@ -81,7 +77,9 @@ class _ResultsScreenState extends State<ResultsScreen> {
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 20, vertical: 12),
+                  horizontal: 20,
+                  vertical: 12,
+                ),
                 child: Column(
                   children: [
                     // Score card
@@ -97,7 +95,9 @@ class _ResultsScreenState extends State<ResultsScreen> {
                           Text(
                             'Audio Quality Score : ${widget.testName}',
                             style: const TextStyle(
-                                color: Color(0xFFCCCCCC), fontSize: 13),
+                              color: Color(0xFFCCCCCC),
+                              fontSize: 13,
+                            ),
                           ),
                           const SizedBox(height: 10),
                           RichText(
@@ -114,7 +114,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                                 TextSpan(
                                   text: '/100',
                                   style: TextStyle(
-                                    color: _gradeColor.withOpacity(0.7),
+                                    color: _gradeColor.withValues(alpha: 0.7),
                                     fontSize: 28,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -136,9 +136,10 @@ class _ResultsScreenState extends State<ResultsScreen> {
                             'The audio output is clear, stable, and\nwithin optimal quality thresholds.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                                color: Color(0xFF888888),
-                                fontSize: 13,
-                                height: 1.5),
+                              color: Color(0xFF888888),
+                              fontSize: 13,
+                              height: 1.5,
+                            ),
                           ),
                         ],
                       ),
@@ -163,7 +164,9 @@ class _ResultsScreenState extends State<ResultsScreen> {
                     // Status row
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFF1C1C2E),
                         borderRadius: BorderRadius.circular(10),
@@ -174,9 +177,10 @@ class _ResultsScreenState extends State<ResultsScreen> {
                           const Text(
                             'STATUS',
                             style: TextStyle(
-                                color: Color(0xFF888888),
-                                fontSize: 13,
-                                letterSpacing: 1.5),
+                              color: Color(0xFF888888),
+                              fontSize: 13,
+                              letterSpacing: 1.5,
+                            ),
                           ),
                           Row(
                             children: [
@@ -225,14 +229,16 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF1E5BB5),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                         child: const Text(
                           'View Visual Report',
                           style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700),
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ),
@@ -246,22 +252,27 @@ class _ResultsScreenState extends State<ResultsScreen> {
                           Navigator.pushAndRemoveUntil(
                             context,
                             MaterialPageRoute(
-                                builder: (_) => const AudioTestScreen()),
+                              builder: (_) => const AudioTestScreen(),
+                            ),
                             (route) => route.isFirst,
                           );
                         },
                         style: OutlinedButton.styleFrom(
                           side: const BorderSide(
-                              color: Color(0xFF3A3A5E), width: 1.5),
+                            color: Color(0xFF3A3A5E),
+                            width: 1.5,
+                          ),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                         child: const Text(
                           'Test another audio',
                           style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600),
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ),
@@ -274,25 +285,29 @@ class _ResultsScreenState extends State<ResultsScreen> {
                           color: const Color(0xFF1C1C2E),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                              color: const Color(0xFF3A3A5E), width: 1),
+                            color: const Color(0xFF3A3A5E),
+                            width: 1,
+                          ),
                         ),
                         child: Column(
                           children: [
                             const Text(
                               'Want to save your results?',
                               style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600),
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             const SizedBox(height: 4),
                             const Text(
                               'Create a free account to keep track of all your audio tests.',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                  color: Color(0xFF888888),
-                                  fontSize: 12,
-                                  height: 1.4),
+                                color: Color(0xFF888888),
+                                fontSize: 12,
+                                height: 1.4,
+                              ),
                             ),
                             const SizedBox(height: 12),
                             SizedBox(
@@ -310,14 +325,15 @@ class _ResultsScreenState extends State<ResultsScreen> {
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFF4A90D9),
                                   shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                          BorderRadius.circular(10)),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
                                 ),
                                 child: const Text(
                                   'Create Account / Sign In',
                                   style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w700),
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
                             ),
@@ -332,10 +348,6 @@ class _ResultsScreenState extends State<ResultsScreen> {
             ),
           ],
         ),
-      ),
-      bottomNavigationBar: BottomNavBar(
-        selectedIndex: _selectedNavIndex,
-        onTap: (i) => setState(() => _selectedNavIndex = i),
       ),
     );
   }
@@ -366,13 +378,18 @@ class _MetricBar extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label,
-                style: const TextStyle(color: Colors.white, fontSize: 13)),
-            Text(tag,
-                style: TextStyle(
-                    color: tagColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600)),
+            Text(
+              label,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+            ),
+            Text(
+              tag,
+              style: TextStyle(
+                color: tagColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 6),
@@ -382,16 +399,16 @@ class _MetricBar extends StatelessWidget {
             value: value,
             minHeight: 8,
             backgroundColor: const Color(0xFF2A2A3E),
-            valueColor:
-                AlwaysStoppedAnimation<Color>(const Color(0xFF4CAF50)),
+            valueColor: AlwaysStoppedAnimation<Color>(const Color(0xFF4CAF50)),
           ),
         ),
         const SizedBox(height: 4),
         Align(
           alignment: Alignment.centerRight,
-          child: Text(valueLabel,
-              style: const TextStyle(
-                  color: Color(0xFF888888), fontSize: 11)),
+          child: Text(
+            valueLabel,
+            style: const TextStyle(color: Color(0xFF888888), fontSize: 11),
+          ),
         ),
       ],
     );

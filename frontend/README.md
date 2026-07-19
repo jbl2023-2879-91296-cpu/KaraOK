@@ -13,7 +13,11 @@ Repository: [github.com/jbl2023-2879-91296-cpu/KaraOK](https://github.com/jbl202
 - Server-side input validation, login rate limiting, and security audit logs
 - Guest access for trying the application without saving a session
 - Role-specific home screens and result histories
-- Guided audio-test flow with recording, processing, score, and detailed-report screens
+- Separate audio-quality evaluation and settings-suggestion entry flows, each
+  supporting microphone recording or audio-file selection
+- Shared upper-left navigation drawer for Home, Reports, account Settings, and
+  session-aware Sign In or Log Out actions across the main app screens
+- Settings displays the signed-in user's username, email, and account type
 - Quality results including noise and distortion indicators
 - Searchable genre selection for owner tests
 - Recommended volume, bass, treble, flatness, and sharpness settings by genre
@@ -21,15 +25,21 @@ Repository: [github.com/jbl2023-2879-91296-cpu/KaraOK](https://github.com/jbl202
 - Saved audio-test history with individual result lookup and deletion
 - Standalone Python extraction of bass, treble, loudness, flatness, sharpness,
   estimated noise/SNR, and no-reference distortion indicators
+- NumPy-derived empirical good-audio ranges, per-feature scoring, a weighted
+  overall score, and separate worst-feature reporting
 
-Audio recording and file selection use a local single-file staging area before
-authenticated multipart submission to the API. Submitted assessments remain
-pending because automatic worker handoff is not part of the current API.
+Microphone recordings are saved under the application's private documents
+directory so a successful upload does not delete the local recording. Selected
+files are copied into temporary staging on native platforms. In Flutter Web,
+browser-selected files remain in memory, are previewed through their Blob URL,
+and are submitted as multipart bytes with the original filename. The API stores
+the upload, runs `audio_analyzer.py`, and returns a temporary raw
+`analysis_dump` that the app displays for validation.
 
 The repository now includes a complete standalone analyzer at
-[`backend/audio_analyzer.py`](../backend/audio_analyzer.py). Automatic invocation
-of this utility from the Flask upload/job lifecycle is not implemented yet, so
-the command-line analyzer and API pending-assessment workflow remain separate.
+[`backend/audio_analyzer.py`](../backend/audio_analyzer.py). Authenticated audio
+uploads invoke it through the Flask API; it can also be run independently from
+the command line.
 
 ### Running the standalone analyzer
 
@@ -47,6 +57,43 @@ quality limits are defined in
 See the [backend analyzer documentation](../backend/README.md#standalone-audio-feature-analyzer)
 for measurements, fail-safes, recovery behavior, outputs, and exit codes.
 
+### Empirical good-audio scoring
+
+The standalone analyzer remains responsible for feature extraction. The
+separate [`backend/good_audio_thresholds`](../backend/good_audio_thresholds/README.md)
+package uses the completed known-good recordings in `results/results.csv` to
+derive provisional ranges for integrated loudness, bass energy, treble energy,
+normalized sharpness, and spectral flatness.
+
+Regenerate the checked threshold artifact after the reference dataset changes:
+
+```powershell
+backend\.venv\Scripts\python.exe backend\good_audio_thresholds\derive_thresholds.py
+```
+
+The feature interpretation is:
+
+- inside P05-P95, including the boundaries: `good`;
+- outside P05-P95 but inside the observed minimum-maximum envelope:
+  `good_but_needs_improvement`;
+- strictly outside the observed envelope: `bad`;
+- missing or non-finite: `not_evaluated`.
+
+Each feature receives a continuous score with 100 at the median, 80 at P05/P95,
+and 50 at the observed minimum/maximum. The overall score is split across
+loudness 30%, bass 25%, treble 20%, sharpness 15%, and flatness 10%. Its status
+is `good` at 80 or higher, `good_but_needs_improvement` from 50 to less than 80,
+and `bad` below 50. The most severe individual feature is also returned as
+`worst_feature_status`; it is a separate warning and does not replace the
+weighted overall status.
+
+The generated
+[`good_audio_thresholds.json`](../backend/good_audio_thresholds/good_audio_thresholds.json)
+records the exact NumPy statistics, bootstrap intervals, correlations, recovery
+sensitivity, selected analysis IDs, and source CSV SHA-256. These bounds come
+from 30 good-only phone recordings, so `bad` currently means outside that
+observed envelope rather than a validated perceptual diagnosis.
+
 ## Technology stack
 
 - **Client:** Flutter and Dart
@@ -63,6 +110,7 @@ KaraOK/
 |   |-- app.py                         # Flask API
 |   |-- audio_analyzer.py              # Standalone feature and quality analysis CLI
 |   |-- audio_analyzer_settings.json   # Adjustable analysis and fail-safe limits
+|   |-- good_audio_thresholds/         # Empirical range derivation and scoring
 |   |-- requirements.txt               # Python dependencies
 |   |-- tests/                         # Backend and analyzer regression tests
 |   `-- README.md                      # API and analyzer documentation
@@ -191,7 +239,8 @@ The Flutter client uses these REST resources:
 | `GET`, `POST` | `/api/audio-tests` | List or save audio-test results |
 | `GET`, `DELETE` | `/api/audio-tests/<id>` | Retrieve or delete a test result |
 | `GET`, `POST` | `/api/genre-settings` | Retrieve or save genre settings |
-| `GET`, `POST` | `/api/audio-uploads` | List or save upload records |
+| `GET`, `POST` | `/api/audio-uploads` | List uploads or upload and analyze an audio file |
+| `GET` | `/api/audio-uploads/<id>/analysis-dump` | Retrieve the authenticated user's raw analyzer dump |
 | `GET` | `/api/audit-logs` | Review recent security and data-change events (owner only) |
 
 ## Development checks
@@ -202,6 +251,16 @@ Run these commands from `frontend` before submitting changes:
 flutter analyze
 flutter test
 ```
+
+Run the backend and empirical-threshold regressions from `backend`:
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+The current backend suite contains 29 passing tests, including eight tests for
+cohort selection, exact boundary behavior, continuous scoring, configurable
+weights, missing measurements, and deterministic threshold generation.
 
 ## Security and deployment notes
 
@@ -214,12 +273,17 @@ The repository is configured for local development. Before production use:
 - Rotate the development MySQL and JWT secrets before deployment.
 
 The configured OVHcloud production endpoint is `https://139.99.89.112/api`. See
-[`OVH_DEPLOYMENT.md`](../OVH_DEPLOYMENT.md) for server provisioning, HTTPS, and
+[`DeployOVH.md`](../DeployOVH.md) for server provisioning, HTTPS, and
 the exact release build command.
 
 ## Project status
 
-KaraOK is under active development. Secure authentication, session rotation/revocation, RBAC, input validation, password reset, and audit logging are implemented. Real audio capture/analysis, reset-email delivery, and production deployment configuration remain development work.
+KaraOK is under active development. Secure authentication, session
+rotation/revocation, RBAC, input validation, password recovery, audit logging,
+server-triggered audio feature extraction, inspectable analysis dumps, and
+empirical good-audio scoring are implemented. Background job-queue processing,
+broader labeled audio validation, and production release hardening remain
+development work.
 
 ## Security and database documentation
 

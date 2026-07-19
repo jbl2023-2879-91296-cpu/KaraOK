@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
-import '../widgets/bottom_nav_bar.dart';
+import '../widgets/app_navigation_drawer.dart';
 import '../widgets/guest_banner.dart';
 import '../services/user_session.dart';
 import '../services/api_service.dart';
-import 'genre_select_screen.dart';
 import 'audio_test_screen.dart';
+import 'audio_settings_suggestion_screen.dart';
 import 'owner_previous_results_screen.dart';
-import 'login_screen.dart';
-import 'change_password_screen.dart';
 
 class OwnerHomeScreen extends StatefulWidget {
   const OwnerHomeScreen({super.key});
@@ -17,7 +15,6 @@ class OwnerHomeScreen extends StatefulWidget {
 }
 
 class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
-  int _selectedNavIndex = 0;
   List<dynamic> _recentAnalysis = [];
   bool _loading = true;
   String? _loadError;
@@ -58,27 +55,14 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
     }
   }
 
-  void _onNavTap(int i) {
-    setState(() => _selectedNavIndex = i);
-    if (i == 2) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const OwnerPreviousResultsScreen()),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
+      drawer: const AppNavigationDrawer(),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D0D0D),
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.menu, color: Colors.white),
-          onPressed: () {},
-        ),
         title: const Text(
           'Owner',
           style: TextStyle(
@@ -88,82 +72,6 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
           ),
         ),
         centerTitle: true,
-        actions: [
-          if (UserSession.instance.isGuest)
-            TextButton(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-              ),
-              child: const Text(
-                'Sign In',
-                style: TextStyle(
-                  color: Color(0xFFFF8C00),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            )
-          else
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.account_circle, color: Colors.white),
-              color: const Color(0xFF1C1C2E),
-              onSelected: (v) async {
-                if (v == 'change_password') {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ChangePasswordScreen(),
-                    ),
-                  );
-                } else if (v == 'logout') {
-                  await ApiService().logout();
-                  if (!context.mounted) return;
-                  UserSession.instance.clear();
-                  Navigator.pushNamedAndRemoveUntil(
-                    context,
-                    '/',
-                    (route) => false,
-                  );
-                }
-              },
-              itemBuilder: (_) => [
-                PopupMenuItem(
-                  enabled: false,
-                  child: Text(
-                    UserSession.instance.name ?? 'User',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const PopupMenuDivider(),
-                const PopupMenuItem(
-                  value: 'change_password',
-                  child: Row(
-                    children: [
-                      Icon(Icons.lock_outline, color: Colors.white, size: 18),
-                      SizedBox(width: 8),
-                      Text('Change Password'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'logout',
-                  child: Row(
-                    children: [
-                      Icon(Icons.logout, color: Color(0xFFF44336), size: 18),
-                      SizedBox(width: 8),
-                      Text(
-                        'Log Out',
-                        style: TextStyle(color: Color(0xFFF44336)),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-        ],
       ),
       body: RefreshIndicator(
         onRefresh: _loadAnalysis,
@@ -181,36 +89,36 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Start Audio Test card
                     _ActionCard(
-                      icon: Icons.mic,
-                      title: 'Start Audio Test',
-                      subtitle: 'Record and Analyze audio quality',
-                      color: const Color(0xFFE07B00),
-                      onTap: () {
-                        Navigator.push(
+                      icon: Icons.graphic_eq,
+                      title: 'Evaluate Audio Quality',
+                      subtitle: 'Record audio or select an audio file',
+                      color: const Color(0xFF1E5BB5),
+                      onTap: () async {
+                        await Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const GenreSelectScreen(),
+                            builder: (_) => const AudioTestScreen(),
                           ),
                         );
+                        if (mounted) _loadAnalysis();
                       },
                     ),
                     const SizedBox(height: 12),
-                    // Upload Audio File card
                     _ActionCard(
-                      icon: Icons.folder_open,
-                      title: 'Upload Audio File',
-                      subtitle: '',
-                      color: const Color(0xFF1A6B3C),
-                      onTap: () {
-                        Navigator.push(
+                      icon: Icons.tune,
+                      title: 'Generate Audio Settings Suggestion',
+                      subtitle: 'Record or upload audio for suggested settings',
+                      color: const Color(0xFFE07B00),
+                      onTap: () async {
+                        await Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) =>
-                                const AudioTestScreen(selectFileOnOpen: true),
+                                const AudioSettingsSuggestionScreen(),
                           ),
                         );
+                        if (mounted) _loadAnalysis();
                       },
                     ),
                     const SizedBox(height: 24),
@@ -270,7 +178,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                         padding: EdgeInsets.symmetric(vertical: 24),
                         child: Center(
                           child: Text(
-                            'No analyses yet. Start your first audio test!',
+                            'No analyses yet. Evaluate your first audio recording!',
                             style: TextStyle(color: Color(0xFF666666)),
                           ),
                         ),
@@ -285,10 +193,6 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
             ),
           ],
         ),
-      ),
-      bottomNavigationBar: BottomNavBar(
-        selectedIndex: _selectedNavIndex,
-        onTap: _onNavTap,
       ),
     );
   }
@@ -326,28 +230,30 @@ class _ActionCard extends StatelessWidget {
           children: [
             Icon(icon, color: Colors.white, size: 28),
             const SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                if (subtitle.isNotEmpty) ...[
-                  const SizedBox(height: 2),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    subtitle,
+                    title,
                     style: const TextStyle(
-                      color: Color(0xCCFFFFFF),
-                      fontSize: 12,
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
+                  if (subtitle.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: Color(0xCCFFFFFF),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ],
         ),

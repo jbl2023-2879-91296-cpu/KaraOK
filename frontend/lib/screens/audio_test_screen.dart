@@ -1,7 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer' as developer;
-import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path/path.dart' as p;
@@ -25,10 +26,49 @@ enum AudioInputState {
   failed,
 }
 
+enum AudioAnalysisPurpose { qualityEvaluation, settingsSuggestion }
+
+extension AudioAnalysisPurposeDetails on AudioAnalysisPurpose {
+  String get pageTitle => switch (this) {
+    AudioAnalysisPurpose.qualityEvaluation => 'Evaluate Audio Quality',
+    AudioAnalysisPurpose.settingsSuggestion => 'Generate Settings Suggestion',
+  };
+
+  String get description => switch (this) {
+    AudioAnalysisPurpose.qualityEvaluation =>
+      'Record audio or select an audio file to evaluate its sound quality.',
+    AudioAnalysisPurpose.settingsSuggestion =>
+      'Record audio or select an audio file to generate suggested sound settings.',
+  };
+
+  String get submitLabel => switch (this) {
+    AudioAnalysisPurpose.qualityEvaluation => 'Evaluate Audio Quality',
+    AudioAnalysisPurpose.settingsSuggestion => 'Generate Settings Suggestion',
+  };
+
+  String get requestValue => switch (this) {
+    AudioAnalysisPurpose.qualityEvaluation => 'quality_evaluation',
+    AudioAnalysisPurpose.settingsSuggestion => 'settings_suggestion',
+  };
+
+  String get successMessage => switch (this) {
+    AudioAnalysisPurpose.qualityEvaluation =>
+      'Audio uploaded and analyzed successfully.',
+    AudioAnalysisPurpose.settingsSuggestion =>
+      'Audio uploaded and analyzed for settings successfully.',
+  };
+}
+
 class AudioTestScreen extends StatefulWidget {
-  const AudioTestScreen({super.key, this.genre, this.selectFileOnOpen = false});
+  const AudioTestScreen({
+    super.key,
+    this.genre,
+    this.selectFileOnOpen = false,
+    this.purpose = AudioAnalysisPurpose.qualityEvaluation,
+  });
   final String? genre;
   final bool selectFileOnOpen;
+  final AudioAnalysisPurpose purpose;
 
   @override
   State<AudioTestScreen> createState() => _AudioTestScreenState();
@@ -49,6 +89,8 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   late final StreamSubscription<Duration?> _durationSubscription;
   Timer? _timer;
   String? _message;
+  Map<String, dynamic>? _analysisDump;
+  String? _recordingFileName;
 
   bool get _busy => const {
     AudioInputState.requestingPermission,
@@ -76,8 +118,9 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
         setState(() => _previewDuration = duration);
       }
     });
-    if (widget.selectFileOnOpen)
+    if (widget.selectFileOnOpen) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _selectFile());
+    }
   }
 
   @override
@@ -94,18 +137,23 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   Future<void> _start() async {
     if (_busy ||
         _state == AudioInputState.recording ||
-        _state == AudioInputState.paused)
+        _state == AudioInputState.paused) {
       return;
+    }
     setState(() {
       _state = AudioInputState.requestingPermission;
       _message = null;
+      _analysisDump = null;
     });
-    final permission = await Permission.microphone.request();
-    if (!permission.isGranted) {
+    final permission = kIsWeb ? null : await Permission.microphone.request();
+    final permissionGranted = kIsWeb
+        ? await _recorder.hasPermission()
+        : permission!.isGranted;
+    if (!permissionGranted) {
       if (!mounted) return;
       setState(() {
         _state = AudioInputState.failed;
-        _message = permission.isPermanentlyDenied
+        _message = permission?.isPermanentlyDenied == true
             ? 'Microphone permission is permanently denied. Enable it in Settings.'
             : 'Microphone permission is required to record audio.';
       });
@@ -114,11 +162,14 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
     try {
       await _resetPreview();
       await _staging.discard();
-      final dir = await _staging.recordingDirectory();
-      final path = p.join(
-        dir.path,
-        'recording_${DateTime.now().millisecondsSinceEpoch}.wav',
-      );
+      _recordingFileName =
+          'recording_${DateTime.now().millisecondsSinceEpoch}.wav';
+      final path = kIsWeb
+          ? ''
+          : p.join(
+              (await _staging.recordingDirectory()).path,
+              _recordingFileName,
+            );
       await _recorder.start(
         const RecordConfig(
           encoder: AudioEncoder.wav,
@@ -141,11 +192,12 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
         error: e,
         stackTrace: st,
       );
-      if (mounted)
+      if (mounted) {
         setState(() {
           _state = AudioInputState.failed;
           _message = 'Recording could not be started.';
         });
+      }
     }
   }
 
@@ -169,27 +221,44 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
     setState(() => _state = AudioInputState.processing);
     try {
       final path = await _recorder.stop();
-      if (path == null)
+      if (path == null) {
         throw const AudioStagingException(
           'The recorder did not create a file.',
         );
-      await _staging.stagePath(
-        path,
-        AudioSourceType.recording,
-        temporary: true,
-      );
-      if (mounted) setState(() => _state = AudioInputState.staged);
+      }
+      if (kIsWeb) {
+        await _staging.stageBrowserRecording(
+          path,
+          _recordingFileName ?? 'recording.wav',
+        );
+      } else {
+        await _staging.stagePath(
+          path,
+          AudioSourceType.recording,
+          temporary: false,
+        );
+      }
+      _recordingFileName = null;
+      if (mounted) {
+        setState(() {
+          _state = AudioInputState.staged;
+          _message = kIsWeb
+              ? 'Recording is ready for this browser session.'
+              : 'Recording saved in the app\'s local storage.';
+        });
+      }
     } catch (e, st) {
       developer.log(
         'Stopping/staging recording failed',
         error: e,
         stackTrace: st,
       );
-      if (mounted)
+      if (mounted) {
         setState(() {
           _state = AudioInputState.failed;
           _message = e.toString();
         });
+      }
     }
   }
 
@@ -198,12 +267,14 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
     try {
       await _recorder.cancel();
     } finally {
-      if (mounted)
+      _recordingFileName = null;
+      if (mounted) {
         setState(() {
           _elapsed = Duration.zero;
           _state = AudioInputState.idle;
           _message = 'Recording cancelled.';
         });
+      }
     }
   }
 
@@ -233,11 +304,13 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
     if (_busy ||
         _state == AudioInputState.recording ||
         _state == AudioInputState.paused ||
-        !await _confirmReplace())
+        !await _confirmReplace()) {
       return;
+    }
     setState(() {
       _state = AudioInputState.selecting;
       _message = null;
+      _analysisDump = null;
     });
     try {
       await _resetPreview();
@@ -256,18 +329,20 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
         error: e,
         stackTrace: st,
       );
-      if (mounted)
+      if (mounted) {
         setState(() {
           _state = AudioInputState.failed;
           _message = e.message;
         });
+      }
     } catch (e, st) {
       developer.log('File selection failed', error: e, stackTrace: st);
-      if (mounted)
+      if (mounted) {
         setState(() {
           _state = AudioInputState.failed;
           _message = 'The selected file could not be opened.';
         });
+      }
     }
   }
 
@@ -280,7 +355,9 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
         return;
       }
       if (_previewPath != item.path) {
-        final duration = await _player.setFilePath(item.path);
+        final duration = item.isMemoryBacked
+            ? await _player.setUrl(item.path)
+            : await _player.setFilePath(item.path);
         _previewPath = item.path;
         _previewPosition = Duration.zero;
         _previewDuration = duration ?? item.duration;
@@ -314,12 +391,14 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   Future<void> _remove() async {
     await _resetPreview();
     await _staging.discard();
-    if (mounted)
+    if (mounted) {
       setState(() {
         _state = AudioInputState.idle;
         _elapsed = Duration.zero;
         _message = null;
+        _analysisDump = null;
       });
+    }
   }
 
   Future<void> _send() async {
@@ -329,7 +408,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
       setState(() => _message = 'Sign in before submitting audio.');
       return;
     }
-    if (!await File(item.path).exists()) {
+    if (!await _staging.currentIsAvailable()) {
       setState(() {
         _state = AudioInputState.failed;
         _message = 'The staged file is no longer available.';
@@ -342,45 +421,60 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
     });
     try {
       await _resetPreview();
-      await ApiService().submitAudio(
+      final response = await ApiService().submitAudio(
         filePath: item.path,
+        fileName: item.fileName,
+        fileBytes: item.bytes,
         durationSeconds: item.duration.inSeconds,
         genre: widget.genre,
+        analysisPurpose: widget.purpose.requestValue,
       );
+      final dumpValue = response['analysis_dump'];
+      final analysisDump = dumpValue is Map
+          ? Map<String, dynamic>.from(dumpValue)
+          : null;
+      final completed = response['status'] == 'Completed';
       await _staging.discard();
-      if (mounted)
+      if (mounted) {
         setState(() {
-          _state = AudioInputState.success;
-          _message = 'Audio uploaded successfully and queued for processing.';
+          _state = completed ? AudioInputState.success : AudioInputState.failed;
+          _message = completed
+              ? widget.purpose.successMessage
+              : 'Audio was uploaded, but analysis failed. Review the output dump.';
+          _analysisDump = analysisDump;
         });
+      }
     } on TimeoutException catch (e, st) {
       developer.log('Audio upload timed out', error: e, stackTrace: st);
-      if (mounted)
+      if (mounted) {
         setState(() {
           _state = AudioInputState.failed;
           _message =
               'The upload timed out. Your staged file is ready to retry.';
         });
+      }
     } on ApiException catch (e, st) {
       developer.log('Audio upload rejected', error: e, stackTrace: st);
-      if (mounted)
+      if (mounted) {
         setState(() {
           _state = AudioInputState.failed;
           _message = e.statusCode == 401
               ? 'Your session expired. Sign in and retry.'
               : e.message;
         });
+      }
     } catch (e, st) {
       developer.log(
         'Unexpected audio upload failure',
         error: e,
         stackTrace: st,
       );
-      if (mounted)
+      if (mounted) {
         setState(() {
           _state = AudioInputState.failed;
           _message = 'Upload failed. Your staged file was kept for retry.';
         });
+      }
     }
   }
 
@@ -394,10 +488,42 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
         _state == AudioInputState.recording || _state == AudioInputState.paused;
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
-      appBar: AppBar(title: const Text('Audio Input'), centerTitle: true),
+      appBar: AppBar(title: Text(widget.purpose.pageTitle), centerTitle: true),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A1A2E),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  widget.purpose == AudioAnalysisPurpose.qualityEvaluation
+                      ? Icons.graphic_eq
+                      : Icons.tune,
+                  color:
+                      widget.purpose == AudioAnalysisPurpose.qualityEvaluation
+                      ? const Color(0xFF4A90D9)
+                      : const Color(0xFFFF8C00),
+                  size: 30,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    widget.purpose.description,
+                    style: const TextStyle(
+                      color: Color(0xFFCCCCCC),
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
           Text(
             '${_time(_elapsed)} / 05:00',
             textAlign: TextAlign.center,
@@ -556,7 +682,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
                         label: Text(
                           _state == AudioInputState.uploading
                               ? 'Uploading…'
-                              : 'Send for Processing',
+                              : widget.purpose.submitLabel,
                         ),
                       ),
                     ),
@@ -578,6 +704,38 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
                 ),
               ),
             ),
+          if (_analysisDump != null) ...[
+            const SizedBox(height: 12),
+            Card(
+              child: ExpansionTile(
+                initiallyExpanded: true,
+                title: const Text('Analysis output dump'),
+                subtitle: const Text(
+                  'Temporary raw output for validating analyzer results',
+                ),
+                children: [
+                  Container(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(maxHeight: 420),
+                    padding: const EdgeInsets.all(16),
+                    color: const Color(0xFF11111A),
+                    child: SingleChildScrollView(
+                      child: SelectableText(
+                        const JsonEncoder.withIndent(
+                          '  ',
+                        ).convert(_analysisDump),
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                          color: Color(0xFFCCCCCC),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (_message?.contains('Settings') == true)
             TextButton(
               onPressed: openAppSettings,

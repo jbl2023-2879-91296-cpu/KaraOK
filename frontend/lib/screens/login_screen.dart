@@ -18,11 +18,11 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _formKey    = GlobalKey<FormState>();
+  final _formKey = GlobalKey<FormState>();
   late final TextEditingController _identifierCtrl;
-  final _passCtrl   = TextEditingController();
-  bool  _obscure    = true;
-  bool  _loading    = false;
+  final _passCtrl = TextEditingController();
+  bool _obscure = true;
+  bool _loading = false;
   String? _error;
 
   static const _accentColor = Color(0xFF4A90D9);
@@ -42,16 +42,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final res = await ApiService().login(
         identifier: _identifierCtrl.text.trim(),
         password: _passCtrl.text,
       );
       UserSession.instance.setUser(
-        id:       res['id'],
-        name:     res['name'],
-        email:    res['email'],
+        id: res['id'],
+        name: res['name'],
+        email: res['email'],
         userType: res['user_type'],
         requiresPasswordChange: res['requires_password_change'] == true,
       );
@@ -70,11 +73,16 @@ class _LoginScreenState extends State<LoginScreen> {
     } on ApiException catch (e) {
       final body = e.message;
       setState(() {
-        _error = body.contains('Invalid') ? 'Invalid username/email or password.' : 'Login failed. Try again.';
+        _error = body.contains('Invalid')
+            ? 'Invalid username/email or password.'
+            : 'Login failed. Try again.';
         _loading = false;
       });
     } catch (_) {
-      setState(() { _error = 'Could not connect to server.'; _loading = false; });
+      setState(() {
+        _error = 'Could not connect to server.';
+        _loading = false;
+      });
     }
   }
 
@@ -128,7 +136,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 Text(
                   'Sign in to continue',
                   style: const TextStyle(
-                      color: Color(0xFF888888), fontSize: 14),
+                    color: Color(0xFF888888),
+                    fontSize: 14,
+                  ),
                 ),
                 const SizedBox(height: 36),
                 // Username or email
@@ -188,7 +198,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Text(
                       _error!,
                       style: const TextStyle(
-                          color: Color(0xFFF44336), fontSize: 13),
+                        color: Color(0xFFF44336),
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 const SizedBox(height: 8),
@@ -201,20 +213,26 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _accentColor,
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                     child: _loading
                         ? const SizedBox(
                             width: 22,
                             height: 22,
                             child: CircularProgressIndicator(
-                                color: Colors.white, strokeWidth: 2.5),
+                              color: Colors.white,
+                              strokeWidth: 2.5,
+                            ),
                           )
-                        : const Text('Log In',
+                        : const Text(
+                            'Log In',
                             style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700)),
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -222,16 +240,16 @@ class _LoginScreenState extends State<LoginScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text("Don't have an account? ",
-                        style: TextStyle(
-                            color: Color(0xFF888888), fontSize: 14)),
+                    const Text(
+                      "Don't have an account? ",
+                      style: TextStyle(color: Color(0xFF888888), fontSize: 14),
+                    ),
                     GestureDetector(
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) =>
-                                const SignUpScreen(),
+                            builder: (_) => const SignUpScreen(),
                           ),
                         );
                       },
@@ -250,16 +268,18 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Divider
                 Row(
                   children: [
-                    const Expanded(
-                        child: Divider(color: Color(0xFF2A2A3E))),
+                    const Expanded(child: Divider(color: Color(0xFF2A2A3E))),
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 12),
-                      child: Text('or',
-                          style: TextStyle(
-                              color: Color(0xFF666666), fontSize: 13)),
+                      child: Text(
+                        'or',
+                        style: TextStyle(
+                          color: Color(0xFF666666),
+                          fontSize: 13,
+                        ),
+                      ),
                     ),
-                    const Expanded(
-                        child: Divider(color: Color(0xFF2A2A3E))),
+                    const Expanded(child: Divider(color: Color(0xFF2A2A3E))),
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -269,20 +289,26 @@ class _LoginScreenState extends State<LoginScreen> {
                   height: 52,
                   child: OutlinedButton.icon(
                     onPressed: _continueAsGuest,
-                    icon: const Icon(Icons.person_outline,
-                        color: Color(0xFF888888)),
+                    icon: const Icon(
+                      Icons.person_outline,
+                      color: Color(0xFF888888),
+                    ),
                     label: const Text(
                       'Continue as Guest',
                       style: TextStyle(
-                          color: Color(0xFFAAAAAA),
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600),
+                        color: Color(0xFFAAAAAA),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(
-                          color: Color(0xFF3A3A5E), width: 1.5),
+                        color: Color(0xFF3A3A5E),
+                        width: 1.5,
+                      ),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
                 ),
@@ -291,9 +317,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   '⚠ Guest sessions are not saved. Your recordings and results will be lost when you exit.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      color: Color(0xFF666666),
-                      fontSize: 11,
-                      height: 1.5),
+                    color: Color(0xFF666666),
+                    fontSize: 11,
+                    height: 1.5,
+                  ),
                 ),
                 const SizedBox(height: 24),
               ],
@@ -313,12 +340,13 @@ class _FieldLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Text(
-        text,
-        style: const TextStyle(
-            color: Color(0xFFCCCCCC),
-            fontSize: 13,
-            fontWeight: FontWeight.w600),
-      );
+    text,
+    style: const TextStyle(
+      color: Color(0xFFCCCCCC),
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+    ),
+  );
 }
 
 class _AuthField extends StatelessWidget {
@@ -326,7 +354,6 @@ class _AuthField extends StatelessWidget {
     required this.controller,
     required this.hint,
     this.obscure = false,
-    this.keyboardType,
     this.suffixIcon,
     this.validator,
   });
@@ -334,7 +361,6 @@ class _AuthField extends StatelessWidget {
   final TextEditingController controller;
   final String hint;
   final bool obscure;
-  final TextInputType? keyboardType;
   final Widget? suffixIcon;
   final String? Function(String?)? validator;
 
@@ -343,7 +369,6 @@ class _AuthField extends StatelessWidget {
     return TextFormField(
       controller: controller,
       obscureText: obscure,
-      keyboardType: keyboardType,
       style: const TextStyle(color: Colors.white, fontSize: 15),
       validator: validator,
       decoration: InputDecoration(
@@ -357,8 +382,10 @@ class _AuthField extends StatelessWidget {
           borderSide: BorderSide.none,
         ),
         errorStyle: const TextStyle(color: Color(0xFFF44336)),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
     );
   }

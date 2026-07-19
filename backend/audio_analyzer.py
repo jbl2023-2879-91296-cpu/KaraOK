@@ -3,13 +3,13 @@
 Technical disclaimer
 --------------------
 * Bass and treble are frequency-band energy measurements.
-* Loudness is an RMS-based dBFS approximation, not LUFS.
+* RMS-based dBFS and ITU-R BS.1770-5-aligned mono loudness are reported.
 * Sharpness is an approximate normalized spectral measurement, not a certified
   psychoacoustic sharpness measurement in acum.
-* Noise level and SNR are estimated without a separate noise recording.
-* Distortion is a no-reference heuristic and is not laboratory-measured THD or
-  THD+N. A known test tone, its fundamental, or a clean reference is required
-  for a defensible THD measurement.
+* Ordinary analysis estimates noise without a separate noise recording.
+* Phone-recording mode accepts separate noise and test-tone recordings for
+  measured end-to-end SNR, THD, and THD+N. These results include the playback
+  device, room, phone microphone, and phone processing.
 
 Example:
     python audio_analyzer.py input_audio.wav --output-dir results
@@ -17,7 +17,7 @@ Example:
     python audio_analyzer.py song.flac --no-save-plots --save-json --save-csv
 """
 
-# cspell:ignore audioread dBFS librosa libsndfile LUFS nperseg STFT THD
+# cspell:ignore audioread dBFS dBTP librosa libsndfile LUFS nperseg STFT THD xatol
 
 from __future__ import annotations
 
@@ -38,7 +38,8 @@ import matplotlib
 import numpy as np
 import pandas as pd
 import soundfile as sf
-from scipy.signal import welch
+from scipy.optimize import minimize_scalar
+from scipy.signal import butter, lfilter, resample_poly, sosfiltfilt, welch
 from scipy.signal.windows import hann
 
 # Use a non-interactive backend so plots also work on servers and in CI.
@@ -50,6 +51,7 @@ import librosa.display  # noqa: E402
 
 EPSILON = 1.0e-12
 SUPPORTED_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg"}
+LOSSLESS_EXTENSIONS = {".wav", ".flac"}
 RECOVERY_BLOCK_FRAMES = 65_536
 DEFAULT_SETTINGS_PATH = Path(__file__).with_name("audio_analyzer_settings.json")
 
@@ -120,6 +122,7 @@ class AnalyzerConfig:
     severe_clipped_sample_percentage: float = 0.50
     severe_clipped_frame_percentage: float = 20.0
     severe_spectral_irregularity: float = 0.35
+    hpss_max_frames: int = 2048
     distortion_weights: DistortionWeights = field(default_factory=DistortionWeights)
 
 
@@ -150,11 +153,36 @@ class FailureBehavior:
 
 
 @dataclass(frozen=True)
+class PhoneRecordingConfig:
+    """Controlled end-to-end measurement settings for phone recordings."""
+
+    test_tone_frequency_hz: float = 1000.0
+    analysis_minimum_frequency_hz: float = 20.0
+    analysis_maximum_frequency_hz: float = 20_000.0
+    maximum_harmonic: int = 10
+    tone_search_tolerance_hz: float = 20.0
+    discard_start_seconds: float = 1.0
+    discard_end_seconds: float = 1.0
+    minimum_measurement_seconds: float = 3.0
+    maximum_measurement_seconds: float = 30.0
+    reference_spl_db: float | None = None
+    require_lossless: bool = True
+    require_mono: bool = True
+    processing_disabled_confirmed: bool = False
+    fixed_setup_confirmed: bool = False
+    phone_model: str = ""
+    recording_app: str = ""
+    phone_to_source_distance_meters: float | None = None
+    microphone_orientation: str = ""
+
+
+@dataclass(frozen=True)
 class AudioAnalyzerSettings:
     analysis: AnalyzerConfig
     safety: SafetyLimits
     quality_thresholds: QualityThresholds
     failure_behavior: FailureBehavior
+    phone_recording: PhoneRecordingConfig
     settings_path: Path
 
 
@@ -170,6 +198,9 @@ class AnalysisContext:
     active_frames: np.ndarray
     flatness: np.ndarray
     config: AnalyzerConfig
+    source_channels: int
+    decode_status: str
+    container_subtype: str
 
 
 def _validate_config(config: AnalyzerConfig) -> None:
@@ -203,6 +234,10 @@ def _validate_config(config: AnalyzerConfig) -> None:
         raise AudioAnalysisError("Severe clipped-frame percentage must be positive.")
     if config.severe_spectral_irregularity <= 0.0:
         raise AudioAnalysisError("Severe spectral irregularity must be positive.")
+    if not isinstance(config.hpss_max_frames, int) or isinstance(config.hpss_max_frames, bool):
+        raise AudioAnalysisError("HPSS maximum frames must be an integer.")
+    if config.hpss_max_frames < 32:
+        raise AudioAnalysisError("HPSS maximum frames must be at least 32.")
     config.distortion_weights.normalized()
 
 
@@ -262,6 +297,47 @@ def _validate_failure_behavior(behavior: FailureBehavior) -> None:
         raise AudioAnalysisError("Quality failure exit code must be an integer from 1 to 255.")
 
 
+def _validate_phone_recording(config: PhoneRecordingConfig) -> None:
+    if config.test_tone_frequency_hz <= 0.0:
+        raise AudioAnalysisError("Phone test-tone frequency must be positive.")
+    if config.analysis_minimum_frequency_hz <= 0.0:
+        raise AudioAnalysisError("Phone analysis minimum frequency must be positive.")
+    if config.analysis_maximum_frequency_hz <= config.analysis_minimum_frequency_hz:
+        raise AudioAnalysisError(
+            "Phone analysis maximum frequency must exceed its minimum frequency."
+        )
+    if not isinstance(config.maximum_harmonic, int) or config.maximum_harmonic < 2:
+        raise AudioAnalysisError("Phone maximum harmonic must be an integer of at least 2.")
+    if config.tone_search_tolerance_hz <= 0.0:
+        raise AudioAnalysisError("Phone tone-search tolerance must be positive.")
+    if config.discard_start_seconds < 0.0 or config.discard_end_seconds < 0.0:
+        raise AudioAnalysisError("Phone discard durations cannot be negative.")
+    if config.minimum_measurement_seconds <= 0.0:
+        raise AudioAnalysisError("Phone minimum measurement duration must be positive.")
+    if config.maximum_measurement_seconds < config.minimum_measurement_seconds:
+        raise AudioAnalysisError(
+            "Phone maximum measurement duration cannot be below its minimum duration."
+        )
+    if config.reference_spl_db is not None and not 0.0 < config.reference_spl_db < 200.0:
+        raise AudioAnalysisError("Phone reference SPL must be between 0 and 200 dB.")
+    for name in (
+        "require_lossless",
+        "require_mono",
+        "processing_disabled_confirmed",
+        "fixed_setup_confirmed",
+    ):
+        if not isinstance(getattr(config, name), bool):
+            raise AudioAnalysisError(f"Phone setting '{name}' must be true or false.")
+    for name in ("phone_model", "recording_app", "microphone_orientation"):
+        if not isinstance(getattr(config, name), str):
+            raise AudioAnalysisError(f"Phone setting '{name}' must be text.")
+    if (
+        config.phone_to_source_distance_meters is not None
+        and config.phone_to_source_distance_meters <= 0.0
+    ):
+        raise AudioAnalysisError("Phone-to-source distance must be positive when supplied.")
+
+
 def load_settings(settings_path: str | Path = DEFAULT_SETTINGS_PATH) -> AudioAnalyzerSettings:
     """Load, merge, and strictly validate the versioned JSON settings file."""
     path = Path(settings_path).expanduser().resolve()
@@ -284,6 +360,7 @@ def load_settings(settings_path: str | Path = DEFAULT_SETTINGS_PATH) -> AudioAna
         "safety",
         "quality_thresholds",
         "failure_behavior",
+        "phone_recording",
     }
     _reject_unknown_keys(raw, allowed_top_level, "root")
     if raw.get("schema_version") != 1:
@@ -355,14 +432,29 @@ def load_settings(settings_path: str | Path = DEFAULT_SETTINGS_PATH) -> AudioAna
         }
     )
 
+    phone_data = _section(raw, "phone_recording")
+    _reject_unknown_keys(
+        phone_data,
+        set(PhoneRecordingConfig.__dataclass_fields__),
+        "phone_recording",
+    )
+    default_phone = PhoneRecordingConfig()
+    phone = PhoneRecordingConfig(
+        **{
+            name: phone_data.get(name, getattr(default_phone, name))
+            for name in PhoneRecordingConfig.__dataclass_fields__
+        }
+    )
+
     try:
         _validate_config(analysis)
         _validate_safety(safety)
         _validate_quality_thresholds(quality)
         _validate_failure_behavior(behavior)
+        _validate_phone_recording(phone)
     except TypeError as exc:
         raise AudioAnalysisError(f"Settings values have invalid data types: {exc}") from exc
-    return AudioAnalyzerSettings(analysis, safety, quality, behavior, path)
+    return AudioAnalyzerSettings(analysis, safety, quality, behavior, phone, path)
 
 
 def _recover_readable_prefix(
@@ -724,16 +816,130 @@ def extract_treble_features(context: AnalysisContext) -> dict[str, float]:
     )
 
 
-def extract_loudness(context: AnalysisContext) -> dict[str, float]:
+def _bs1770_filtered_mono(audio: np.ndarray, sample_rate: int) -> np.ndarray:
+    """Return a 48 kHz mono signal with the BS.1770 K-weighting filters."""
+    if sample_rate != 48_000:
+        divisor = math.gcd(sample_rate, 48_000)
+        audio = resample_poly(audio, 48_000 // divisor, sample_rate // divisor)
+    signal = np.asarray(audio, dtype=np.float32)
+    # ITU-R BS.1770 coefficients for 48 kHz: pre-filter followed by RLB high-pass.
+    signal = cast(
+        np.ndarray,
+        lfilter(
+            np.asarray(
+                [1.53512485958697, -2.69169618940638, 1.19839281085285],
+                dtype=np.float32,
+            ),
+            np.asarray(
+                [1.0, -1.69065929318241, 0.73248077421585],
+                dtype=np.float32,
+            ),
+            signal,
+        ),
+    )
+    return cast(
+        np.ndarray,
+        lfilter(
+            np.asarray([1.0, -2.0, 1.0], dtype=np.float32),
+            np.asarray([1.0, -1.99004745483398, 0.99007225036621], dtype=np.float32),
+            signal,
+        ),
+    )
+
+
+def _block_energies(
+    signal: np.ndarray,
+    block_seconds: float,
+    step_seconds: float,
+    sample_rate: int = 48_000,
+) -> np.ndarray:
+    block = int(round(block_seconds * sample_rate))
+    step = int(round(step_seconds * sample_rate))
+    if signal.size < block:
+        return np.asarray([], dtype=np.float64)
+    starts = range(0, signal.size - block + 1, step)
+    return np.asarray(
+        [np.mean(np.square(signal[start : start + block]), dtype=np.float64) for start in starts],
+        dtype=np.float64,
+    )
+
+
+def _energy_to_lufs(energy: np.ndarray | float) -> np.ndarray | float:
+    values = np.maximum(energy, EPSILON)
+    return -0.691 + 10.0 * np.log10(values)
+
+
+def _integrated_lufs(filtered: np.ndarray) -> float | None:
+    energies = _block_energies(filtered, 0.4, 0.1)
+    if energies.size == 0:
+        return None
+    block_loudness = np.asarray(_energy_to_lufs(energies), dtype=np.float64)
+    absolute = energies[block_loudness >= -70.0]
+    if absolute.size == 0:
+        return None
+    relative_threshold = float(_energy_to_lufs(float(np.mean(absolute)))) - 10.0
+    gated = energies[(block_loudness >= -70.0) & (block_loudness >= relative_threshold)]
+    if gated.size == 0:
+        return None
+    return float(_energy_to_lufs(float(np.mean(gated))))
+
+
+def _maximum_block_loudness(
+    filtered: np.ndarray,
+    block_seconds: float,
+    step_seconds: float,
+) -> float | None:
+    energies = _block_energies(filtered, block_seconds, step_seconds)
+    if energies.size == 0:
+        return None
+    return float(np.max(_energy_to_lufs(energies)))
+
+
+def _true_peak_dbtp(audio: np.ndarray) -> float:
+    # Chunking avoids allocating four times a long recording's sample count.
+    signal = np.asarray(audio, dtype=np.float32)
+    chunk_samples = 1_000_000
+    overlap_samples = 256
+    maximum = 0.0
+    for start in range(0, signal.size, chunk_samples):
+        end = min(signal.size, start + chunk_samples)
+        segment_start = max(0, start - overlap_samples)
+        segment_end = min(signal.size, end + overlap_samples)
+        oversampled = resample_poly(signal[segment_start:segment_end], 4, 1)
+        valid_start = 4 * (start - segment_start)
+        valid_end = valid_start + 4 * (end - start)
+        maximum = max(
+            maximum,
+            float(np.max(np.abs(oversampled[valid_start:valid_end]))),
+        )
+    return float(20.0 * math.log10(max(maximum, EPSILON)))
+
+
+def extract_loudness(context: AnalysisContext) -> dict[str, Any]:
     active_rms = np.maximum(context.frame_rms[context.active_frames], EPSILON)
     # ref=1.0 makes 0 dBFS full scale; clipping avoids log10(0) and -infinity.
     loudness_dbfs = librosa.amplitude_to_db(active_rms, ref=1.0, top_db=None)
+    filtered = _bs1770_filtered_mono(context.audio, context.sample_rate)
+    channel_note = (
+        "Native mono measurement."
+        if context.source_channels == 1
+        else (
+            f"The {context.source_channels}-channel source was downmixed to mono; "
+            "LUFS is informative but not multichannel-conformant."
+        )
+    )
     return {
         "mean_dbfs": float(np.mean(loudness_dbfs)),
         "median_dbfs": float(np.median(loudness_dbfs)),
         "minimum_dbfs": float(np.min(loudness_dbfs)),
         "maximum_dbfs": float(np.max(loudness_dbfs)),
         "standard_deviation_db": float(np.std(loudness_dbfs)),
+        "integrated_lufs": _integrated_lufs(filtered),
+        "maximum_momentary_lufs": _maximum_block_loudness(filtered, 0.4, 0.1),
+        "maximum_short_term_lufs": _maximum_block_loudness(filtered, 3.0, 1.0),
+        "true_peak_dbtp": _true_peak_dbtp(context.audio),
+        "loudness_method": "ITU-R BS.1770-5 K-weighting and gating (mono)",
+        "channel_handling_note": channel_note,
     }
 
 
@@ -786,6 +992,8 @@ def estimate_noise(context: AnalysisContext) -> dict[str, Any]:
         "noise_rms": noise_rms,
         "noise_dbfs": float(noise_dbfs),
         "estimated_snr_db": float(estimated_snr_db),
+        "signal_to_quiet_frame_separation_db": float(separation_db),
+        "threshold_use": "advisory_only",
         "low_energy_percentile": float(context.config.noise_percentile),
         "quiet_frame_count": int(quiet_frames.size),
         "reliability_warning": warning,
@@ -821,9 +1029,21 @@ def estimate_distortion(context: AnalysisContext) -> dict[str, Any]:
         np.sum(active_power[high_band, :]) / max(float(np.sum(active_power)), EPSILON)
     )
 
-    harmonic, percussive = librosa.decompose.hpss(context.magnitude)
-    harmonic_energy = float(np.sum(np.square(harmonic[:, context.active_frames])))
-    percussive_energy = float(np.sum(np.square(percussive[:, context.active_frames])))
+    active_indexes = np.flatnonzero(context.active_frames)
+    if active_indexes.size > config.hpss_max_frames:
+        sampled_positions = np.linspace(
+            0,
+            active_indexes.size - 1,
+            num=config.hpss_max_frames,
+            dtype=np.int64,
+        )
+        hpss_indexes = active_indexes[sampled_positions]
+    else:
+        hpss_indexes = active_indexes
+    hpss_magnitude = context.magnitude[:, hpss_indexes]
+    harmonic, percussive = librosa.decompose.hpss(hpss_magnitude)
+    harmonic_energy = float(np.sum(np.square(harmonic), dtype=np.float64))
+    percussive_energy = float(np.sum(np.square(percussive), dtype=np.float64))
     harmonic_to_percussive_energy_ratio = harmonic_energy / max(percussive_energy, EPSILON)
 
     normalized_spectra = active_power / np.maximum(
@@ -871,6 +1091,13 @@ def estimate_distortion(context: AnalysisContext) -> dict[str, Any]:
         "high_frequency_energy_ratio": high_frequency_energy_ratio,
         "high_frequency_start_hz": float(high_frequency_start),
         "harmonic_to_percussive_energy_ratio": float(harmonic_to_percussive_energy_ratio),
+        "hpss_analyzed_frame_count": int(hpss_indexes.size),
+        "hpss_total_active_frame_count": int(active_indexes.size),
+        "hpss_sampling": (
+            "uniformly_sampled"
+            if hpss_indexes.size < active_indexes.size
+            else "all_active_frames"
+        ),
         "spectral_irregularity": spectral_irregularity,
         "component_risks": {
             "clipping": float(risks[0]),
@@ -882,26 +1109,434 @@ def estimate_distortion(context: AnalysisContext) -> dict[str, Any]:
     }
 
 
+def _trim_phone_measurement(
+    audio: np.ndarray,
+    sample_rate: int,
+    config: PhoneRecordingConfig,
+    label: str,
+) -> np.ndarray:
+    if audio.ndim != 1 or audio.size == 0 or not np.all(np.isfinite(audio)):
+        raise AudioAnalysisError(f"The {label} recording does not contain valid mono samples.")
+    start = int(round(config.discard_start_seconds * sample_rate))
+    end = audio.size - int(round(config.discard_end_seconds * sample_rate))
+    if end <= start:
+        raise AudioAnalysisError(
+            f"The {label} recording is too short for the configured start/end discard periods."
+        )
+    measured = np.asarray(audio[start:end], dtype=np.float64)
+    duration = measured.size / sample_rate
+    if duration < config.minimum_measurement_seconds:
+        raise AudioAnalysisError(
+            f"The {label} recording has only {duration:.3f} usable seconds after trimming; "
+            f"at least {config.minimum_measurement_seconds:.3f} seconds is required."
+        )
+    if duration > config.maximum_measurement_seconds:
+        raise AudioAnalysisError(
+            f"The {label} recording has {duration:.3f} usable seconds after trimming; "
+            f"the controlled-measurement maximum is {config.maximum_measurement_seconds:.3f} seconds."
+        )
+    return measured
+
+
+def _validate_phone_source(
+    path: str | Path,
+    source_channels: int,
+    decode_status: str,
+    container_subtype: str,
+    config: PhoneRecordingConfig,
+    label: str,
+) -> None:
+    resolved = Path(path).expanduser().resolve()
+    if config.require_lossless and resolved.suffix.lower() not in LOSSLESS_EXTENSIONS:
+        supported = ", ".join(sorted(LOSSLESS_EXTENSIONS))
+        raise AudioAnalysisError(
+            f"Phone {label} recording must be lossless ({supported}); received "
+            f"'{resolved.suffix or '<no extension>'}'."
+        )
+    if decode_status == "recovered_partial":
+        raise AudioAnalysisError(
+            f"Phone {label} recording is partially recovered; controlled measurements require "
+            "a complete lossless recording."
+        )
+    if config.require_lossless and container_subtype:
+        lossless_subtype = container_subtype.upper().startswith(("PCM", "FLOAT", "DOUBLE"))
+        if not lossless_subtype:
+            raise AudioAnalysisError(
+                f"Phone {label} recording uses subtype '{container_subtype}', not lossless PCM."
+            )
+    if config.require_mono and source_channels != 1:
+        raise AudioAnalysisError(
+            f"Phone {label} recording must be mono; decoded source has {source_channels} channels."
+        )
+
+
+def _band_limit_phone_signal(
+    audio: np.ndarray,
+    sample_rate: int,
+    config: PhoneRecordingConfig,
+) -> tuple[np.ndarray, float, float]:
+    nyquist = sample_rate / 2.0
+    lower = config.analysis_minimum_frequency_hz
+    upper = min(config.analysis_maximum_frequency_hz, nyquist * 0.99)
+    if lower >= upper:
+        raise AudioAnalysisError(
+            f"Phone analysis band {lower:.1f}-{config.analysis_maximum_frequency_hz:.1f} Hz "
+            f"is invalid at a {sample_rate} Hz sample rate."
+        )
+    sos = butter(6, [lower, upper], btype="bandpass", fs=sample_rate, output="sos")
+    return sosfiltfilt(sos, audio), float(lower), float(upper)
+
+
+def _sinusoid_coefficients(
+    signal: np.ndarray,
+    sample_rate: int,
+    frequency_hz: float,
+) -> tuple[float, float]:
+    time = np.arange(signal.size, dtype=np.float64) / sample_rate
+    sine = np.sin(2.0 * np.pi * frequency_hz * time)
+    cosine = np.cos(2.0 * np.pi * frequency_hz * time)
+    gram = np.asarray(
+        [
+            [float(np.dot(sine, sine)), float(np.dot(sine, cosine))],
+            [float(np.dot(sine, cosine)), float(np.dot(cosine, cosine))],
+        ],
+        dtype=np.float64,
+    )
+    right = np.asarray(
+        [float(np.dot(signal, sine)), float(np.dot(signal, cosine))],
+        dtype=np.float64,
+    )
+    sine_coefficient, cosine_coefficient = np.linalg.solve(gram, right)
+    return float(sine_coefficient), float(cosine_coefficient)
+
+
+def _detect_phone_fundamental(
+    signal: np.ndarray,
+    sample_rate: int,
+    expected_hz: float,
+    tolerance_hz: float,
+) -> float:
+    frequencies = np.fft.rfftfreq(signal.size, d=1.0 / sample_rate)
+    spectrum = np.abs(np.fft.rfft(signal * hann(signal.size, sym=False)))
+    candidate = (frequencies >= expected_hz - tolerance_hz) & (
+        frequencies <= expected_hz + tolerance_hz
+    )
+    if not np.any(candidate):
+        raise AudioAnalysisError("The configured test-tone search band contains no FFT bins.")
+    candidate_indexes = np.flatnonzero(candidate)
+    peak_index = int(candidate_indexes[np.argmax(spectrum[candidate])])
+    initial_hz = float(frequencies[peak_index])
+    resolution_hz = sample_rate / signal.size
+
+    def negative_tone_power(frequency_hz: float) -> float:
+        sine, cosine = _sinusoid_coefficients(signal, sample_rate, frequency_hz)
+        return -(sine * sine + cosine * cosine)
+
+    lower = max(expected_hz - tolerance_hz, initial_hz - resolution_hz)
+    upper = min(expected_hz + tolerance_hz, initial_hz + resolution_hz)
+    optimum = minimize_scalar(
+        negative_tone_power,
+        bounds=(lower, upper),
+        method="bounded",
+        options={"xatol": 1.0e-7, "maxiter": 30},
+    )
+    optimum_success = bool(getattr(optimum, "success", False))
+    optimum_hz = float(getattr(optimum, "x", initial_hz))
+    detected_hz = (
+        optimum_hz
+        if optimum_success and math.isfinite(optimum_hz) and lower <= optimum_hz <= upper
+        else initial_hz
+    )
+    fundamental_rms = math.sqrt(max(-negative_tone_power(detected_hz), 0.0) / 2.0)
+    total_rms = float(np.sqrt(np.mean(np.square(signal), dtype=np.float64)))
+    if fundamental_rms < max(total_rms * 0.1, EPSILON):
+        raise AudioAnalysisError(
+            f"No dominant {expected_hz:.1f} Hz test tone was found within "
+            f"±{tolerance_hz:.1f} Hz."
+        )
+    return detected_hz
+
+
+def _measure_end_to_end_tone(
+    audio: np.ndarray,
+    sample_rate: int,
+    config: PhoneRecordingConfig,
+) -> dict[str, Any]:
+    signal, lower_hz, upper_hz = _band_limit_phone_signal(audio, sample_rate, config)
+    # Exclude the zero-phase band-pass edge settling from residual/noise power.
+    settling_samples = int(round(0.25 * sample_rate))
+    if signal.size > 2 * settling_samples:
+        signal = signal[settling_samples:-settling_samples]
+    signal = signal - float(np.mean(signal))
+    fundamental_hz = _detect_phone_fundamental(
+        signal,
+        sample_rate,
+        config.test_tone_frequency_hz,
+        config.tone_search_tolerance_hz,
+    )
+    time = np.arange(signal.size, dtype=np.float64) / sample_rate
+    fundamental_sine, fundamental_cosine = _sinusoid_coefficients(
+        signal, sample_rate, fundamental_hz
+    )
+    fundamental = fundamental_sine * np.sin(2.0 * np.pi * fundamental_hz * time)
+    fundamental += fundamental_cosine * np.cos(2.0 * np.pi * fundamental_hz * time)
+    fundamental_rms = math.hypot(fundamental_sine, fundamental_cosine) / math.sqrt(2.0)
+    residual_without_fundamental = signal - fundamental
+
+    harmonic_rms: dict[str, float] = {}
+    modeled_harmonics = np.zeros_like(signal)
+    maximum_harmonic = min(
+        config.maximum_harmonic,
+        int(upper_hz // fundamental_hz),
+    )
+    harmonic_power = 0.0
+    for harmonic in range(2, maximum_harmonic + 1):
+        frequency_hz = harmonic * fundamental_hz
+        sine_coefficient, cosine_coefficient = _sinusoid_coefficients(
+            signal, sample_rate, frequency_hz
+        )
+        rms = math.hypot(sine_coefficient, cosine_coefficient) / math.sqrt(2.0)
+        harmonic_rms[str(harmonic)] = float(rms)
+        harmonic_power += rms * rms
+        modeled_harmonics += sine_coefficient * np.sin(2.0 * np.pi * frequency_hz * time)
+        modeled_harmonics += cosine_coefficient * np.cos(2.0 * np.pi * frequency_hz * time)
+
+    thd_percent = 100.0 * math.sqrt(harmonic_power) / max(fundamental_rms, EPSILON)
+    thdn_rms = float(
+        np.sqrt(np.mean(np.square(residual_without_fundamental), dtype=np.float64))
+    )
+    thdn_percent = 100.0 * thdn_rms / max(fundamental_rms, EPSILON)
+    non_harmonic_residual = residual_without_fundamental - modeled_harmonics
+    non_harmonic_rms = float(
+        np.sqrt(np.mean(np.square(non_harmonic_residual), dtype=np.float64))
+    )
+    tone_snr_db = 20.0 * math.log10(
+        max(fundamental_rms, EPSILON) / max(non_harmonic_rms, EPSILON)
+    )
+    return {
+        "expected_fundamental_hz": float(config.test_tone_frequency_hz),
+        "detected_fundamental_hz": fundamental_hz,
+        "fundamental_rms": float(fundamental_rms),
+        "harmonic_rms_by_order": harmonic_rms,
+        "highest_measured_harmonic": int(maximum_harmonic),
+        "end_to_end_thd_percent": float(thd_percent),
+        "end_to_end_thdn_percent": float(thdn_percent),
+        "tone_snr_excluding_measured_harmonics_db": float(tone_snr_db),
+        "clipped_sample_percentage": 100.0 * float(np.mean(np.abs(audio) >= 0.99)),
+        "analysis_band_hz": [lower_hz, upper_hz],
+        "measurement_scope": "playback device + room + phone microphone + phone processing",
+    }
+
+
+def measure_phone_recording(
+    program_file: str | Path,
+    program_context: AnalysisContext,
+    noise_file: str | Path,
+    tone_file: str | Path,
+    config: PhoneRecordingConfig,
+    safety: SafetyLimits,
+    reference_spl_db: float | None = None,
+) -> dict[str, Any]:
+    """Measure a controlled phone capture using separate noise and tone files."""
+    _validate_phone_recording(config)
+    _validate_phone_source(
+        program_file,
+        program_context.source_channels,
+        program_context.decode_status,
+        program_context.container_subtype,
+        config,
+        "program",
+    )
+    program_duration = program_context.audio.size / program_context.sample_rate
+    if program_duration < config.minimum_measurement_seconds:
+        raise AudioAnalysisError(
+            f"The program recording is {program_duration:.3f} seconds; controlled phone mode "
+            f"requires at least {config.minimum_measurement_seconds:.3f} seconds."
+        )
+    noise_audio, noise_rate, noise_info = load_audio(noise_file, safety)
+    tone_audio, tone_rate, tone_info = load_audio(tone_file, safety)
+    _validate_phone_source(
+        noise_file,
+        int(noise_info.get("source_channels", 1)),
+        str(noise_info.get("decode_status", "complete")),
+        str(noise_info.get("container_subtype", "")),
+        config,
+        "noise",
+    )
+    _validate_phone_source(
+        tone_file,
+        int(tone_info.get("source_channels", 1)),
+        str(tone_info.get("decode_status", "complete")),
+        str(tone_info.get("container_subtype", "")),
+        config,
+        "test-tone",
+    )
+    noise = _trim_phone_measurement(noise_audio, noise_rate, config, "noise")
+    tone = _trim_phone_measurement(tone_audio, tone_rate, config, "test-tone")
+    tone_measurement = _measure_end_to_end_tone(tone, tone_rate, config)
+
+    noise_rms = float(np.sqrt(np.mean(np.square(noise), dtype=np.float64)))
+    program_rms = float(
+        np.sqrt(np.mean(np.square(program_context.audio), dtype=np.float64))
+    )
+    measured_snr_db = 20.0 * math.log10(
+        max(program_rms, EPSILON) / max(noise_rms, EPSILON)
+    )
+    effective_reference_spl = (
+        reference_spl_db if reference_spl_db is not None else config.reference_spl_db
+    )
+    calibration: dict[str, Any] = {
+        "status": "not_calibrated",
+        "reference_spl_db": None,
+        "noise_level_db_spl": None,
+        "program_level_db_spl": None,
+        "note": "Digital dBFS levels only; supply an external-meter reference SPL for field calibration.",
+    }
+    if effective_reference_spl is not None:
+        if not 0.0 < effective_reference_spl < 200.0:
+            raise AudioAnalysisError("Reference SPL override must be between 0 and 200 dB.")
+        tone_rms = float(np.sqrt(np.mean(np.square(tone), dtype=np.float64)))
+        calibration = {
+            "status": "field_calibrated_not_certified",
+            "reference_spl_db": float(effective_reference_spl),
+            "reference_tone_rms": tone_rms,
+            "noise_level_db_spl": float(
+                effective_reference_spl
+                + 20.0 * math.log10(max(noise_rms, EPSILON) / max(tone_rms, EPSILON))
+            ),
+            "program_level_db_spl": float(
+                effective_reference_spl
+                + 20.0 * math.log10(max(program_rms, EPSILON) / max(tone_rms, EPSILON))
+            ),
+            "note": (
+                "Single-point field calibration; phone microphone response and processing "
+                "prevent certification."
+            ),
+        }
+
+    reliability_warnings: list[str] = []
+    if not config.processing_disabled_confirmed:
+        reliability_warnings.append(
+            "Phone automatic gain/noise suppression/normalization was not confirmed disabled."
+        )
+    if not config.fixed_setup_confirmed:
+        reliability_warnings.append(
+            "Fixed phone, distance, orientation, room, playback level, and recorder settings "
+            "were not confirmed."
+        )
+    if effective_reference_spl is None:
+        reliability_warnings.append(
+            "No external SPL reference was supplied; acoustic levels remain uncalibrated."
+        )
+    missing_metadata = [
+        label
+        for label, value in (
+            ("phone model", config.phone_model),
+            ("recording app", config.recording_app),
+            ("phone-to-source distance", config.phone_to_source_distance_meters),
+            ("microphone orientation", config.microphone_orientation),
+        )
+        if value in (None, "")
+    ]
+    if missing_metadata:
+        reliability_warnings.append(
+            "Missing reproducibility metadata: " + ", ".join(missing_metadata) + "."
+        )
+
+    return {
+        "mode": "controlled_phone_recording",
+        "program_file": str(Path(program_file).expanduser().resolve()),
+        "noise_file": str(Path(noise_file).expanduser().resolve()),
+        "tone_file": str(Path(tone_file).expanduser().resolve()),
+        "usable_noise_duration_seconds": float(noise.size / noise_rate),
+        "usable_tone_duration_seconds": float(tone.size / tone_rate),
+        "noise": {
+            "separate_recording_noise_rms": noise_rms,
+            "separate_recording_noise_dbfs": float(
+                20.0 * math.log10(max(noise_rms, EPSILON))
+            ),
+            "program_rms": program_rms,
+            "measured_program_to_noise_snr_db": float(measured_snr_db),
+        },
+        "tone": tone_measurement,
+        "calibration": calibration,
+        "sharpness": {
+            "din_45692_acum": None,
+            "status": "not_measured",
+            "reason": (
+                "DIN 45692 sharpness requires a validated psychoacoustic implementation and "
+                "calibrated pressure/frequency response; the normalized spectral score remains separate."
+            ),
+        },
+        "protocol": {
+            "lossless_required": config.require_lossless,
+            "mono_required": config.require_mono,
+            "processing_disabled_confirmed": config.processing_disabled_confirmed,
+            "fixed_setup_confirmed": config.fixed_setup_confirmed,
+            "discard_start_seconds": float(config.discard_start_seconds),
+            "discard_end_seconds": float(config.discard_end_seconds),
+            "phone_model": config.phone_model or None,
+            "recording_app": config.recording_app or None,
+            "phone_to_source_distance_meters": config.phone_to_source_distance_meters,
+            "microphone_orientation": config.microphone_orientation or None,
+        },
+        "source_recordings": {
+            "program": {
+                "sample_rate": int(program_context.sample_rate),
+                "channels": int(program_context.source_channels),
+                "container_subtype": program_context.container_subtype,
+            },
+            "noise": {
+                "sample_rate": int(noise_rate),
+                "channels": int(noise_info.get("source_channels", 1)),
+                "container_subtype": str(noise_info.get("container_subtype", "")),
+            },
+            "test_tone": {
+                "sample_rate": int(tone_rate),
+                "channels": int(tone_info.get("source_channels", 1)),
+                "container_subtype": str(tone_info.get("container_subtype", "")),
+            },
+        },
+        "reliability_warnings": reliability_warnings,
+    }
+
+
 def evaluate_quality(
     results: dict[str, Any],
     thresholds: QualityThresholds,
 ) -> dict[str, Any]:
     """Apply configurable deterministic warning/failure thresholds."""
     _validate_quality_thresholds(thresholds)
-    snr_db = float(results["noise"]["estimated_snr_db"])
+    phone_noise = results.get("phone_recording", {}).get("noise", {})
+    measured_phone_snr = phone_noise.get("measured_program_to_noise_snr_db")
+    snr_db = float(
+        measured_phone_snr
+        if measured_phone_snr is not None
+        else results["noise"]["estimated_snr_db"]
+    )
+    snr_label = "Measured phone-recording SNR" if measured_phone_snr is not None else "Estimated SNR"
+    snr_is_controlled = measured_phone_snr is not None
     distortion_score = float(results["distortion"]["estimated_score"])
     clipped_percentage = float(results["distortion"]["clipped_sample_percentage"])
     warnings: list[str] = []
     failures: list[str] = []
 
     if snr_db < thresholds.snr_failure_below_db:
-        failures.append(
-            f"Estimated SNR {snr_db:.2f} dB is below the failure threshold "
+        message = (
+            f"{snr_label} {snr_db:.2f} dB is below the failure threshold "
             f"{thresholds.snr_failure_below_db:.2f} dB."
         )
+        if snr_is_controlled:
+            failures.append(message)
+        else:
+            warnings.append(
+                message
+                + " This no-reference estimate is advisory-only; use a separate noise "
+                "recording to enforce an SNR failure."
+            )
     elif snr_db < thresholds.snr_warning_below_db:
         warnings.append(
-            f"Estimated SNR {snr_db:.2f} dB is below the warning threshold "
+            f"{snr_label} {snr_db:.2f} dB is below the warning threshold "
             f"{thresholds.snr_warning_below_db:.2f} dB."
         )
 
@@ -929,6 +1564,8 @@ def evaluate_quality(
         "failures": failures,
         "measured": {
             "estimated_snr_db": snr_db,
+            "snr_source": "separate_phone_noise_recording" if measured_phone_snr is not None else "quiet_frame_estimate",
+            "snr_threshold_enforcement": "enforced" if snr_is_controlled else "advisory_only",
             "estimated_distortion_score": distortion_score,
             "clipped_sample_percentage": clipped_percentage,
         },
@@ -984,6 +1621,9 @@ def _analyze_with_context(
         active_frames=active_frames,
         flatness=flatness,
         config=config,
+        source_channels=int(container_info.get("source_channels", 1)),
+        decode_status=str(container_info.get("decode_status", "complete")),
+        container_subtype=str(container_info.get("container_subtype", "")),
     )
     path = Path(file_path).expanduser().resolve()
     results: dict[str, Any] = {
@@ -1073,9 +1713,15 @@ def _append_shared_csv(
         if "analysis_id" in existing.columns:
             existing = existing[existing["analysis_id"].astype(str) != prefix]
         columns = list(dict.fromkeys([*existing.columns, *row.columns]))
-        combined = existing.reindex(columns=columns).astype(object)
-        aligned_row = row.reindex(columns=columns).astype(object)
-        combined.loc[len(combined)] = aligned_row.iloc[0]
+        existing_records = existing.reindex(columns=columns).to_dict(orient="records")
+        new_record = row.reindex(columns=columns).iloc[0].to_dict()
+        # Constructing from records avoids pandas' internal concat path, which
+        # emits a FutureWarning for the all-empty columns used by heterogeneous
+        # success and technical-failure rows.
+        combined = pd.DataFrame.from_records(
+            [*existing_records, new_record],
+            columns=columns,
+        )
     else:
         combined = row
 
@@ -1248,12 +1894,26 @@ def create_visualizations(
     plt.grid(alpha=0.25)
     save_figure("rms_loudness")
 
+    active_flatness = context.flatness[context.active_frames]
+    active_flatness_times = context.frame_times[context.active_frames]
+    flatness_mean = float(results["flatness"]["mean"])
+    flatness_upper = min(
+        1.0,
+        max(
+            float(np.percentile(active_flatness, 99.5)) * 1.15,
+            flatness_mean * 2.0,
+            1.0e-6,
+        ),
+    )
     plt.figure(figsize=(12, 4))
-    plt.plot(context.frame_times, context.flatness, linewidth=1.1)
-    plt.ylim(0.0, 1.0)
+    plt.plot(active_flatness_times, active_flatness, linewidth=1.1, label="Active frames")
+    plt.axhline(flatness_mean, color="darkorange", linestyle="--", label="Active-frame mean")
+    plt.ylim(0.0, flatness_upper)
     plt.title("Spectral flatness over time")
     plt.xlabel("Time (s)")
     plt.ylabel("Spectral flatness")
+    plt.ticklabel_format(axis="y", style="sci", scilimits=(-3, 3))
+    plt.legend()
     plt.grid(alpha=0.25)
     save_figure("spectral_flatness")
 
@@ -1276,6 +1936,7 @@ def print_report(results: dict[str, Any], saved_files: dict[str, str] | None = N
     info = results["file_information"]
     analysis = results["analysis_information"]
     loudness = results["loudness"]
+    phone = results.get("phone_recording")
     print("\nAudio quality analysis")
     print("=" * 72)
     print(f"File:       {info['file_path']}")
@@ -1304,13 +1965,20 @@ def print_report(results: dict[str, Any], saved_files: dict[str, str] | None = N
             **loudness
         )
     )
+    if loudness.get("integrated_lufs") is not None:
+        print(
+            f"BS.1770:    {loudness['integrated_lufs']:.2f} LUFS integrated, "
+            f"{loudness['true_peak_dbtp']:.2f} dBTP true peak"
+        )
+        print(f"LUFS note:  {loudness['channel_handling_note']}")
     print(
         f"Flatness:   mean {results['flatness']['mean']:.5f}, "
         f"std {results['flatness']['standard_deviation']:.5f}"
     )
     print(f"Sharpness:  {results['sharpness']['normalized_score']:.5f} (approximate, 0-1)")
+    noise_label = "No-ref noise" if phone else "Noise"
     print(
-        f"Noise:      RMS {results['noise']['noise_rms']:.6f}, "
+        f"{noise_label + ':':<12}RMS {results['noise']['noise_rms']:.6f}, "
         f"{results['noise']['noise_dbfs']:.2f} dBFS, "
         f"estimated SNR {results['noise']['estimated_snr_db']:.2f} dB"
     )
@@ -1321,6 +1989,29 @@ def print_report(results: dict[str, Any], saved_files: dict[str, str] | None = N
         f"frames clipped {results['distortion']['clipped_frame_percentage']:.2f}%"
     )
     print(f"              {results['distortion']['interpretation']}")
+    if phone:
+        phone_noise = phone["noise"]
+        tone = phone["tone"]
+        print("-" * 72)
+        print("Controlled phone-recording measurements")
+        print(
+            f"Noise:      {phone_noise['separate_recording_noise_dbfs']:.2f} dBFS, "
+            f"measured SNR {phone_noise['measured_program_to_noise_snr_db']:.2f} dB"
+        )
+        print(
+            f"Tone:       {tone['detected_fundamental_hz']:.3f} Hz detected, "
+            f"THD {tone['end_to_end_thd_percent']:.4f}%, "
+            f"THD+N {tone['end_to_end_thdn_percent']:.4f}%"
+        )
+        calibration = phone["calibration"]
+        if calibration["status"] == "field_calibrated_not_certified":
+            print(
+                f"SPL:        noise {calibration['noise_level_db_spl']:.2f} dB SPL, "
+                f"program {calibration['program_level_db_spl']:.2f} dB SPL "
+                "(field-calibrated)"
+            )
+        for message in phone["reliability_warnings"]:
+            print(f"  Protocol warning: {message}")
     quality = results.get("quality_assessment", {})
     if quality:
         print(f"Quality:    {str(quality.get('status', 'not_evaluated')).upper()}")
@@ -1337,7 +2028,7 @@ def print_report(results: dict[str, Any], saved_files: dict[str, str] | None = N
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Extract audio features and no-reference quality estimates.",
+        description="Extract audio features and optional controlled phone-recording measurements.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("audio_file", nargs="?", help="WAV, MP3, FLAC, or OGG file")
@@ -1385,6 +2076,27 @@ def _build_parser() -> argparse.ArgumentParser:
         default=True,
         help="Append one row to the shared results/results.csv file",
     )
+    parser.add_argument(
+        "--phone-recording",
+        action="store_true",
+        help="Enable controlled phone mode; requires --noise-file and --tone-file",
+    )
+    parser.add_argument(
+        "--noise-file",
+        default=None,
+        help="Separate system-on/no-program phone recording for measured noise and SNR",
+    )
+    parser.add_argument(
+        "--tone-file",
+        default=None,
+        help="Separate phone recording of the configured test tone for end-to-end THD/THD+N",
+    )
+    parser.add_argument(
+        "--reference-spl-db",
+        type=float,
+        default=None,
+        help="External SPL meter reading for the test-tone recording (field calibration)",
+    )
     return parser
 
 
@@ -1421,6 +2133,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         category: str,
         exit_code: int,
         label: str,
+        *,
+        record_failure: bool = True,
     ) -> int:
         plt.close("all")
         if behavior.cleanup_incomplete_outputs:
@@ -1430,7 +2144,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     print(f"Cleaned {len(removed)} incomplete output file(s).", file=sys.stderr)
             except OSError as cleanup_error:
                 print(f"Warning: incomplete output cleanup failed: {cleanup_error}", file=sys.stderr)
-        if behavior.record_technical_failures_in_csv:
+        if record_failure and behavior.record_technical_failures_in_csv:
             try:
                 failure_csv = _record_technical_failure(
                     audio_file,
@@ -1456,6 +2170,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Settings:  {settings.settings_path}", flush=True)
         print("Please wait; long recordings and plot generation may take a minute.", flush=True)
         results, context = _analyze_with_context(audio_file, config, settings.safety)
+        if args.phone_recording:
+            if not args.noise_file or not args.tone_file:
+                raise AudioAnalysisError(
+                    "Phone-recording mode requires both --noise-file and --tone-file."
+                )
+            print("Measuring controlled phone noise and test-tone recordings...", flush=True)
+            results["phone_recording"] = measure_phone_recording(
+                audio_file,
+                context,
+                args.noise_file,
+                args.tone_file,
+                settings.phone_recording,
+                settings.safety,
+                args.reference_spl_db,
+            )
+            results["analysis_information"]["measurement_mode"] = "controlled_phone_recording"
+        elif args.noise_file or args.tone_file or args.reference_spl_db is not None:
+            raise AudioAnalysisError(
+                "--noise-file, --tone-file, and --reference-spl-db require --phone-recording."
+            )
+        else:
+            results["analysis_information"]["measurement_mode"] = "ordinary_single_recording"
         results["analysis_information"]["analysis_status"] = "completed"
         results["analysis_information"]["settings_file"] = str(settings.settings_path)
         results["analysis_information"]["settings_snapshot"] = {
@@ -1463,6 +2199,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "safety": asdict(settings.safety),
             "quality_thresholds": asdict(settings.quality_thresholds),
             "failure_behavior": asdict(settings.failure_behavior),
+            "phone_recording": asdict(settings.phone_recording),
         }
         results["quality_assessment"] = evaluate_quality(
             results,
@@ -1504,7 +2241,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (OSError, RuntimeError) as exc:
         return handle_technical_failure(exc, "processing_or_output", 1, "Output or processing error")
     except KeyboardInterrupt as exc:
-        return handle_technical_failure(exc, "cancelled", 130, "Audio analysis cancelled")
+        return handle_technical_failure(
+            exc,
+            "cancelled",
+            130,
+            "Audio analysis cancelled",
+            record_failure=False,
+        )
     except Exception as exc:
         return handle_technical_failure(exc, "unexpected", 1, "Unexpected audio analysis error")
 

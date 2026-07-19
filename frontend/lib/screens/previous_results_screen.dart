@@ -1,17 +1,23 @@
 import 'package:flutter/material.dart';
-import '../widgets/bottom_nav_bar.dart';
+import '../widgets/app_navigation_drawer.dart';
 import '../services/api_service.dart';
 import 'results_screen.dart';
 
 class PreviousResultsScreen extends StatefulWidget {
-  const PreviousResultsScreen({super.key});
+  const PreviousResultsScreen({
+    super.key,
+    this.title = 'Reports',
+    this.accentColor = const Color(0xFF4A90D9),
+  });
+
+  final String title;
+  final Color accentColor;
 
   @override
   State<PreviousResultsScreen> createState() => _PreviousResultsScreenState();
 }
 
 class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
-  int _selectedNavIndex = 2;
   String _filter = 'All';
   List<dynamic> _results = [];
   bool _loading = true;
@@ -45,17 +51,15 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
+      drawer: const AppNavigationDrawer(),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D0D0D),
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.chevron_left, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Reports',
+        leading: const AppDrawerButton(),
+        title: Text(
+          widget.title,
           style: TextStyle(
-            color: Color(0xFF4A90D9),
+            color: widget.accentColor,
             fontSize: 18,
             fontWeight: FontWeight.w700,
           ),
@@ -85,10 +89,12 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: selected
-                              ? const Color(0xFF4A90D9)
+                              ? widget.accentColor
                               : const Color(0xFF1C1C2E),
                           borderRadius: BorderRadius.circular(20),
                         ),
@@ -114,109 +120,120 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
             // Results list
             Expanded(
               child: _loading
-                  ? const Center(
+                  ? Center(
                       child: CircularProgressIndicator(
-                          color: Color(0xFF4A90D9)))
+                        color: widget.accentColor,
+                      ),
+                    )
                   : _filtered.isEmpty
-                      ? const Center(
-                          child: Text('No results found',
-                              style: TextStyle(color: Color(0xFF666666))))
-                      : RefreshIndicator(
-                          onRefresh: _load,
-                          color: const Color(0xFF4A90D9),
-                          child: ListView.builder(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 20),
-                            itemCount: _filtered.length,
-                            itemBuilder: (_, i) {
-                              final item = _filtered[i];
-                              final score  = item['score'] ?? 0;
-                              final status = item['status'] ?? 'Acceptable';
-                              final date   = (item['created_at'] ?? '').toString();
-                              final name   = item['test_name'] ?? '';
-                              final color  = status == 'Acceptable'
-                                  ? const Color(0xFF4CAF50)
-                                  : const Color(0xFFF44336);
-                              return GestureDetector(
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => ResultsScreen(
-                                        testName: name,
-                                        score: score,
-                                      ),
-                                    ),
-                                  );
-                                },
-                                child: Container(
-                                  margin: const EdgeInsets.only(bottom: 10),
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 16, vertical: 14),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF1C1C2E),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(name,
-                                                style: const TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 14,
-                                                    fontWeight:
-                                                        FontWeight.w600)),
-                                            const SizedBox(height: 2),
-                                            Text(
-                                                date.length > 16
-                                                    ? date.substring(0, 16)
-                                                    : date,
-                                                style: const TextStyle(
-                                                    color: Color(0xFF666666),
-                                                    fontSize: 11)),
-                                          ],
-                                        ),
-                                      ),
-                                      Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.end,
-                                        children: [
-                                          Text(status,
-                                              style: TextStyle(
-                                                  color: color,
-                                                  fontSize: 11,
-                                                  fontWeight:
-                                                      FontWeight.w500)),
-                                          Text('$score/100',
-                                              style: TextStyle(
-                                                  color: color,
-                                                  fontSize: 13,
-                                                  fontWeight:
-                                                      FontWeight.w700)),
-                                        ],
-                                      ),
-                                      const SizedBox(width: 6),
-                                      const Icon(Icons.chevron_right,
-                                          color: Color(0xFF555555),
-                                          size: 20),
-                                    ],
+                  ? const Center(
+                      child: Text(
+                        'No results found',
+                        style: TextStyle(color: Color(0xFF666666)),
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      color: widget.accentColor,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        itemCount: _filtered.length,
+                        itemBuilder: (_, i) {
+                          final item = _filtered[i];
+                          final score = item['score'] ?? 0;
+                          final status = item['status'] ?? 'Acceptable';
+                          final date = (item['created_at'] ?? '').toString();
+                          final name = item['test_name'] ?? '';
+                          final color = status == 'Acceptable'
+                              ? const Color(0xFF4CAF50)
+                              : const Color(0xFFF44336);
+                          return GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ResultsScreen(
+                                    testName: name,
+                                    score: score,
                                   ),
                                 ),
                               );
                             },
-                          ),
-                        ),
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1C1C2E),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          name,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          date.length > 16
+                                              ? date.substring(0, 16)
+                                              : date,
+                                          style: const TextStyle(
+                                            color: Color(0xFF666666),
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        status,
+                                        style: TextStyle(
+                                          color: color,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      Text(
+                                        '$score/100',
+                                        style: TextStyle(
+                                          color: color,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(width: 6),
+                                  const Icon(
+                                    Icons.chevron_right,
+                                    color: Color(0xFF555555),
+                                    size: 20,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
             ),
           ],
         ),
-      ),
-      bottomNavigationBar: BottomNavBar(
-        selectedIndex: _selectedNavIndex,
-        onTap: (i) => setState(() => _selectedNavIndex = i),
       ),
     );
   }

@@ -1,6 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
-import '../widgets/bottom_nav_bar.dart';
+import '../widgets/app_navigation_drawer.dart';
 import '../widgets/waveform_painter.dart';
 
 class DetailedReportScreen extends StatefulWidget {
@@ -22,8 +22,6 @@ class DetailedReportScreen extends StatefulWidget {
 }
 
 class _DetailedReportScreenState extends State<DetailedReportScreen> {
-  int _selectedNavIndex = 0;
-
   // Generate pseudo-random waveform bars for display
   final List<double> _waveformBars = List.generate(
     60,
@@ -46,13 +44,11 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
+      drawer: const AppNavigationDrawer(),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D0D0D),
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.chevron_left, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: const AppDrawerButton(),
         title: const Text(
           'Detailed Report with Visual',
           style: TextStyle(
@@ -105,16 +101,37 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
                           Column(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: const [
-                              Text('100', style: TextStyle(color: Color(0xFF666666), fontSize: 9)),
-                              Text('50', style: TextStyle(color: Color(0xFF666666), fontSize: 9)),
-                              Text('0', style: TextStyle(color: Color(0xFF666666), fontSize: 9)),
+                              Text(
+                                '100',
+                                style: TextStyle(
+                                  color: Color(0xFF666666),
+                                  fontSize: 9,
+                                ),
+                              ),
+                              Text(
+                                '50',
+                                style: TextStyle(
+                                  color: Color(0xFF666666),
+                                  fontSize: 9,
+                                ),
+                              ),
+                              Text(
+                                '0',
+                                style: TextStyle(
+                                  color: Color(0xFF666666),
+                                  fontSize: 9,
+                                ),
+                              ),
                             ],
                           ),
                           const SizedBox(width: 6),
                           Expanded(
                             child: CustomPaint(
                               painter: WaveformPainter(bars: _waveformBars),
-                              size: const Size(double.infinity, double.infinity),
+                              size: const Size(
+                                double.infinity,
+                                double.infinity,
+                              ),
                             ),
                           ),
                         ],
@@ -206,7 +223,7 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
                         Text(
                           '/100',
                           style: TextStyle(
-                            color: _gradeColor.withOpacity(0.7),
+                            color: _gradeColor.withValues(alpha: 0.7),
                             fontSize: 22,
                             fontWeight: FontWeight.w600,
                           ),
@@ -230,10 +247,6 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
             ],
           ),
         ),
-      ),
-      bottomNavigationBar: BottomNavBar(
-        selectedIndex: _selectedNavIndex,
-        onTap: (i) => setState(() => _selectedNavIndex = i),
       ),
     );
   }
@@ -264,10 +277,32 @@ class _SpectrogramPainter extends CustomPainter {
   }
 
   Color _spectralColor(double t) {
-    if (t < 0.25) return Color.lerp(const Color(0xFF0D0030), const Color(0xFF4A0080), t * 4)!;
-    if (t < 0.5) return Color.lerp(const Color(0xFF4A0080), const Color(0xFFAA2200), (t - 0.25) * 4)!;
-    if (t < 0.75) return Color.lerp(const Color(0xFFAA2200), const Color(0xFFFF6600), (t - 0.5) * 4)!;
-    return Color.lerp(const Color(0xFFFF6600), const Color(0xFFFFCC00), (t - 0.75) * 4)!;
+    if (t < 0.25) {
+      return Color.lerp(
+        const Color(0xFF0D0030),
+        const Color(0xFF4A0080),
+        t * 4,
+      )!;
+    }
+    if (t < 0.5) {
+      return Color.lerp(
+        const Color(0xFF4A0080),
+        const Color(0xFFAA2200),
+        (t - 0.25) * 4,
+      )!;
+    }
+    if (t < 0.75) {
+      return Color.lerp(
+        const Color(0xFFAA2200),
+        const Color(0xFFFF6600),
+        (t - 0.5) * 4,
+      )!;
+    }
+    return Color.lerp(
+      const Color(0xFFFF6600),
+      const Color(0xFFFFCC00),
+      (t - 0.75) * 4,
+    )!;
   }
 
   @override
@@ -299,10 +334,18 @@ class _MetricBar extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: const TextStyle(color: Colors.white, fontSize: 13)),
-            Text(tag,
-                style: TextStyle(
-                    color: tagColor, fontSize: 12, fontWeight: FontWeight.w600)),
+            Text(
+              label,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+            ),
+            Text(
+              tag,
+              style: TextStyle(
+                color: tagColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 6),
@@ -318,8 +361,10 @@ class _MetricBar extends StatelessWidget {
         const SizedBox(height: 4),
         Align(
           alignment: Alignment.centerRight,
-          child: Text(valueLabel,
-              style: const TextStyle(color: Color(0xFF888888), fontSize: 11)),
+          child: Text(
+            valueLabel,
+            style: const TextStyle(color: Color(0xFF888888), fontSize: 11),
+          ),
         ),
       ],
     );

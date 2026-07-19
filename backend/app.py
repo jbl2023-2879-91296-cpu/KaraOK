@@ -3,10 +3,16 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 import hashlib
+import json
 import os
+from pathlib import Path
 import re
 import secrets
+import signal
 import smtplib
+import subprocess
+import sys
+import time
 import uuid
 from email.message import EmailMessage
 from typing import Any, Callable
@@ -70,6 +76,23 @@ AUDIO_UPLOAD_DIR = os.path.abspath(
     os.getenv("AUDIO_UPLOAD_DIR")
     or os.path.join(os.path.dirname(__file__), "uploads")
 )
+ANALYSIS_OUTPUT_DIR = os.path.abspath(
+    os.getenv("AUDIO_ANALYSIS_OUTPUT_DIR")
+    or os.path.join(AUDIO_UPLOAD_DIR, "_analysis")
+)
+AUDIO_ANALYZER_PATH = os.path.abspath(
+    os.getenv("AUDIO_ANALYZER_PATH")
+    or os.path.join(os.path.dirname(__file__), "audio_analyzer.py")
+)
+AUDIO_ANALYZER_SETTINGS_PATH = os.path.abspath(
+    os.getenv("AUDIO_ANALYZER_SETTINGS_PATH")
+    or os.path.join(os.path.dirname(__file__), "audio_analyzer_settings.json")
+)
+AUDIO_ANALYSIS_TIMEOUT_SECONDS = int(
+    os.getenv("AUDIO_ANALYSIS_TIMEOUT_SECONDS", "300")
+)
+ALLOWED_ANALYSIS_PURPOSES = {"quality_evaluation", "settings_suggestion"}
+ANALYZER_COMPLETED_EXIT_CODES = {0, 3}
 ALLOWED_AUDIO_EXTENSIONS = {"wav", "mp3", "m4a", "aac", "ogg", "flac"}
 app.config["MAX_CONTENT_LENGTH"] = MAX_AUDIO_BYTES + (1024 * 1024)
 
@@ -78,6 +101,12 @@ EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 VALID_ROLES = {"technician", "owner", "admin"}
 SELF_REGISTER_ROLES = {"owner", "technician"}
 VALID_STATUSES = {"Acceptable", "Needs Improvement"}
+
+
+class AudioAnalyzerExecutionError(RuntimeError):
+    def __init__(self, message: str, dump: dict[str, Any]):
+        super().__init__(message)
+        self.dump = dump
 
 
 def get_db():
@@ -116,6 +145,304 @@ def audio_duration_seconds(path: str) -> int:
     if duration < 1 or duration > MAX_AUDIO_SECONDS:
         raise ValueError("Audio duration must be between 1 and 300 seconds")
     return duration
+
+
+def _analysis_directory(user_id: int, assessment_id: int) -> Path:
+    root = Path(ANALYSIS_OUTPUT_DIR).resolve()
+    destination = (root / str(user_id) / str(assessment_id)).resolve()
+    if os.path.commonpath((str(root), str(destination))) != str(root):
+        raise RuntimeError("Invalid analysis output path")
+    destination.mkdir(parents=True, exist_ok=True)
+    return destination
+
+
+def _process_text(value: str | bytes | None, limit: int = 20_000) -> str:
+    if value is None:
+        return ""
+    text = value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value
+    return text[-limit:]
+
+
+def _write_analysis_dump(destination: Path, dump: dict[str, Any]) -> Path:
+    dump_path = destination / "analysis_dump.json"
+    temporary_path = destination / ".analysis_dump.json.tmp"
+    with temporary_path.open("w", encoding="utf-8") as handle:
+        json.dump(dump, handle, indent=2, ensure_ascii=False, allow_nan=False)
+    os.replace(temporary_path, dump_path)
+    return dump_path
+
+
+def _execute_analyzer_command(
+    command: list[str],
+    *,
+    cwd: str,
+    environment: dict[str, str],
+    timeout_seconds: int,
+) -> subprocess.CompletedProcess[str]:
+    process_options: dict[str, Any] = {}
+    if os.name == "nt":
+        process_options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        process_options["start_new_session"] = True
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=environment,
+        **process_options,
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired as error:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        else:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        try:
+            stdout, stderr = process.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+        error.output = stdout
+        error.stderr = stderr
+        raise
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+
+
+def run_audio_analyzer(
+    audio_path: str,
+    *,
+    user_id: int,
+    assessment_id: int,
+    original_name: str,
+    analysis_purpose: str,
+) -> dict[str, Any]:
+    """Run the standalone analyzer and persist an inspectable API output dump."""
+    if analysis_purpose not in ALLOWED_ANALYSIS_PURPOSES:
+        raise ValueError("analysis_purpose is invalid")
+    if not os.path.isfile(AUDIO_ANALYZER_PATH):
+        raise RuntimeError("audio_analyzer.py is unavailable")
+    if not os.path.isfile(AUDIO_ANALYZER_SETTINGS_PATH):
+        raise RuntimeError("audio analyzer settings are unavailable")
+
+    destination = _analysis_directory(user_id, assessment_id)
+    command = [
+        sys.executable,
+        AUDIO_ANALYZER_PATH,
+        audio_path,
+        "--output-dir",
+        str(destination),
+        "--settings",
+        AUDIO_ANALYZER_SETTINGS_PATH,
+        "--no-save-plots",
+        "--no-save-csv",
+    ]
+    started_at = datetime.now(timezone.utc)
+    started_clock = time.monotonic()
+    environment = os.environ.copy()
+    environment["MPLBACKEND"] = "Agg"
+    environment["PYTHONUNBUFFERED"] = "1"
+    runtime_cache = Path(ANALYSIS_OUTPUT_DIR).resolve() / "_runtime_cache"
+    matplotlib_cache = runtime_cache / "matplotlib"
+    numba_cache = runtime_cache / "numba"
+    matplotlib_cache.mkdir(parents=True, exist_ok=True)
+    numba_cache.mkdir(parents=True, exist_ok=True)
+    environment["MPLCONFIGDIR"] = str(matplotlib_cache)
+    environment["NUMBA_CACHE_DIR"] = str(numba_cache)
+
+    exit_code: int | None = None
+    stdout = ""
+    stderr = ""
+    process_error: str | None = None
+    try:
+        completed = _execute_analyzer_command(
+            command,
+            cwd=os.path.dirname(AUDIO_ANALYZER_PATH),
+            environment=environment,
+            timeout_seconds=AUDIO_ANALYSIS_TIMEOUT_SECONDS,
+        )
+        exit_code = completed.returncode
+        stdout = _process_text(completed.stdout)
+        stderr = _process_text(completed.stderr)
+    except subprocess.TimeoutExpired as error:
+        stdout = _process_text(error.stdout)
+        stderr = _process_text(error.stderr)
+        process_error = (
+            f"Audio analysis exceeded {AUDIO_ANALYSIS_TIMEOUT_SECONDS} seconds."
+        )
+    except OSError as error:
+        process_error = f"Audio analyzer could not be started: {error}"
+
+    analyzer_output: dict[str, Any] | None = None
+    if exit_code in ANALYZER_COMPLETED_EXIT_CODES:
+        result_files = sorted(
+            destination.glob("*_analysis.json"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        if result_files:
+            try:
+                with result_files[0].open("r", encoding="utf-8") as handle:
+                    loaded = json.load(handle)
+                if isinstance(loaded, dict):
+                    analyzer_output = loaded
+            except (OSError, json.JSONDecodeError) as error:
+                process_error = f"Analyzer JSON could not be read: {error}"
+        else:
+            process_error = "Analyzer completed without producing a JSON result."
+    elif process_error is None:
+        process_error = f"Audio analyzer exited with code {exit_code}."
+
+    duration_seconds = round(time.monotonic() - started_clock, 3)
+    analysis_completed = analyzer_output is not None and process_error is None
+    dump: dict[str, Any] = {
+        "dump_schema_version": 1,
+        "placeholder_output": True,
+        "analysis_status": "completed" if analysis_completed else "failed",
+        "analysis_purpose": analysis_purpose,
+        "upload": {
+            "assessment_id": assessment_id,
+            "original_file_name": original_name,
+        },
+        "analyzer_process": {
+            "started_at_utc": started_at.isoformat(),
+            "duration_seconds": duration_seconds,
+            "exit_code": exit_code,
+            "quality_thresholds_failed": exit_code == 3,
+            "stdout": stdout,
+            "stderr": stderr,
+        },
+        "analysis": analyzer_output,
+    }
+    if process_error is not None:
+        dump["error"] = process_error
+    _write_analysis_dump(destination, dump)
+    if not analysis_completed:
+        raise AudioAnalyzerExecutionError(process_error or "Audio analysis failed", dump)
+    return dump
+
+
+def _nested_number(data: dict[str, Any], *keys: str) -> float | None:
+    value: Any = data
+    for key in keys:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def persist_audio_analysis(
+    assessment_id: int,
+    upload_id: int,
+    dump: dict[str, Any],
+) -> None:
+    analysis = dump.get("analysis")
+    if not isinstance(analysis, dict):
+        raise RuntimeError("Analyzer output is missing")
+    quality = analysis.get("quality_assessment")
+    quality_status = quality.get("status") if isinstance(quality, dict) else None
+    result_status = "Acceptable" if quality_status == "passed" else "Needs Improvement"
+    noise_level = _nested_number(analysis, "noise", "noise_dbfs")
+    distortion_level = _nested_number(analysis, "distortion", "estimated_score")
+    bass = _nested_number(analysis, "bass", "energy_percentage")
+    treble = _nested_number(analysis, "treble", "energy_percentage")
+    loudness = _nested_number(analysis, "loudness", "integrated_lufs")
+    if loudness is None:
+        loudness = _nested_number(analysis, "loudness", "mean_dbfs")
+    sharpness = _nested_number(analysis, "sharpness", "normalized_score")
+    flatness = _nested_number(analysis, "flatness", "mean")
+    processing_time = _nested_number(dump, "analyzer_process", "duration_seconds")
+
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT threshold_id FROM audio_quality_threshold ORDER BY threshold_id LIMIT 1"
+        )
+        threshold = cursor.fetchone()
+        cursor.execute("SELECT preset_id FROM genre_preset ORDER BY preset_id LIMIT 1")
+        preset = cursor.fetchone()
+        if not threshold or not preset:
+            raise RuntimeError("Audio reference data is not configured")
+        cursor.execute(
+            """INSERT INTO audio_analysis_result
+               (assessment_id, threshold_id, preset_id, quality_score,
+                noise_level, distortion_level, bass, treble, loudness,
+                sharpness, flatness)
+               VALUES (%s, %s, %s, NULL, %s, %s, %s, %s, %s, %s, %s)""",
+            (
+                assessment_id,
+                threshold[0],
+                preset[0],
+                noise_level,
+                distortion_level,
+                bass,
+                treble,
+                loudness,
+                sharpness,
+                flatness,
+            ),
+        )
+        cursor.execute(
+            """UPDATE assessment
+               SET assessment_status = 'Completed', result_status = %s,
+                   processing_time = %s, api_reference = %s
+               WHERE assessment_id = %s""",
+            (
+                result_status,
+                processing_time,
+                f"analysis-dump:{upload_id}",
+                assessment_id,
+            ),
+        )
+        cursor.execute(
+            "UPDATE audio_upload SET status = %s WHERE upload_id = %s",
+            (result_status, upload_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def mark_audio_analysis_failed(
+    assessment_id: int,
+    upload_id: int,
+    duration_seconds: float | None = None,
+) -> None:
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """UPDATE assessment
+               SET assessment_status = 'Failed', result_status = 'Needs Improvement',
+                   processing_time = %s
+               WHERE assessment_id = %s""",
+            (duration_seconds, assessment_id),
+        )
+        cursor.execute(
+            "UPDATE audio_upload SET status = 'Failed' WHERE upload_id = %s",
+            (upload_id,),
+        )
+        conn.commit()
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def clean_email(value: Any) -> str:
@@ -317,13 +644,29 @@ def auth_response(user: dict[str, Any], status: int = 200):
     ), status
 
 
+def _token_precedes_security_update(
+    payload: dict[str, Any],
+    account: dict[str, Any],
+) -> bool:
+    updated_epoch = account.get("security_updated_at_epoch")
+    if updated_epoch is None:
+        return False
+    return int(payload["iat"]) < int(updated_epoch)
+
+
 def require_auth(*roles: str) -> Callable:
     def decorator(view: Callable) -> Callable:
         @wraps(view)
         def wrapped(*args, **kwargs):
             header = request.headers.get("Authorization", "")
             if not header.startswith("Bearer ") or not JWT_SECRET:
-                audit("access_denied", "failure", details="Missing bearer token")
+                reason = (
+                    "Missing bearer token"
+                    if not header.startswith("Bearer ")
+                    else "JWT secret is not configured"
+                )
+                app.logger.warning("Access token rejected: %s", reason)
+                audit("access_denied", "failure", details=reason)
                 return jsonify({"error": "Authentication required"}), 401
             try:
                 payload = jwt.decode(
@@ -340,7 +683,9 @@ def require_auth(*roles: str) -> Callable:
                 cursor.execute("SELECT 1 FROM revoked_access_token WHERE jti = %s", (payload["jti"],))
                 revoked = cursor.fetchone() is not None
                 cursor.execute(
-                    """SELECT role, is_active, security_updated_at,
+                    """SELECT role, is_active, email_verified_at,
+                              UNIX_TIMESTAMP(security_updated_at)
+                                  AS security_updated_at_epoch,
                               requires_password_change
                        FROM user WHERE user_id = %s""",
                     (g.user_id,),
@@ -350,19 +695,22 @@ def require_auth(*roles: str) -> Callable:
                 conn.close()
                 if revoked:
                     raise jwt.InvalidTokenError("Access token was revoked")
-                issued_at = datetime.fromtimestamp(int(payload["iat"]), timezone.utc)
-                security_updated_at = account["security_updated_at"] if account else None
-                if security_updated_at and security_updated_at.tzinfo is None:
-                    security_updated_at = security_updated_at.replace(tzinfo=timezone.utc)
                 if (
                     not account
                     or not account["is_active"]
+                    or account["email_verified_at"] is None
                     or account["role"] != g.user_role
-                    or (security_updated_at and issued_at < security_updated_at.replace(microsecond=0))
+                    or _token_precedes_security_update(payload, account)
                 ):
                     raise jwt.InvalidTokenError("Account security state changed")
-            except (jwt.PyJWTError, TypeError, ValueError):
-                audit("access_denied", "failure", details="Invalid or expired access token")
+            except (jwt.PyJWTError, TypeError, ValueError) as error:
+                reason = str(error).strip() or type(error).__name__
+                app.logger.warning("Access token rejected: %s", reason)
+                audit(
+                    "access_denied",
+                    "failure",
+                    details=f"Invalid or expired access token: {reason}",
+                )
                 return jsonify({"error": "Invalid or expired access token"}), 401
             if roles and g.user_role not in roles:
                 audit("access_denied", "failure", user_id=g.user_id, details="Insufficient role")
@@ -433,27 +781,61 @@ def register():
     cursor = conn.cursor(dictionary=True)
     try:
         cursor.execute(
-            "SELECT user_id FROM user WHERE email = %s OR username = %s LIMIT 1",
-            (email, name),
+            """SELECT user_id, username, email, email_verified_at
+               FROM user WHERE email = %s LIMIT 1 FOR UPDATE""",
+            (email,),
         )
-        if cursor.fetchone():
+        email_user = cursor.fetchone()
+        cursor.execute(
+            """SELECT user_id, username, email, email_verified_at
+               FROM user WHERE username = %s LIMIT 1 FOR UPDATE""",
+            (name,),
+        )
+        username_user = cursor.fetchone()
+
+        if email_user and (
+            email_user["email_verified_at"] is not None
+            or email_user["username"] != name
+        ):
             return jsonify({"error": "Unable to create account"}), 409
+        if username_user and (
+            not email_user or username_user["user_id"] != email_user["user_id"]
+        ):
+            return jsonify({"error": "Unable to create account"}), 409
+
+        password_hash = password_hasher.hash(password)
+        if email_user:
+            user_id = email_user["user_id"]
+            cursor.execute(
+                """UPDATE user SET password = %s, role = %s
+                   WHERE user_id = %s AND email_verified_at IS NULL""",
+                (password_hash, user_type, user_id),
+            )
+        else:
+            cursor.execute(
+                """INSERT INTO user
+                   (username, email, password, role, email_verified_at)
+                   VALUES (%s, %s, %s, %s, NULL)""",
+                (name, email, password_hash, user_type),
+            )
+            user_id = cursor.lastrowid
+
         code = f"{secrets.randbelow(1_000_000):06d}"
         cursor.execute(
-            "DELETE FROM registration_otp WHERE email = %s OR username = %s",
-            (email, name),
+            "DELETE FROM registration_otp WHERE user_id = %s",
+            (user_id,),
         )
         cursor.execute(
             """INSERT INTO registration_otp
-               (username, email, password_hash, role, code_hash, expires_at)
-               VALUES (%s, %s, %s, %s, %s, UTC_TIMESTAMP() + INTERVAL %s MINUTE)""",
-            (name, email, password_hasher.hash(password), user_type, token_hash(code), OTP_MINUTES),
+               (user_id, code_hash, expires_at)
+               VALUES (%s, %s, UTC_TIMESTAMP() + INTERVAL %s MINUTE)""",
+            (user_id, token_hash(code), OTP_MINUTES),
         )
-        conn.commit()
         if SMTP_HOST and SMTP_USERNAME and SMTP_PASSWORD and SMTP_FROM:
             send_registration_otp(email, code)
         elif not (DEV_MODE and EXPOSE_REGISTRATION_OTP):
             raise RuntimeError("SMTP is not configured")
+        conn.commit()
     except (IntegrityError, smtplib.SMTPException, RuntimeError):
         conn.rollback()
         app.logger.exception("Registration OTP delivery failed")
@@ -461,7 +843,10 @@ def register():
     finally:
         cursor.close()
         conn.close()
-    response = {"message": "Verification code sent to the supplied email"}
+    response = {
+        "message": "Verification code sent to the supplied email",
+        "email": email,
+    }
     if DEV_MODE and EXPOSE_REGISTRATION_OTP:
         response["development_code"] = code
     return jsonify(response), 202
@@ -478,9 +863,15 @@ def verify_registration():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        """SELECT * FROM registration_otp
-           WHERE email = %s AND verified_at IS NULL
-             AND expires_at > UTC_TIMESTAMP() AND attempts < 5
+        """SELECT registration_otp.registration_id,
+                  registration_otp.code_hash,
+                  registration_otp.attempts,
+                  user.user_id, user.username, user.email, user.role
+           FROM registration_otp
+           JOIN user ON user.user_id = registration_otp.user_id
+           WHERE user.email = %s AND user.email_verified_at IS NULL
+             AND registration_otp.expires_at > UTC_TIMESTAMP()
+             AND registration_otp.attempts < 5
            FOR UPDATE""",
         (email,),
     )
@@ -497,10 +888,10 @@ def verify_registration():
         return jsonify({"error": "Invalid or expired verification code"}), 400
     try:
         cursor.execute(
-            "INSERT INTO user (username, email, password, role) VALUES (%s, %s, %s, %s)",
-            (pending["username"], pending["email"], pending["password_hash"], pending["role"]),
+            """UPDATE user SET email_verified_at = UTC_TIMESTAMP()
+               WHERE user_id = %s AND email_verified_at IS NULL""",
+            (pending["user_id"],),
         )
-        user_id = cursor.lastrowid
         cursor.execute(
             "DELETE FROM registration_otp WHERE registration_id = %s",
             (pending["registration_id"],),
@@ -513,8 +904,19 @@ def verify_registration():
         return jsonify({"error": "Unable to create account"}), 409
     cursor.close()
     conn.close()
-    user = {"user_id": user_id, "username": pending["username"], "email": email, "user_type": pending["role"]}
-    audit("registration", "success", user_id=user_id, resource_type="user", resource_id=user_id)
+    user = {
+        "user_id": pending["user_id"],
+        "username": pending["username"],
+        "email": pending["email"],
+        "user_type": pending["role"],
+    }
+    audit(
+        "registration",
+        "success",
+        user_id=pending["user_id"],
+        resource_type="user",
+        resource_id=pending["user_id"],
+    )
     return auth_response(user, 201)
 
 
@@ -538,7 +940,7 @@ def login():
     login_column = "email" if is_email else "username"
     cursor.execute(
         f"""SELECT u.user_id, u.username, u.email, u.role AS user_type,
-                   u.password AS password_hash, u.is_active,
+                   u.password AS password_hash, u.is_active, u.email_verified_at,
                    u.requires_password_change
             FROM user u WHERE u.{login_column} = %s LIMIT 1""",
         (identifier,),
@@ -548,7 +950,7 @@ def login():
     conn.close()
 
     valid = False
-    if user and user["is_active"]:
+    if user and user["is_active"] and user["email_verified_at"] is not None:
         try:
             valid = password_hasher.verify(user["password_hash"], password)
         except (VerifyMismatchError, InvalidHashError):
@@ -579,13 +981,20 @@ def refresh():
     cursor.execute(
         """SELECT rt.refresh_token_id AS token_id, rt.user_id, rt.expires_at, rt.revoked_at,
                   u.username, u.email, u.role AS user_type, u.is_active,
+                  u.email_verified_at,
                   u.requires_password_change
            FROM refresh_token rt JOIN user u ON u.user_id = rt.user_id
            WHERE rt.token_hash = %s FOR UPDATE""",
         (hashed,),
     )
     row = cursor.fetchone()
-    if not row or row["revoked_at"] or row["expires_at"] <= datetime.utcnow() or not row["is_active"]:
+    if (
+        not row
+        or row["revoked_at"]
+        or row["expires_at"] <= datetime.utcnow()
+        or not row["is_active"]
+        or row["email_verified_at"] is None
+    ):
         cursor.close()
         conn.close()
         audit("token_refresh", "failure")
@@ -642,7 +1051,12 @@ def forgot_password():
     audit_details = "Password reset request accepted"
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT user_id AS id FROM user WHERE email = %s AND is_active = TRUE", (email,))
+    cursor.execute(
+        """SELECT user_id AS id FROM user
+           WHERE email = %s AND is_active = TRUE
+             AND email_verified_at IS NOT NULL""",
+        (email,),
+    )
     user = cursor.fetchone()
     if user:
         temporary_password = generate_temporary_password()
@@ -739,7 +1153,11 @@ def change_password():
 def get_users():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT user_id AS id, username AS name, email, role AS user_type, is_active, created_at FROM user ORDER BY created_at DESC")
+    cursor.execute(
+        """SELECT user_id AS id, username AS name, email,
+                  role AS user_type, is_active, email_verified_at, created_at
+           FROM user ORDER BY created_at DESC"""
+    )
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -911,6 +1329,9 @@ def create_audio_upload():
         return jsonify({"error": "duration_seconds is required"}), 400
     genre_value = request.form.get("genre")
     genre = clean_text(genre_value, "genre", 2, 50) if genre_value else None
+    analysis_purpose = request.form.get("analysis_purpose", "quality_evaluation")
+    if analysis_purpose not in ALLOWED_ANALYSIS_PURPOSES:
+        return jsonify({"error": "analysis_purpose is invalid"}), 400
 
     user_dir = os.path.join(AUDIO_UPLOAD_DIR, str(g.user_id))
     os.makedirs(user_dir, exist_ok=True)
@@ -935,7 +1356,7 @@ def create_audio_upload():
         cursor.execute(
             """INSERT INTO assessment
                (user_id, audio_file_path, assessment_status, test_name, duration_seconds, result_status)
-               VALUES (%s, %s, 'Pending', %s, %s, 'Acceptable')""",
+               VALUES (%s, %s, 'Processing', %s, %s, 'Acceptable')""",
             (g.user_id, stored_path, original_name[:120], duration),
         )
         assessment_id = cursor.lastrowid
@@ -955,16 +1376,108 @@ def create_audio_upload():
     finally:
         cursor.close()
         conn.close()
-    audit("audio_upload_created", "success", user_id=g.user_id, resource_type="audio_upload", resource_id=upload_id)
-    return jsonify({
-        "id": upload_id,
-        "assessment_id": assessment_id,
-        "file_name": original_name,
-        "genre": genre,
-        "duration_seconds": duration,
-        "size_bytes": size,
-        "status": "Pending",
-    }), 201
+    try:
+        analysis_dump = run_audio_analyzer(
+            stored_path,
+            user_id=g.user_id,
+            assessment_id=assessment_id,
+            original_name=original_name,
+            analysis_purpose=analysis_purpose,
+        )
+        persist_audio_analysis(assessment_id, upload_id, analysis_dump)
+        status = "Completed"
+        audit_result = "success"
+    except AudioAnalyzerExecutionError as error:
+        analysis_dump = error.dump
+        processing_time = _nested_number(
+            analysis_dump,
+            "analyzer_process",
+            "duration_seconds",
+        )
+        mark_audio_analysis_failed(assessment_id, upload_id, processing_time)
+        status = "Failed"
+        audit_result = "failure"
+    except Exception as error:
+        app.logger.exception("Uploaded audio analysis failed")
+        failure_dump = {
+            "dump_schema_version": 1,
+            "placeholder_output": True,
+            "analysis_status": "failed",
+            "analysis_purpose": analysis_purpose,
+            "upload": {
+                "assessment_id": assessment_id,
+                "original_file_name": original_name,
+            },
+            "analysis": None,
+            "error": str(error).strip() or type(error).__name__,
+        }
+        destination = _analysis_directory(g.user_id, assessment_id)
+        _write_analysis_dump(destination, failure_dump)
+        mark_audio_analysis_failed(assessment_id, upload_id)
+        analysis_dump = failure_dump
+        status = "Failed"
+        audit_result = "failure"
+
+    audit(
+        "audio_upload_analyzed",
+        audit_result,
+        user_id=g.user_id,
+        resource_type="audio_upload",
+        resource_id=upload_id,
+        details=f"purpose={analysis_purpose}; status={status}",
+    )
+    return (
+        jsonify(
+            {
+                "id": upload_id,
+                "assessment_id": assessment_id,
+                "file_name": original_name,
+                "genre": genre,
+                "duration_seconds": duration,
+                "size_bytes": size,
+                "status": status,
+                "analysis_purpose": analysis_purpose,
+                "analysis_dump_url": f"/api/audio-uploads/{upload_id}/analysis-dump",
+                "analysis_dump": analysis_dump,
+            }
+        ),
+        201,
+    )
+
+
+@app.get("/api/audio-uploads/<int:upload_id>/analysis-dump")
+@require_auth("technician", "owner")
+def get_audio_analysis_dump(upload_id: int):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        """SELECT assessment_id FROM audio_upload
+           WHERE upload_id = %s AND user_id = %s""",
+        (upload_id, g.user_id),
+    )
+    upload_record = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if not upload_record or upload_record["assessment_id"] is None:
+        return jsonify({"error": "Analysis output not found"}), 404
+    dump_path = (
+        Path(ANALYSIS_OUTPUT_DIR)
+        / str(g.user_id)
+        / str(upload_record["assessment_id"])
+        / "analysis_dump.json"
+    ).resolve()
+    root = Path(ANALYSIS_OUTPUT_DIR).resolve()
+    if os.path.commonpath((str(root), str(dump_path))) != str(root):
+        return jsonify({"error": "Invalid analysis output path"}), 400
+    try:
+        with dump_path.open("r", encoding="utf-8") as handle:
+            dump = json.load(handle)
+    except FileNotFoundError:
+        return jsonify({"error": "Analysis output not found"}), 404
+    except (OSError, json.JSONDecodeError):
+        app.logger.exception("Analysis dump could not be read")
+        return jsonify({"error": "Analysis output is unavailable"}), 500
+    return jsonify(dump)
 
 
 @app.get("/api/audit-logs")

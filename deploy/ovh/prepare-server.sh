@@ -17,7 +17,7 @@ fi
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    git mysql-server nginx ufw snapd python3 python3-venv python3-pip
+    ffmpeg git libsndfile1 mysql-server nginx ufw snapd python3 python3-venv python3-pip
 
 if ! id karaok >/dev/null 2>&1; then
     useradd --system --user-group --home-dir /opt/karaok --shell /usr/sbin/nologin karaok
