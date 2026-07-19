@@ -19,14 +19,40 @@ Repository: [github.com/jbl2023-2879-91296-cpu/KaraOK](https://github.com/jbl202
 - Recommended volume, bass, treble, flatness, and sharpness settings by genre
 - Audio-upload workflow and saved upload records
 - Saved audio-test history with individual result lookup and deletion
+- Standalone Python extraction of bass, treble, loudness, flatness, sharpness,
+  estimated noise/SNR, and no-reference distortion indicators
 
-Audio recording and file selection use a local single-file staging area before authenticated multipart submission to the API. Submitted assessments remain pending until the Python analysis worker processes them.
+Audio recording and file selection use a local single-file staging area before
+authenticated multipart submission to the API. Submitted assessments remain
+pending because automatic worker handoff is not part of the current API.
+
+The repository now includes a complete standalone analyzer at
+[`backend/audio_analyzer.py`](../backend/audio_analyzer.py). Automatic invocation
+of this utility from the Flask upload/job lifecycle is not implemented yet, so
+the command-line analyzer and API pending-assessment workflow remain separate.
+
+### Running the standalone analyzer
+
+From the repository root:
+
+```powershell
+python -m pip install -r backend\requirements.txt
+python backend\audio_analyzer.py "audio sample(good)\1.mp3" --output-dir "results\1"
+```
+
+Per-recording JSON reports and plots are stored in the selected output folder.
+All analyses append to `results/results.csv`. Adjustable analysis, safety, and
+quality limits are defined in
+[`backend/audio_analyzer_settings.json`](../backend/audio_analyzer_settings.json).
+See the [backend analyzer documentation](../backend/README.md#standalone-audio-feature-analyzer)
+for measurements, fail-safes, recovery behavior, outputs, and exit codes.
 
 ## Technology stack
 
 - **Client:** Flutter and Dart
 - **HTTP client:** `package:http`
 - **API:** Python, Flask, and Flask-CORS
+- **Audio analysis:** Librosa, NumPy, SciPy, SoundFile, Matplotlib, and Pandas
 - **Database:** MySQL through `mysql-connector-python`
 
 ## Repository structure
@@ -34,9 +60,12 @@ Audio recording and file selection use a local single-file staging area before a
 ```text
 KaraOK/
 |-- backend/
-|   |-- app.py               # Flask API
-|   |-- requirements.txt     # Python dependencies
-|   `-- README.md            # Backend endpoint notes
+|   |-- app.py                         # Flask API
+|   |-- audio_analyzer.py              # Standalone feature and quality analysis CLI
+|   |-- audio_analyzer_settings.json   # Adjustable analysis and fail-safe limits
+|   |-- requirements.txt               # Python dependencies
+|   |-- tests/                         # Backend and analyzer regression tests
+|   `-- README.md                      # API and analyzer documentation
 |-- database/
 |   `-- schema.sql            # MySQL schema
 `-- frontend/

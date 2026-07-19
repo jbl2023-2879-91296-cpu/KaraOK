@@ -2,6 +2,52 @@
 
 All notable changes to KaraOK are documented here.
 
+## 2026-07-19 - Standalone audio feature analysis and safeguards
+
+### Added
+
+- Added `backend/audio_analyzer.py`, a modular Librosa-based CLI for bass,
+  treble, RMS loudness, spectral flatness, approximate sharpness, estimated
+  noise/SNR, and no-reference distortion measurements.
+- Added terminal reporting, timestamped JSON output, and six Matplotlib
+  visualizations: waveform, spectrogram, Welch frequency spectrum, RMS over
+  time, spectral flatness over time, and bass/treble energy comparison.
+- Added continuous-prefix recovery for partially corrupted audio. Recovery is
+  clearly labeled with the retained percentage and discarded duration; audio
+  separated by an unknown damaged region is never joined.
+- Added `backend/audio_analyzer_settings.json` for versioned analysis values,
+  resource limits, recovery acceptance, deterministic quality thresholds, and
+  failure behavior.
+- Added pre-decode file-size and duration guards, minimum active-frame checks,
+  quality pass/warning/failure results, structured technical-failure CSV rows,
+  prefix-scoped incomplete-output cleanup, and documented exit codes.
+- Added analyzer safety regression coverage for settings validation, file-size
+  rejection, quality status, shared CSV appending, and output cleanup.
+
+### Changed
+
+- Changed CSV output from one timestamped file per recording to one appended
+  `results/results.csv`, while keeping JSON and plots in per-recording folders.
+- Changed decoder diagnostics to clear recovery metadata and progress messages
+  so recoverable MPEG damage is not presented as an unexplained fatal error.
+- Changed numerical loading to `float32` and added type-safe SoundFile/SciPy
+  calls while preserving the feature formulas and stable aggregate arithmetic.
+- Expanded the backend and Flutter READMEs with analyzer setup, settings,
+  measurement limitations, output layout, recovery behavior, and test commands.
+
+### Removed
+
+- Removed the abandoned empirical audio-dataset preparation package, CLI,
+  tests, duplicate recording tree, source archive, and dataset-specific ignore
+  rules. The original recordings in `audio sample(good)` remain unchanged.
+
+### Validation
+
+- Verified normal and corrupted decoding, strict recovery rejection, quality
+  pass/failure exit codes, invalid settings, oversized input, unwritable output,
+  simulated plot failure cleanup, all six plot exports, shared CSV history, and
+  the complete 17-test backend suite.
+
 ## 2026-07-18 — Security and deployment documentation
 
 ### Added

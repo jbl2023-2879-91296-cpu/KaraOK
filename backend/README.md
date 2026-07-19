@@ -16,6 +16,119 @@ python app.py
 
 The local API listens on `http://127.0.0.1:5000` by default. `GET /api/health` verifies both the API and database connection.
 
+## Standalone audio feature analyzer
+
+[`audio_analyzer.py`](audio_analyzer.py) is a standalone command-line utility for
+extracting audio features and producing deterministic, no-reference quality
+estimates. It is not automatically invoked by the Flask upload endpoints.
+
+The analyzer supports WAV, MP3, FLAC, and OGG files and measures:
+
+- bass and treble RMS plus their percentages of active-frame spectral energy;
+- RMS loudness statistics in approximate dBFS (not LUFS);
+- spectral flatness and approximate normalized sharpness;
+- estimated noise RMS, noise floor in dBFS, and signal-to-noise ratio;
+- clipping, crest factor, high-frequency energy, harmonic-to-percussive energy,
+  spectral irregularity, and a combined no-reference distortion score.
+
+Noise, SNR, sharpness, and distortion are estimates. The distortion score is not
+laboratory THD or THD+N, and the quality status is a configurable deterministic
+threshold result rather than a trained classifier.
+
+### Running an analysis
+
+Install the backend dependencies, then run from the repository root:
+
+```powershell
+python -m pip install -r backend\requirements.txt
+python backend\audio_analyzer.py "audio sample(good)\1.mp3" --output-dir "results\1"
+```
+
+The analyzer loads [`audio_analyzer_settings.json`](audio_analyzer_settings.json)
+automatically. Supply another settings file with `--settings`, or override the
+frame length, hop length, noise percentile, clipping threshold, and bass/treble
+cutoffs with their corresponding command-line options.
+
+```powershell
+python backend\audio_analyzer.py input.wav `
+  --settings backend\audio_analyzer_settings.json `
+  --output-dir results\input `
+  --frame-length 4096 `
+  --hop-length 1024
+```
+
+Use `python backend\audio_analyzer.py --help` for the complete command list.
+
+### Settings and fail-safes
+
+The versioned JSON settings file has four sections:
+
+| Section | Purpose | Important defaults |
+| --- | --- | --- |
+| `analysis` | Feature-extraction windows, frequency bands, silence/clipping limits, and distortion weights | 2,048-sample frames, 512-sample hop, 15th noise percentile, 0.99 clipping threshold |
+| `safety` | Resource and damaged-file acceptance limits | 100 MB, 15 minutes, at least 90% and 5 seconds recovered, at least 10 active frames |
+| `quality_thresholds` | Deterministic warning/failure boundaries | SNR warning below 10 dB and failure below 5 dB; distortion warning above 20 and failure above 50; clipping failure above 0.5% |
+| `failure_behavior` | Output retention, cleanup, failure logging, and quality-failure exit code | retain quality-failure outputs, clean incomplete technical-failure outputs, record errors in CSV, exit 3 on quality failure |
+
+Unknown setting names, malformed JSON, invalid types, unsafe ranges, and reversed
+warning/failure thresholds are rejected with clear messages. Each completed
+result stores the effective settings snapshot so later changes do not make an
+older decision ambiguous.
+
+Before allocating the full analysis arrays, the analyzer checks the file size
+and declared duration. It rejects empty, excessively short, silent, oversized,
+overlong, non-finite, and insufficiently active recordings. Partially corrupted
+files may use a continuous readable prefix only when it meets the configured
+duration and recovery-percentage limits; audio on opposite sides of unknown
+damage is never joined.
+
+### Generated output
+
+JSON and six PNG visualizations are written to the requested recording folder
+with a unique timestamped prefix. CSV data is not duplicated in each subfolder.
+Every run appends one flattened row to the nearest shared `results/results.csv`.
+
+```text
+results/
+|-- results.csv
+|-- 1/
+|   |-- 1_<timestamp>_analysis.json
+|   |-- 1_<timestamp>_waveform.png
+|   |-- 1_<timestamp>_spectrogram.png
+|   |-- 1_<timestamp>_frequency_spectrum.png
+|   |-- 1_<timestamp>_rms_loudness.png
+|   |-- 1_<timestamp>_spectral_flatness.png
+|   `-- 1_<timestamp>_band_energy_comparison.png
+`-- 2/
+    `-- ...
+```
+
+Technical failures also append a structured CSV row with the category, exception
+type, message, input path, and settings path. If JSON or plot generation fails,
+only files bearing that run's unique prefix are removed; prior results and the
+shared CSV remain intact.
+
+| Exit code | Meaning |
+| ---: | --- |
+| `0` | Analysis completed and configured quality thresholds passed or produced only warnings |
+| `1` | Processing, resource, output, or unexpected technical failure |
+| `2` | Invalid input or configuration |
+| `3` | Analysis completed and outputs were saved, but a quality failure threshold was crossed |
+| `130` | User cancellation |
+
+### Analyzer regression tests
+
+From `backend`, run:
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+The suite includes settings validation, quality pass/warning/failure decisions,
+pre-decode file-size enforcement, shared CSV behavior, prefix-scoped cleanup,
+audio upload validation, and security regressions. A successful run currently
+ends with `Ran 17 tests` and `OK`.
+
 ## OVHcloud production deployment
 
 Production deployment for Ubuntu 26.04 on OVH VPS `139.99.89.112` is defined in
@@ -260,7 +373,7 @@ Audit records are written separately from business transactions so a failed audi
 
 Client IP addresses come directly from the transport peer. Forwarded client-IP headers are not trusted.
 
-Run the backend security regression tests from `backend` with:
+Run all backend regression tests from `backend` with:
 
 ```bash
 python -m unittest discover -s tests -v
