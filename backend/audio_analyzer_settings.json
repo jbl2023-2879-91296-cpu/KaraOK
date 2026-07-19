@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "analysis": {
+    "frame_length": 2048,
+    "hop_length": 512,
+    "noise_percentile": 15.0,
+    "clipping_threshold": 0.99,
+    "bass_max_frequency": 250.0,
+    "treble_min_frequency": 4000.0,
+    "silence_threshold_dbfs": -60.0,
+    "minimum_duration_seconds": 0.1,
+    "distortion_high_frequency_start": 6000.0,
+    "excessive_high_frequency_ratio": 0.2,
+    "healthy_crest_factor_db": 12.0,
+    "poor_crest_factor_db": 3.0,
+    "severe_clipped_sample_percentage": 0.5,
+    "severe_clipped_frame_percentage": 20.0,
+    "severe_spectral_irregularity": 0.35,
+    "distortion_weights": {
+      "clipping": 0.35,
+      "high_frequency": 0.25,
+      "low_crest_factor": 0.2,
+      "spectral_irregularity": 0.2
+    }
+  },
+  "safety": {
+    "maximum_file_size_mb": 100.0,
+    "maximum_duration_seconds": 900.0,
+    "minimum_recovered_percentage": 90.0,
+    "minimum_recovered_duration_seconds": 5.0,
+    "minimum_active_frames": 10
+  },
+  "quality_thresholds": {
+    "snr_warning_below_db": 10.0,
+    "snr_failure_below_db": 5.0,
+    "distortion_warning_above": 20.0,
+    "distortion_failure_above": 50.0,
+    "clipped_samples_failure_above_percentage": 0.5
+  },
+  "failure_behavior": {
+    "save_outputs_on_quality_failure": true,
+    "quality_failure_exit_code": 3,
+    "record_technical_failures_in_csv": true,
+    "cleanup_incomplete_outputs": true
+  }
+}
