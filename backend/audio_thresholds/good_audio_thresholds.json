@@ -1,0 +1,403 @@
+{
+  "schema_version": 1,
+  "algorithm_version": "1.0.0",
+  "purpose": "Provisional empirical reference for recordings labeled good.",
+  "source": {
+    "path": "results/results.csv",
+    "sha256": "bcc5d4c2710f1d49572a17db56c5cc23ff5e8161f17adc9d2486b0edc8adfaa5"
+  },
+  "cohort": {
+    "source_row_count": 30,
+    "candidate_completed_count": 30,
+    "selected_recording_count": 30,
+    "cohort_path_fragment": "audio sample(good)",
+    "deduplication_key": "normalized file_information.file_path",
+    "deduplication_rule": "latest analyzed_at_utc, then analysis_id",
+    "exclusions": {
+      "not_completed": 0,
+      "outside_cohort": 0,
+      "duplicate_older_run": 0,
+      "invalid_or_non_finite_measurement": 0
+    },
+    "quality_status_counts": {
+      "passed": 3,
+      "warning": 27
+    },
+    "decode_status_counts": {
+      "complete": 4,
+      "recovered_partial": 26
+    },
+    "recovered_frame_percentage_min": 98.8632706,
+    "recovered_frame_percentage_max": 100.0,
+    "analysis_ids": [
+      "1_20260719T093733_473116Z",
+      "2_20260719T093836_473400Z",
+      "3_20260719T093918_432164Z",
+      "4_20260719T094014_421255Z",
+      "5_20260719T094053_089042Z",
+      "6_20260719T094136_854113Z",
+      "7_20260719T094219_340109Z",
+      "8_20260719T094304_203098Z",
+      "9_20260719T094347_844673Z",
+      "10_20260719T094420_150910Z",
+      "11_20260719T094504_047394Z",
+      "12_20260719T094546_418732Z",
+      "13_20260719T094622_903395Z",
+      "14_20260719T094709_206581Z",
+      "15_20260719T094747_249424Z",
+      "16_20260719T094833_713618Z",
+      "17_20260719T094916_034318Z",
+      "18_20260719T095011_628988Z",
+      "19_20260719T095051_824581Z",
+      "20_20260719T095125_173614Z",
+      "21_20260719T095154_945671Z",
+      "22_20260719T095255_743216Z",
+      "23_20260719T095354_295104Z",
+      "24_20260719T095427_196670Z",
+      "25_20260719T095522_738206Z",
+      "26_20260719T095549_238856Z",
+      "27_20260719T095624_789270Z",
+      "28_20260719T095651_195223Z",
+      "29_20260719T095727_248710Z",
+      "30_20260719T101641_122103Z"
+    ],
+    "recording_files": [
+      "1.mp3",
+      "2.mp3",
+      "3.mp3",
+      "4.mp3",
+      "5.mp3",
+      "6.mp3",
+      "7.mp3",
+      "8.mp3",
+      "9.mp3",
+      "10.mp3",
+      "11.mp3",
+      "12.mp3",
+      "13.mp3",
+      "14.mp3",
+      "15.mp3",
+      "16.mp3",
+      "17.mp3",
+      "18.mp3",
+      "19.mp3",
+      "20.mp3",
+      "21.mp3",
+      "22.mp3",
+      "23.mp3",
+      "24.mp3",
+      "25.mp3",
+      "26.mp3",
+      "27.mp3",
+      "28.mp3",
+      "29.mp3",
+      "30.mp3"
+    ],
+    "latest_analyzed_at_utc": "2026-07-19T10:16:41.122103+00:00"
+  },
+  "derivation": {
+    "library": "NumPy",
+    "quantile_method": "linear",
+    "bootstrap_iterations": 10000,
+    "bootstrap_seed": 20260719,
+    "bootstrap_confidence_level": 0.95
+  },
+  "classification": {
+    "good": "P05 <= value <= P95",
+    "good_but_needs_improvement": "observed_min <= value < P05 or P95 < value <= observed_max",
+    "bad": "value < observed_min or value > observed_max",
+    "not_evaluated": "value is missing or non-finite",
+    "boundary_policy": "All percentile and observed-envelope boundaries are inclusive."
+  },
+  "scoring": {
+    "range": [
+      0.0,
+      100.0
+    ],
+    "anchors": {
+      "median": 100.0,
+      "p05_and_p95": 80.0,
+      "observed_min_and_max": 50.0
+    },
+    "interpolation": "directional piecewise linear with scores clamped to 0-100"
+  },
+  "overall": {
+    "weights": {
+      "loudness": 0.3,
+      "bass": 0.25,
+      "treble": 0.2,
+      "sharpness": 0.15,
+      "flatness": 0.1
+    },
+    "ranked_features": [
+      "loudness",
+      "bass",
+      "treble",
+      "sharpness",
+      "flatness"
+    ],
+    "formula": "sum(feature_score * feature_weight)",
+    "requires_all_features": true,
+    "status_rules": {
+      "good": "overall_score >= 80",
+      "good_but_needs_improvement": "50 <= overall_score < 80",
+      "bad": "overall_score < 50",
+      "not_evaluated": "one or more required features are missing or non-finite"
+    },
+    "worst_feature_policy": "Report the most severe feature status and responsible features separately; do not replace the weighted overall status.",
+    "weight_rationale": "Defaults prioritize level and tonal balance while limiting double-counting among correlated treble, sharpness, and flatness features."
+  },
+  "metrics": {
+    "loudness": {
+      "csv_column": "loudness.integrated_lufs",
+      "unit": "LUFS",
+      "rank": 1,
+      "description": "ITU-R BS.1770-5-aligned integrated mono loudness.",
+      "sample_count": 30,
+      "observed_min": -15.93646911,
+      "p05": -13.4383603465,
+      "q1": -12.0629983075,
+      "median": -11.200895334999998,
+      "q3": -10.9497894625,
+      "p95": -10.497743177499999,
+      "observed_max": -10.34360594,
+      "mean": -11.582802181666667,
+      "population_standard_deviation": 1.1279165858959503,
+      "mad": 0.4717175599999983,
+      "iqr": 1.113208844999999,
+      "bootstrap_95_ci": {
+        "p05": [
+          -15.93646911,
+          -12.31251149
+        ],
+        "median": [
+          -11.687725955000001,
+          -11.06890357
+        ],
+        "p95": [
+          -10.7447418335,
+          -10.34360594
+        ]
+      }
+    },
+    "bass": {
+      "csv_column": "bass.energy_percentage",
+      "unit": "percent",
+      "rank": 2,
+      "description": "Bass-band share of active-frame spectral energy.",
+      "sample_count": 30,
+      "observed_min": 45.24513191,
+      "p05": 48.600903162,
+      "q1": 61.989257435,
+      "median": 70.707101265,
+      "q3": 78.74721608,
+      "p95": 84.6019411005,
+      "observed_max": 89.42611184,
+      "mean": 69.82845463466667,
+      "population_standard_deviation": 11.626344356693158,
+      "mad": 8.55416108,
+      "iqr": 16.757958645000002,
+      "bootstrap_95_ci": {
+        "p05": [
+          45.24513191,
+          57.559083258
+        ],
+        "median": [
+          65.99494277,
+          78.20971037
+        ],
+        "p95": [
+          80.02195191,
+          89.42611184
+        ]
+      }
+    },
+    "treble": {
+      "csv_column": "treble.energy_percentage",
+      "unit": "percent",
+      "rank": 3,
+      "description": "Treble-band share of active-frame spectral energy.",
+      "sample_count": 30,
+      "observed_min": 0.003258626,
+      "p05": 0.023819161050000003,
+      "q1": 0.06830622675,
+      "median": 0.1328464395,
+      "q3": 0.310210584,
+      "p95": 0.8838707828499988,
+      "observed_max": 2.821164246,
+      "mean": 0.3010006387,
+      "population_standard_deviation": 0.5194331449186295,
+      "mad": 0.08190616149999999,
+      "iqr": 0.24190435725,
+      "bootstrap_95_ci": {
+        "p05": [
+          0.003258626,
+          0.063952324
+        ],
+        "median": [
+          0.07734751649999999,
+          0.23226592299999999
+        ],
+        "p95": [
+          0.36610388439999986,
+          2.821164246
+        ]
+      }
+    },
+    "sharpness": {
+      "csv_column": "sharpness.normalized_score",
+      "unit": "normalized_score",
+      "rank": 4,
+      "description": "Approximate normalized high-frequency-weighted score; not acum.",
+      "sample_count": 30,
+      "observed_min": 0.000153528,
+      "p05": 0.0003089165,
+      "q1": 0.00052991225,
+      "median": 0.0007496720000000001,
+      "q3": 0.00111113525,
+      "p95": 0.0028542137999999963,
+      "observed_max": 0.014503939,
+      "mean": 0.0013963583333333333,
+      "population_standard_deviation": 0.0025282521839427117,
+      "mad": 0.0002585045,
+      "iqr": 0.000581223,
+      "bootstrap_95_ci": {
+        "p05": [
+          0.000153528,
+          0.00044302395
+        ],
+        "median": [
+          0.0005948745,
+          0.0009581345
+        ],
+        "p95": [
+          0.0016284530499999976,
+          0.014503939
+        ]
+      }
+    },
+    "flatness": {
+      "csv_column": "flatness.mean",
+      "unit": "ratio",
+      "rank": 5,
+      "description": "Mean spectral flatness over active frames.",
+      "sample_count": 30,
+      "observed_min": 2.27e-06,
+      "p05": 5.702000000000001e-06,
+      "q1": 2.215e-05,
+      "median": 3.225e-05,
+      "q3": 5.6525e-05,
+      "p95": 0.00013378464999999994,
+      "observed_max": 0.00048471,
+      "mean": 5.6077899999999994e-05,
+      "population_standard_deviation": 8.544625053539019e-05,
+      "mad": 1.2600000000000005e-05,
+      "iqr": 3.4374999999999995e-05,
+      "bootstrap_95_ci": {
+        "p05": [
+          2.27e-06,
+          2.12e-05
+        ],
+        "median": [
+          2.505e-05,
+          4.4850000000000006e-05
+        ],
+        "p95": [
+          6.65e-05,
+          0.00048471
+        ]
+      }
+    }
+  },
+  "spearman_correlations": {
+    "loudness": {
+      "loudness": 1.0,
+      "bass": 0.2342602892102336,
+      "treble": -0.5706340378197998,
+      "sharpness": -0.6151279199110122,
+      "flatness": -0.6114819911066212
+    },
+    "bass": {
+      "loudness": 0.2342602892102336,
+      "bass": 1.0,
+      "treble": -0.1897664071190211,
+      "sharpness": -0.32858731924360396,
+      "flatness": -0.13640409772502138
+    },
+    "treble": {
+      "loudness": -0.5706340378197998,
+      "bass": -0.1897664071190211,
+      "treble": 1.0,
+      "sharpness": 0.8994438264738599,
+      "flatness": 0.9165554299010816
+    },
+    "sharpness": {
+      "loudness": -0.6151279199110122,
+      "bass": -0.32858731924360396,
+      "treble": 0.8994438264738599,
+      "sharpness": 1.0,
+      "flatness": 0.8876279703509141
+    },
+    "flatness": {
+      "loudness": -0.6114819911066212,
+      "bass": -0.13640409772502138,
+      "treble": 0.9165554299010817,
+      "sharpness": 0.8876279703509141,
+      "flatness": 1.0
+    }
+  },
+  "recovery_sensitivity": {
+    "strict_rule": "decode_status is complete or recovered_frame_percentage is at least 99.0",
+    "strict_sample_count": 29,
+    "excluded_from_sensitivity_only": 1,
+    "metrics": {
+      "loudness": {
+        "strict_p05": -13.480805108,
+        "strict_median": -11.1888791,
+        "strict_p95": -10.496219219999999,
+        "p05_delta_from_full": -0.04244476150000054,
+        "median_delta_from_full": 0.012016234999999043,
+        "p95_delta_from_full": 0.001523957499999895
+      },
+      "bass": {
+        "strict_p05": 50.137746126,
+        "strict_median": 70.77616322,
+        "strict_p95": 84.613446556,
+        "p05_delta_from_full": 1.5368429640000016,
+        "median_delta_from_full": 0.06906195499999512,
+        "p95_delta_from_full": 0.01150545550000004
+      },
+      "treble": {
+        "strict_p05": 0.03858528160000001,
+        "strict_median": 0.141017797,
+        "strict_p95": 0.9049526761999991,
+        "p05_delta_from_full": 0.014766120550000005,
+        "median_delta_from_full": 0.008171357500000004,
+        "p95_delta_from_full": 0.021081893350000325
+      },
+      "sharpness": {
+        "strict_p05": 0.000306222,
+        "strict_median": 0.000782143,
+        "strict_p95": 0.002915061599999997,
+        "p05_delta_from_full": -2.6945000000000332e-06,
+        "median_delta_from_full": 3.2470999999999954e-05,
+        "p95_delta_from_full": 6.0847800000000864e-05
+      },
+      "flatness": {
+        "strict_p05": 9.046000000000001e-06,
+        "strict_median": 3.29e-05,
+        "strict_p95": 0.00013457079999999996,
+        "p05_delta_from_full": 3.3440000000000005e-06,
+        "median_delta_from_full": 6.500000000000022e-07,
+        "p95_delta_from_full": 7.861500000000128e-07
+      }
+    }
+  },
+  "limitations": [
+    "The cohort contains only 30 recordings labeled good and has no improvement or bad labels.",
+    "Bad means outside this cohort's observed envelope; it is an operational flag, not a validated diagnosis.",
+    "The default weights are transparent engineering defaults, not learned perceptual importance weights.",
+    "Treble, sharpness, and flatness are correlated and remain dependent on program content.",
+    "The cohort is limited to the current phone-recording and analyzer conditions."
+  ]
+}

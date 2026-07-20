@@ -4,6 +4,18 @@ All notable changes to KaraOK are documented here.
 
 ## 2026-07-20
 
+- Changed authenticated audio uploads from placeholder-style output to real
+  `audio_analyzer.py` results. Uploaded audio and analyzer JSON are now transient
+  server working files and are deleted after processing; applicable feature,
+  empirical scoring, status, and upload metadata remain in the existing database
+  fields. Historical analysis details are rebuilt from those database values.
+- Kept native microphone recordings in app-local documents storage while native
+  files selected from storage are uploaded from their existing path without an
+  app-created duplicate.
+- Aligned Flask, threshold derivation, tests, and documentation with the current
+  `backend/audio_thresholds` package name so empirical scoring imports correctly
+  in local and cloud deployments. Backend tests are no longer excluded by the
+  backend Git ignore rules.
 - Consolidated every migration through 2026-07-20 into `database/schema.sql`
   as the authoritative fresh-install schema, including temporary-password and
   OTP account state, empirical audio persistence, upload metadata, request
@@ -47,7 +59,7 @@ All notable changes to KaraOK are documented here.
   field SPL calibration, protocol confirmations, and reliability warnings.
 - Added ITU-R BS.1770-5-aligned mono integrated/momentary/short-term loudness and
   oversampled true-peak reporting while retaining the existing RMS dBFS values.
-- Added `backend/good_audio_thresholds`, a separate NumPy-based package that
+- Added `backend/audio_thresholds`, a separate NumPy-based package that
   derives auditable P05/P95 and observed-envelope references for loudness, bass,
   treble, normalized sharpness, and spectral flatness from the 30 completed
   known-good recordings.
@@ -79,9 +91,10 @@ All notable changes to KaraOK are documented here.
   `registration_otp.user_id` references them through a cascading foreign key.
   The server-normalized email is carried through Flutter verification.
 - Connected authenticated multipart uploads to `audio_analyzer.py` through an
-  isolated, timeout-bounded server subprocess. Each assessment now stores and
-  returns an inspectable placeholder `analysis_dump.json`, with an
-  ownership-protected retrieval endpoint and extracted feature persistence.
+  isolated, timeout-bounded server subprocess. This initially returned a
+  filesystem-backed validation dump; the current flow supersedes it with a
+  transient response and a database-backed, ownership-protected retrieval
+  endpoint.
 - Changed mobile microphone recordings from temporary staging to the app's
   private documents storage; successfully uploaded recordings remain local.
 - Increased Flutter, Gunicorn, and Nginx analysis request windows for live
@@ -183,7 +196,7 @@ All notable changes to KaraOK are documented here.
 
 ### Added
 
-- Added Ubuntu 26.04 deployment assets for OVH VPS `139.99.89.112`, including Nginx, Gunicorn, systemd, UFW, MySQL, persistent uploads, backups, and short-lived IP-certificate renewal.
+- Added Ubuntu 26.04 deployment assets for OVH VPS `139.99.89.112`, including Nginx, Gunicorn, systemd, UFW, MySQL, audio working directories, backups, and short-lived IP-certificate renewal.
 - Added an OVH terminal runbook and production environment template with no committed secrets.
 
 ### Changed

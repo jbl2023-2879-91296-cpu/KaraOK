@@ -70,18 +70,10 @@ class AudioStagingService {
     if (!await source.exists()) {
       throw const AudioStagingException('The selected file no longer exists.');
     }
-    final stagingDir = await _stagingDirectory();
-    final destination = File(
-      p.join(
-        stagingDir.path,
-        'selected_${DateTime.now().millisecondsSinceEpoch}_${p.basename(selectedPath)}',
-      ),
-    );
-    await source.copy(destination.path);
     return stagePath(
-      destination.path,
+      source.path,
       AudioSourceType.selectedFile,
-      temporary: true,
+      temporary: false,
     );
   }
 
@@ -227,12 +219,5 @@ class AudioStagingService {
     if (item == null) return false;
     if (item.bytes != null) return item.bytes!.isNotEmpty;
     return File(item.path).exists();
-  }
-
-  Future<Directory> _stagingDirectory() async {
-    final temp = await getTemporaryDirectory();
-    final dir = Directory(p.join(temp.path, 'audio_staging'));
-    if (!await dir.exists()) await dir.create(recursive: true);
-    return dir;
   }
 }

@@ -20,7 +20,8 @@ The local API listens on `http://127.0.0.1:5000` by default. `GET /api/health` v
 
 [`audio_analyzer.py`](audio_analyzer.py) is a standalone command-line utility for
 extracting audio features and producing deterministic, no-reference quality
-estimates. It is not automatically invoked by the Flask upload endpoints.
+estimates. Authenticated Flask audio uploads invoke it automatically; it can also
+be run independently from the command line.
 
 The analyzer supports WAV, MP3, FLAC, and OGG files and measures:
 
@@ -188,7 +189,7 @@ clipping failure thresholds remain enforced in both modes.
 
 ### Empirical good-audio reference
 
-[`good_audio_thresholds`](good_audio_thresholds/README.md) is an isolated NumPy
+[`audio_thresholds`](audio_thresholds/README.md) is an isolated NumPy
 package that derives provisional reference ranges from the 30 completed rows in
 `results/results.csv` whose inputs are in `audio sample(good)`. It does not
 change or replace feature extraction in `audio_analyzer.py`.
@@ -196,11 +197,11 @@ change or replace feature extraction in `audio_analyzer.py`.
 Regenerate the checked threshold artifact from the repository root:
 
 ```powershell
-backend\.venv\Scripts\python.exe backend\good_audio_thresholds\derive_thresholds.py
+backend\.venv\Scripts\python.exe backend\audio_thresholds\derive_thresholds.py
 ```
 
 The generated
-[`good_audio_thresholds.json`](good_audio_thresholds/good_audio_thresholds.json)
+[`good_audio_thresholds.json`](audio_thresholds/good_audio_thresholds.json)
 contains P05, median, P95, observed minimum/maximum, MAD, IQR, fixed-seed
 bootstrap intervals, Spearman correlations, recovery sensitivity, cohort
 provenance, and the source CSV SHA-256. Feature interpretation is:
@@ -220,7 +221,7 @@ not validated perceptual weights or diagnostic limits.
 Score a set of already-extracted values from Python:
 
 ```python
-from backend.good_audio_thresholds import evaluate_features
+from backend.audio_thresholds import evaluate_features
 
 assessment = evaluate_features(
     {
@@ -256,30 +257,26 @@ The suite includes settings validation, controlled phone THD/THD+N and noise
 measurements, BS.1770 loudness output, quality pass/warning/failure decisions,
 pre-decode file-size enforcement, shared CSV behavior, prefix-scoped cleanup,
 empirical-threshold derivation and scoring, audio upload validation, and security
-regressions. The current suite completes 42 tests, including eight dedicated
+regressions. The current suite contains 46 tests, including eight dedicated
 empirical-threshold tests.
 
-### API upload analysis and output dump
+### API upload analysis and transient files
 
 `POST /api/audio-uploads` accepts an authenticated multipart audio upload and an
 `analysis_purpose` of `quality_evaluation` or `settings_suggestion`. After the
-server validates and stores the file, it invokes `audio_analyzer.py` in an
+server validates and temporarily stages the file, it invokes `audio_analyzer.py` in an
 isolated subprocess using the same Python executable as Flask. API analysis
 disables plots and shared CSV writes to reduce server latency; the analyzer's
-nested JSON feature output is retained.
+nested JSON feature output is returned to the client.
 
-Each request writes:
-
-```text
-AUDIO_ANALYSIS_OUTPUT_DIR/<user_id>/<assessment_id>/analysis_dump.json
-```
-
-The placeholder dump includes process status, exit code, bounded stdout/stderr,
-analysis purpose, and the complete analyzer JSON. Exit code `3` means feature
-extraction completed but quality thresholds failed, so it is stored as a
-completed analysis. Technical failures are stored with `analysis_status` set to
-`failed`. The same dump is returned in the upload response and is available
-later through `GET /api/audio-uploads/<id>/analysis-dump`; ownership is enforced.
+The response includes process status, exit code, bounded stdout/stderr, analysis
+purpose, and the complete analyzer JSON. Exit code `3` means feature extraction
+completed but quality thresholds failed, so it is treated as a completed
+analysis. Technical failures return `analysis_status` set to `failed`. Before
+the request completes, the server deletes the uploaded audio and analyzer working
+JSON. `GET /api/audio-uploads/<id>/analysis-dump` remains ownership-protected and
+rebuilds historical analysis details from database fields instead of a retained
+file.
 
 The API maps noise, distortion, bass, treble, loudness, sharpness, and flatness
 into `audio_analysis_result`. It evaluates the five empirical features against
@@ -299,8 +296,8 @@ background queue should replace it before high-concurrency use.
 Production deployment for Ubuntu 26.04 on OVH VPS `139.99.89.112` is defined in
 [`deploy/ovh`](../deploy/ovh) and documented step-by-step in
 [`DeployOVH.md`](../DeployOVH.md). The deployment uses Nginx HTTPS,
-Gunicorn bound to loopback, local MySQL, systemd services, UFW, persistent upload
-storage, and automatic database/upload backups. Secrets remain in the ignored
+Gunicorn bound to loopback, local MySQL, systemd services, UFW, transient upload
+working directories, and automatic database backups. Secrets remain in the ignored
 `backend/.env` file on the server.
 
 ### Deploying later backend updates
@@ -341,7 +338,7 @@ sudo ls -lah /var/backups/karaok
 ```
 
 The backup service should finish successfully, and the final command should show
-recent database/upload backup files. Do not continue with a database reset if
+recent database backup files. Do not continue with a database reset if
 the backup failed.
 
 #### 4. Review and download the new revision
@@ -452,8 +449,9 @@ require a new APK but do not require a backend restart.
 
 The production `backend/.env` is intentionally ignored by Git and must be
 maintained directly on the VPS; `git pull` does not replace it. Database data and
-persistent uploads must remain outside the Git working tree so application updates
-cannot replace them. See the complete update, backup, and rollback preparation in
+transient analyzer working directories remain outside the Git working tree so
+application updates cannot interfere with in-flight work. See the complete update,
+backup, and rollback preparation in
 [`DeployOVH.md`](../DeployOVH.md).
 
 ## Security model
@@ -605,8 +603,8 @@ Authenticated endpoints:
 - `GET /api/genre-settings` — owner or technician
 - `POST /api/genre-settings` — owner only
 - `GET /api/audio-uploads` — owner or technician upload history, scoped to the authenticated user
-- `POST /api/audio-uploads` — owner or technician; authenticated `multipart/form-data` upload using file field `audio`, required `duration_seconds` (1–300), `analysis_purpose` (`quality_evaluation` or `settings_suggestion`), and optional `genre`. Accepted extensions are WAV, MP3, M4A, AAC, OGG, and FLAC; the default maximum is 25 MB. The server runs `audio_analyzer.py` and returns HTTP 201 with `Completed` or `Failed` plus the placeholder `analysis_dump`.
-- `GET /api/audio-uploads/<id>/analysis-dump` — owner or technician; returns the stored raw analyzer dump when the upload belongs to the authenticated user
+- `POST /api/audio-uploads` — owner or technician; authenticated `multipart/form-data` upload using file field `audio`, required `duration_seconds` (1–300), `analysis_purpose` (`quality_evaluation` or `settings_suggestion`), and optional `genre`. Accepted extensions are WAV, MP3, M4A, AAC, OGG, and FLAC; the default maximum is 25 MB. The server runs `audio_analyzer.py`, stores the applicable results, deletes the transient server-side audio and analyzer files, and returns HTTP 201 with `Completed` or `Failed` plus the real `analysis_dump` response object.
+- `GET /api/audio-uploads/<id>/analysis-dump` — owner or technician; rebuilds saved analysis details from database fields when the upload belongs to the authenticated user
 - `GET /api/audit-logs` — admin only
 - `GET /api/request-logs` — admin only; returns the latest 200 sanitized API request records
 

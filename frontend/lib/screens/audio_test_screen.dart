@@ -441,7 +441,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
           _state = completed ? AudioInputState.success : AudioInputState.failed;
           _message = completed
               ? widget.purpose.successMessage
-              : 'Audio was uploaded, but analysis failed. Review the output dump.';
+              : 'Audio was uploaded, but analysis could not be completed.';
           _analysisDump = analysisDump;
         });
         if (completed &&
@@ -720,9 +720,9 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
             Card(
               child: ExpansionTile(
                 initiallyExpanded: true,
-                title: const Text('Analysis output dump'),
+                title: const Text('Audio analysis details'),
                 subtitle: const Text(
-                  'Temporary raw output for validating analyzer results',
+                  'Feature extraction and empirical scoring returned by the server',
                 ),
                 children: [
                   Container(

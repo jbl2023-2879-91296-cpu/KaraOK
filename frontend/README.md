@@ -33,11 +33,12 @@ Repository: [github.com/jbl2023-2879-91296-cpu/KaraOK](https://github.com/jbl202
 
 Microphone recordings are saved under the application's private documents
 directory so a successful upload does not delete the local recording. Selected
-files are copied into temporary staging on native platforms. In Flutter Web,
-browser-selected files remain in memory, are previewed through their Blob URL,
-and are submitted as multipart bytes with the original filename. The API stores
-the upload, runs `audio_analyzer.py`, and returns a temporary raw
-`analysis_dump` that the app displays for validation.
+files remain at their existing local path and are not duplicated by the app. In
+Flutter Web, browser-selected files remain in memory, are previewed through their
+Blob URL, and are submitted as multipart bytes with the original filename. The
+API temporarily stages the upload only while `audio_analyzer.py` is running,
+returns the real feature extraction and empirical scoring output, persists the
+applicable result fields, and deletes the server-side audio and working JSON.
 
 The repository now includes a complete standalone analyzer at
 [`backend/audio_analyzer.py`](../backend/audio_analyzer.py). Authenticated audio
@@ -63,7 +64,7 @@ for measurements, fail-safes, recovery behavior, outputs, and exit codes.
 ### Empirical good-audio scoring
 
 The standalone analyzer remains responsible for feature extraction. The
-separate [`backend/good_audio_thresholds`](../backend/good_audio_thresholds/README.md)
+separate [`backend/audio_thresholds`](../backend/audio_thresholds/README.md)
 package uses the completed known-good recordings in `results/results.csv` to
 derive provisional ranges for integrated loudness, bass energy, treble energy,
 normalized sharpness, and spectral flatness.
@@ -71,7 +72,7 @@ normalized sharpness, and spectral flatness.
 Regenerate the checked threshold artifact after the reference dataset changes:
 
 ```powershell
-backend\.venv\Scripts\python.exe backend\good_audio_thresholds\derive_thresholds.py
+backend\.venv\Scripts\python.exe backend\audio_thresholds\derive_thresholds.py
 ```
 
 The feature interpretation is:
@@ -91,7 +92,7 @@ and `bad` below 50. The most severe individual feature is also returned as
 weighted overall status.
 
 The generated
-[`good_audio_thresholds.json`](../backend/good_audio_thresholds/good_audio_thresholds.json)
+[`good_audio_thresholds.json`](../backend/audio_thresholds/good_audio_thresholds.json)
 records the exact NumPy statistics, bootstrap intervals, correlations, recovery
 sensitivity, selected analysis IDs, and source CSV SHA-256. These bounds come
 from 30 good-only phone recordings, so `bad` currently means outside that
@@ -113,7 +114,7 @@ KaraOK/
 |   |-- app.py                         # Flask API
 |   |-- audio_analyzer.py              # Standalone feature and quality analysis CLI
 |   |-- audio_analyzer_settings.json   # Adjustable analysis and fail-safe limits
-|   |-- good_audio_thresholds/         # Empirical range derivation and scoring
+|   |-- audio_thresholds/              # Empirical range derivation and scoring
 |   |-- requirements.txt               # Python dependencies
 |   |-- tests/                         # Backend and analyzer regression tests
 |   `-- README.md                      # API and analyzer documentation
@@ -243,7 +244,7 @@ The Flutter client uses these REST resources:
 | `GET`, `DELETE` | `/api/audio-tests/<id>` | Retrieve or delete a test result |
 | `GET`, `POST` | `/api/genre-settings` | Retrieve or save genre settings |
 | `GET`, `POST` | `/api/audio-uploads` | List uploads or upload and analyze an audio file |
-| `GET` | `/api/audio-uploads/<id>/analysis-dump` | Retrieve the authenticated user's raw analyzer dump |
+| `GET` | `/api/audio-uploads/<id>/analysis-dump` | Rebuild the authenticated user's analysis details from persisted result fields |
 | `GET` | `/api/audit-logs` | Review recent security and data-change events (owner only) |
 
 ## Development checks
