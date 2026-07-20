@@ -4,6 +4,7 @@ import 'package:karaok_app/main.dart';
 import 'package:karaok_app/screens/change_password_screen.dart';
 import 'package:karaok_app/screens/owner_home_screen.dart';
 import 'package:karaok_app/screens/owner_previous_results_screen.dart';
+import 'package:karaok_app/screens/results_screen.dart';
 import 'package:karaok_app/screens/technician_home_screen.dart';
 import 'package:karaok_app/services/user_session.dart';
 import 'package:karaok_app/widgets/app_navigation_drawer.dart';
@@ -172,5 +173,50 @@ void main() {
     expect(find.text('Genre'), findsNothing);
     expect(find.text('Acceptable'), findsOneWidget);
     expect(find.text('Problematic'), findsOneWidget);
+  });
+
+  testWidgets('empirical result shows a real score and five feature grades', (
+    tester,
+  ) async {
+    final features = <String, dynamic>{
+      for (final name in [
+        'loudness',
+        'bass',
+        'treble',
+        'sharpness',
+        'flatness',
+      ])
+        name: {
+          'value': name == 'loudness' ? -11.2 : 0.5,
+          'score': 88.5,
+          'status': 'good',
+        },
+    };
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ResultsScreen.fromRecord({
+          'test_name': 'Browser recording.wav',
+          'score': null,
+          'empirical_quality': {
+            'overall_score': 88.5,
+            'overall_status': 'good',
+            'features': features,
+          },
+        }),
+      ),
+    );
+
+    expect(
+      find.textContaining('88.5', findRichText: true),
+      findsWidgets,
+    );
+    expect(find.text('Empirical five-feature grading'), findsOneWidget);
+    expect(find.text('Loudness'), findsOneWidget);
+    expect(find.text('Bass'), findsOneWidget);
+    expect(find.text('Treble'), findsOneWidget);
+    expect(find.text('Sharpness'), findsOneWidget);
+    expect(find.text('Flatness'), findsOneWidget);
+    expect(find.text('0'), findsNothing);
   });
 }

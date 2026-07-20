@@ -1,8 +1,18 @@
+-- KaraOK consolidated schema
+--
+-- Authoritative bootstrap for a new empty database. It includes the final
+-- structure introduced by all migrations through 2026-07-20. It intentionally
+-- does not DROP an existing database and should not be used as a substitute for
+-- migrations on a populated deployment.
+--
+-- Password recovery uses user.requires_password_change and does not require
+-- the retired password_reset_token table.
+
 CREATE DATABASE IF NOT EXISTS karaok_db;
 USE karaok_db;
 
 -- ==========================================
--- ORIGINAL TABLE: USER
+-- USER
 -- ==========================================
 
 CREATE TABLE IF NOT EXISTS user (
@@ -25,7 +35,7 @@ CREATE TABLE IF NOT EXISTS user (
 );
 
 -- ==========================================
--- ORIGINAL TABLE: GENRE PRESET
+-- GENRE PRESET
 -- Stores the recommended sound settings
 -- ==========================================
 
@@ -42,7 +52,7 @@ CREATE TABLE IF NOT EXISTS genre_preset (
 );
 
 -- ==========================================
--- ORIGINAL TABLE: AUDIO QUALITY THRESHOLD
+-- AUDIO QUALITY THRESHOLD
 -- Stores empirical threshold values
 -- ==========================================
 
@@ -57,7 +67,7 @@ CREATE TABLE IF NOT EXISTS audio_quality_threshold (
 );
 
 -- ==========================================
--- ORIGINAL TABLE: ASSESSMENT
+-- ASSESSMENT
 -- One uploaded audio per assessment
 -- ==========================================
 
@@ -77,10 +87,14 @@ CREATE TABLE IF NOT EXISTS assessment (
 
     processing_time FLOAT,
 
+    analysis_purpose VARCHAR(40) NOT NULL DEFAULT 'quality_evaluation',
+
     -- Merged from the former assessment_metadata table.
     test_name VARCHAR(120),
     duration_seconds INT NOT NULL DEFAULT 0,
     result_status VARCHAR(30) NOT NULL DEFAULT 'Acceptable',
+
+    KEY idx_assessment_user_date (user_id, assessment_date),
 
     CONSTRAINT fk_assessment_user
         FOREIGN KEY (user_id)
@@ -89,7 +103,7 @@ CREATE TABLE IF NOT EXISTS assessment (
 );
 
 -- ==========================================
--- ORIGINAL TABLE: AUDIO ANALYSIS RESULT
+-- AUDIO ANALYSIS RESULT
 -- Stores quality assessment and genre recommendation results
 -- ==========================================
 
@@ -98,9 +112,9 @@ CREATE TABLE IF NOT EXISTS audio_analysis_result (
 
     assessment_id INT NOT NULL UNIQUE,
 
-    threshold_id INT NOT NULL,
+    threshold_id INT NULL,
 
-    preset_id INT NOT NULL,
+    preset_id INT NULL,
 
     quality_score FLOAT,
 
@@ -117,6 +131,18 @@ CREATE TABLE IF NOT EXISTS audio_analysis_result (
     sharpness FLOAT,
 
     flatness FLOAT,
+
+    empirical_status VARCHAR(40),
+
+    worst_feature_status VARCHAR(40),
+
+    worst_features JSON,
+
+    empirical_details JSON,
+
+    scoring_algorithm_version VARCHAR(30),
+
+    reference_recording_count INT,
 
     waveform_path VARCHAR(255),
 
@@ -137,7 +163,7 @@ CREATE TABLE IF NOT EXISTS audio_analysis_result (
 );
 
 -- ==========================================
--- ADDITIVE TABLE: REFRESH TOKEN
+-- REFRESH TOKEN
 -- Stores only hashes of long-lived session tokens.
 -- ==========================================
 
@@ -150,12 +176,13 @@ CREATE TABLE IF NOT EXISTS refresh_token (
     ip_address VARCHAR(45),
     user_agent VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_refresh_token_user (user_id, revoked_at, expires_at),
     CONSTRAINT fk_refresh_token_user
         FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE CASCADE
 );
 
 -- ==========================================
--- ADDITIVE TABLE: REVOKED ACCESS TOKEN
+-- REVOKED ACCESS TOKEN
 -- ==========================================
 
 CREATE TABLE IF NOT EXISTS revoked_access_token (
@@ -168,7 +195,7 @@ CREATE TABLE IF NOT EXISTS revoked_access_token (
 );
 
 -- ==========================================
--- ADDITIVE TABLE: AUDIT LOG
+-- AUDIT LOG
 -- ==========================================
 
 CREATE TABLE IF NOT EXISTS audit_log (
@@ -182,12 +209,13 @@ CREATE TABLE IF NOT EXISTS audit_log (
     user_agent VARCHAR(255) NULL,
     details VARCHAR(500) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_audit_log_created (created_at),
     CONSTRAINT fk_audit_log_user
         FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE SET NULL
 );
 
 -- ==========================================
--- ADDITIVE TABLE: USER GENRE SETTINGS
+-- USER GENRE SETTINGS
 -- Preserves genre_preset as the shared preset foundation while allowing
 -- owner-specific saved settings.
 -- ==========================================
@@ -211,35 +239,50 @@ CREATE TABLE IF NOT EXISTS user_genre_setting (
 );
 
 -- ==========================================
--- ADDITIVE TABLE: AUDIO UPLOAD RECORD
+-- AUDIO UPLOAD RECORD
 -- ==========================================
 
 CREATE TABLE IF NOT EXISTS audio_upload (
     upload_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    assessment_id INT NULL,
+    assessment_id INT NOT NULL,
     file_name VARCHAR(255) NOT NULL,
     genre_name VARCHAR(50) NULL,
     score FLOAT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'Acceptable',
+    size_bytes BIGINT UNSIGNED NULL,
+    mime_type VARCHAR(100) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_audio_upload_user
-        FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE CASCADE,
+    UNIQUE KEY uq_audio_upload_assessment (assessment_id),
+    KEY idx_audio_upload_created (created_at),
     CONSTRAINT fk_audio_upload_assessment
-        FOREIGN KEY (assessment_id) REFERENCES assessment(assessment_id) ON DELETE SET NULL
+        FOREIGN KEY (assessment_id) REFERENCES assessment(assessment_id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_assessment_user_date
-    ON assessment (user_id, assessment_date);
-CREATE INDEX idx_refresh_token_user
-    ON refresh_token (user_id, revoked_at, expires_at);
-CREATE INDEX idx_audit_log_created
-    ON audit_log (created_at);
-CREATE INDEX idx_audio_upload_user_date
-    ON audio_upload (user_id, created_at);
+-- ==========================================
+-- API REQUEST LOG
+-- Stores sanitized request metadata only. Bodies, credentials, tokens, OTPs,
+-- and uploaded bytes are intentionally excluded.
+-- ==========================================
+
+CREATE TABLE IF NOT EXISTS api_request_log (
+    request_log_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NULL,
+    method VARCHAR(10) NOT NULL,
+    path VARCHAR(255) NOT NULL,
+    endpoint VARCHAR(100) NULL,
+    status_code SMALLINT UNSIGNED NOT NULL,
+    duration_ms FLOAT NOT NULL,
+    ip_address VARCHAR(45) NULL,
+    user_agent VARCHAR(255) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_api_request_log_created (created_at),
+    KEY idx_api_request_log_user_created (user_id, created_at),
+    CONSTRAINT fk_api_request_log_user
+        FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE SET NULL
+);
 
 -- ==========================================
--- ADDITIVE TABLE: REGISTRATION OTP
+-- REGISTRATION OTP
 -- Connects each pending email code to one unverified user account.
 -- ==========================================
 
@@ -268,7 +311,11 @@ VALUES
     ('Rock', 70, 65, 70, 60, 45),
     ('Acoustic', 45, 65, 55, 60, 65);
 
-INSERT IGNORE INTO audio_quality_threshold
+INSERT INTO audio_quality_threshold
     (threshold_name, max_allowable_noise, max_allowable_distortion, min_quality_score)
-VALUES
-    ('Default', 10, 5, 60);
+SELECT 'Default', 10, 5, 60
+WHERE NOT EXISTS (
+    SELECT 1
+      FROM audio_quality_threshold
+     WHERE threshold_name = 'Default'
+);

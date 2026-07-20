@@ -12,6 +12,7 @@ import 'package:record/record.dart';
 import '../services/api_service.dart';
 import '../services/audio_staging_service.dart';
 import '../services/user_session.dart';
+import 'results_screen.dart';
 
 enum AudioInputState {
   idle,
@@ -443,6 +444,16 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
               : 'Audio was uploaded, but analysis failed. Review the output dump.';
           _analysisDump = analysisDump;
         });
+        if (completed &&
+            widget.purpose == AudioAnalysisPurpose.qualityEvaluation) {
+          final result = Map<String, dynamic>.from(response)
+            ..['test_name'] = item.fileName
+            ..['status'] = response['result_status'];
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => ResultsScreen.fromRecord(result)),
+          );
+        }
       }
     } on TimeoutException catch (e, st) {
       developer.log('Audio upload timed out', error: e, stackTrace: st);

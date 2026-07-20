@@ -4,11 +4,13 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 import hashlib
 import json
+import mimetypes
 import os
 from pathlib import Path
 import re
 import secrets
 import signal
+import shutil
 import smtplib
 import subprocess
 import sys
@@ -30,6 +32,8 @@ from mutagen import File as MutagenFile
 from mysql.connector import Error, IntegrityError
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
+
+from good_audio_thresholds import evaluate_features, load_thresholds
 
 
 load_dotenv()
@@ -100,7 +104,12 @@ password_hasher = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 VALID_ROLES = {"technician", "owner", "admin"}
 SELF_REGISTER_ROLES = {"owner", "technician"}
-VALID_STATUSES = {"Acceptable", "Needs Improvement"}
+VALID_STATUSES = {"Acceptable", "Needs Improvement", "Problematic"}
+EMPIRICAL_RESULT_STATUSES = {
+    "good": "Acceptable",
+    "good_but_needs_improvement": "Needs Improvement",
+    "bad": "Problematic",
+}
 
 
 class AudioAnalyzerExecutionError(RuntimeError):
@@ -154,6 +163,27 @@ def _analysis_directory(user_id: int, assessment_id: int) -> Path:
         raise RuntimeError("Invalid analysis output path")
     destination.mkdir(parents=True, exist_ok=True)
     return destination
+
+
+def cleanup_audio_artifacts(
+    user_id: int,
+    assessment_id: int,
+    audio_file_path: str | None,
+) -> None:
+    """Remove a deleted assessment's upload and analyzer output safely."""
+    upload_root = Path(AUDIO_UPLOAD_DIR).resolve()
+    if audio_file_path:
+        upload_path = Path(audio_file_path).resolve()
+        if os.path.commonpath((str(upload_root), str(upload_path))) != str(upload_root):
+            raise RuntimeError("Audio upload path is outside the configured root")
+        upload_path.unlink(missing_ok=True)
+
+    analysis_root = Path(ANALYSIS_OUTPUT_DIR).resolve()
+    analysis_path = (analysis_root / str(user_id) / str(assessment_id)).resolve()
+    if os.path.commonpath((str(analysis_root), str(analysis_path))) != str(analysis_root):
+        raise RuntimeError("Analysis output path is outside the configured root")
+    if analysis_path.is_dir():
+        shutil.rmtree(analysis_path)
 
 
 def _process_text(value: str | bytes | None, limit: int = 20_000) -> str:
@@ -303,8 +333,19 @@ def run_audio_analyzer(
     elif process_error is None:
         process_error = f"Audio analyzer exited with code {exit_code}."
 
+    empirical_quality: dict[str, Any] | None = None
+    if analyzer_output is not None and process_error is None:
+        try:
+            empirical_quality = _score_analyzer_output(analyzer_output)
+        except ValueError as error:
+            process_error = f"Empirical quality scoring failed: {error}"
+
     duration_seconds = round(time.monotonic() - started_clock, 3)
-    analysis_completed = analyzer_output is not None and process_error is None
+    analysis_completed = (
+        analyzer_output is not None
+        and empirical_quality is not None
+        and process_error is None
+    )
     dump: dict[str, Any] = {
         "dump_schema_version": 1,
         "placeholder_output": True,
@@ -323,6 +364,7 @@ def run_audio_analyzer(
             "stderr": stderr,
         },
         "analysis": analyzer_output,
+        "empirical_quality": empirical_quality,
     }
     if process_error is not None:
         dump["error"] = process_error
@@ -343,17 +385,81 @@ def _nested_number(data: dict[str, Any], *keys: str) -> float | None:
     return float(value)
 
 
+def _empirical_feature_values(analysis: dict[str, Any]) -> dict[str, float | None]:
+    """Map analyzer output to the five features used by the 30-file reference."""
+    return {
+        "loudness": _nested_number(analysis, "loudness", "integrated_lufs"),
+        "bass": _nested_number(analysis, "bass", "energy_percentage"),
+        "treble": _nested_number(analysis, "treble", "energy_percentage"),
+        "sharpness": _nested_number(analysis, "sharpness", "normalized_score"),
+        "flatness": _nested_number(analysis, "flatness", "mean"),
+    }
+
+
+def _score_analyzer_output(analysis: dict[str, Any]) -> dict[str, Any]:
+    thresholds = load_thresholds()
+    empirical = evaluate_features(_empirical_feature_values(analysis), thresholds)
+    if empirical.get("overall_score") is None:
+        reason = empirical.get("reason", "Empirical audio score is unavailable")
+        raise ValueError(str(reason))
+    empirical["method"] = "weighted_empirical_good_audio_reference"
+    cohort = thresholds.get("cohort")
+    empirical["reference_recording_count"] = (
+        cohort.get("selected_recording_count") if isinstance(cohort, dict) else None
+    )
+    empirical["algorithm_version"] = thresholds.get("algorithm_version")
+    source = thresholds.get("source")
+    metrics = thresholds.get("metrics")
+    empirical["reference"] = {
+        "source_sha256": source.get("sha256") if isinstance(source, dict) else None,
+        "classification": thresholds.get("classification"),
+        "scoring": thresholds.get("scoring"),
+        "overall": thresholds.get("overall"),
+        "metrics": metrics,
+    }
+    return empirical
+
+
+def _empirical_result_status(empirical: dict[str, Any]) -> str:
+    status = empirical.get("overall_status")
+    try:
+        return EMPIRICAL_RESULT_STATUSES[str(status)]
+    except KeyError as error:
+        raise ValueError(f"Unsupported empirical quality status: {status!r}") from error
+
+
+def _enrich_audio_test_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Attach reproducible empirical details and backfill legacy null scores."""
+    values = {
+        key: row.get(key)
+        for key in ("loudness", "bass", "treble", "sharpness", "flatness")
+    }
+    empirical = evaluate_features(values)
+    row["empirical_quality"] = empirical
+    empirical_score = _nested_number(empirical, "overall_score")
+    if row.get("score") is None and empirical_score is not None:
+        row["score"] = empirical_score
+    if empirical_score is not None:
+        row["status"] = _empirical_result_status(empirical)
+    return row
+
+
 def persist_audio_analysis(
     assessment_id: int,
     upload_id: int,
     dump: dict[str, Any],
-) -> None:
+) -> dict[str, Any]:
     analysis = dump.get("analysis")
     if not isinstance(analysis, dict):
         raise RuntimeError("Analyzer output is missing")
-    quality = analysis.get("quality_assessment")
-    quality_status = quality.get("status") if isinstance(quality, dict) else None
-    result_status = "Acceptable" if quality_status == "passed" else "Needs Improvement"
+    empirical = dump.get("empirical_quality")
+    if not isinstance(empirical, dict):
+        empirical = _score_analyzer_output(analysis)
+        dump["empirical_quality"] = empirical
+    quality_score = _nested_number(empirical, "overall_score")
+    if quality_score is None:
+        raise RuntimeError("Empirical audio score is unavailable")
+    result_status = _empirical_result_status(empirical)
     noise_level = _nested_number(analysis, "noise", "noise_dbfs")
     distortion_level = _nested_number(analysis, "distortion", "estimated_score")
     bass = _nested_number(analysis, "bass", "energy_percentage")
@@ -364,28 +470,49 @@ def persist_audio_analysis(
     sharpness = _nested_number(analysis, "sharpness", "normalized_score")
     flatness = _nested_number(analysis, "flatness", "mean")
     processing_time = _nested_number(dump, "analyzer_process", "duration_seconds")
+    empirical_status = str(empirical["overall_status"])
+    worst_feature_status = str(empirical["worst_feature_status"])
+    worst_features_json = json.dumps(
+        empirical.get("worst_features", []),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+    empirical_details_json = json.dumps(
+        empirical,
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+    algorithm_version = empirical.get("algorithm_version")
+    reference_recording_count = empirical.get("reference_recording_count")
 
     conn = get_db()
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "SELECT threshold_id FROM audio_quality_threshold ORDER BY threshold_id LIMIT 1"
+            """SELECT gp.preset_id
+               FROM genre_preset gp
+               JOIN audio_upload au
+                 ON au.upload_id = %s
+                AND au.genre_name IS NOT NULL
+                AND LOWER(gp.genre_name) = LOWER(au.genre_name)
+               LIMIT 1""",
+            (upload_id,),
         )
-        threshold = cursor.fetchone()
-        cursor.execute("SELECT preset_id FROM genre_preset ORDER BY preset_id LIMIT 1")
         preset = cursor.fetchone()
-        if not threshold or not preset:
-            raise RuntimeError("Audio reference data is not configured")
         cursor.execute(
             """INSERT INTO audio_analysis_result
                (assessment_id, threshold_id, preset_id, quality_score,
                 noise_level, distortion_level, bass, treble, loudness,
-                sharpness, flatness)
-               VALUES (%s, %s, %s, NULL, %s, %s, %s, %s, %s, %s, %s)""",
+                sharpness, flatness, empirical_status,
+                worst_feature_status, worst_features, empirical_details,
+                scoring_algorithm_version, reference_recording_count)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                       %s, %s, %s, %s, %s, %s)""",
             (
                 assessment_id,
-                threshold[0],
-                preset[0],
+                None,
+                preset[0] if preset else None,
+                quality_score,
                 noise_level,
                 distortion_level,
                 bass,
@@ -393,6 +520,12 @@ def persist_audio_analysis(
                 loudness,
                 sharpness,
                 flatness,
+                empirical_status,
+                worst_feature_status,
+                worst_features_json,
+                empirical_details_json,
+                algorithm_version,
+                reference_recording_count,
             ),
         )
         cursor.execute(
@@ -408,8 +541,8 @@ def persist_audio_analysis(
             ),
         )
         cursor.execute(
-            "UPDATE audio_upload SET status = %s WHERE upload_id = %s",
-            (result_status, upload_id),
+            "UPDATE audio_upload SET score = %s, status = %s WHERE upload_id = %s",
+            (quality_score, result_status, upload_id),
         )
         conn.commit()
     except Exception:
@@ -418,6 +551,18 @@ def persist_audio_analysis(
     finally:
         cursor.close()
         conn.close()
+    return {
+        "score": quality_score,
+        "status": result_status,
+        "noise_level": noise_level,
+        "distortion_level": distortion_level,
+        "bass": bass,
+        "treble": treble,
+        "loudness": loudness,
+        "sharpness": sharpness,
+        "flatness": flatness,
+        "empirical_quality": empirical,
+    }
 
 
 def mark_audio_analysis_failed(
@@ -558,6 +703,54 @@ def client_ip() -> str:
     return (request.remote_addr or "")[:45]
 
 
+@app.before_request
+def begin_api_request_log() -> None:
+    if (
+        not app.config.get("TESTING", False)
+        and request.path.startswith("/api/")
+        and request.method != "OPTIONS"
+    ):
+        g.api_request_started = time.monotonic()
+
+
+@app.after_request
+def complete_api_request_log(response):
+    started = getattr(g, "api_request_started", None)
+    if started is None:
+        return response
+    duration_ms = round((time.monotonic() - started) * 1000.0, 3)
+    conn = None
+    cursor = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT INTO api_request_log
+               (user_id, method, path, endpoint, status_code, duration_ms,
+                ip_address, user_agent)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+            (
+                getattr(g, "authenticated_user_id", None),
+                request.method[:10],
+                request.path[:255],
+                (request.endpoint or "")[:100] or None,
+                response.status_code,
+                duration_ms,
+                client_ip(),
+                request.headers.get("User-Agent", "")[:255],
+            ),
+        )
+        conn.commit()
+    except Exception:
+        app.logger.exception("Could not write API request log")
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None and conn.is_connected():
+            conn.close()
+    return response
+
+
 def audit(
     action: str,
     result: str,
@@ -627,6 +820,7 @@ def create_refresh_token(user_id: int) -> tuple[str, datetime]:
 def auth_response(user: dict[str, Any], status: int = 200):
     access_token, access_expires_at = issue_access_token(user)
     refresh_token, refresh_expires_at = create_refresh_token(user["user_id"])
+    g.authenticated_user_id = int(user["user_id"])
     return jsonify(
         {
             "user": {
@@ -712,6 +906,7 @@ def require_auth(*roles: str) -> Callable:
                     details=f"Invalid or expired access token: {reason}",
                 )
                 return jsonify({"error": "Invalid or expired access token"}), 401
+            g.authenticated_user_id = g.user_id
             if roles and g.user_role not in roles:
                 audit("access_denied", "failure", user_id=g.user_id, details="Insufficient role")
                 return jsonify({"error": "Forbidden"}), 403
@@ -849,6 +1044,7 @@ def register():
     }
     if DEV_MODE and EXPOSE_REGISTRATION_OTP:
         response["development_code"] = code
+    g.authenticated_user_id = int(user_id)
     return jsonify(response), 202
 
 
@@ -1023,6 +1219,8 @@ def logout():
             )
         except jwt.PyJWTError:
             access_payload = None
+    if access_payload:
+        g.authenticated_user_id = int(access_payload["sub"])
     if isinstance(raw_token, str):
         conn = get_db()
         cursor = conn.cursor()
@@ -1169,12 +1367,21 @@ def get_users():
 def get_audio_tests():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("""SELECT a.assessment_id AS id, a.test_name, r.quality_score AS score,
-                      r.noise_level, r.distortion_level, a.result_status AS status,
-                      a.duration_seconds, a.assessment_date AS created_at
-                      FROM assessment a LEFT JOIN audio_analysis_result r ON r.assessment_id = a.assessment_id
-                      WHERE a.user_id = %s ORDER BY a.assessment_date DESC""", (g.user_id,))
-    rows = cursor.fetchall()
+    cursor.execute(
+        """SELECT a.assessment_id AS id, a.test_name,
+                  r.quality_score AS score, r.noise_level,
+                  r.distortion_level, r.bass, r.treble, r.loudness,
+                  r.sharpness, r.flatness, a.result_status AS status,
+                  a.assessment_status, a.analysis_purpose, a.duration_seconds,
+                  a.assessment_date AS created_at
+           FROM assessment a
+           LEFT JOIN audio_analysis_result r
+             ON r.assessment_id = a.assessment_id
+           WHERE a.user_id = %s
+           ORDER BY a.assessment_date DESC""",
+        (g.user_id,),
+    )
+    rows = [_enrich_audio_test_row(row) for row in cursor.fetchall()]
     cursor.close()
     conn.close()
     return jsonify(rows)
@@ -1185,15 +1392,25 @@ def get_audio_tests():
 def get_audio_test(test_id: int):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("""SELECT a.assessment_id AS id, a.test_name, r.quality_score AS score,
-                      r.noise_level, r.distortion_level, a.result_status AS status,
-                      a.duration_seconds, a.assessment_date AS created_at
-                      FROM assessment a LEFT JOIN audio_analysis_result r ON r.assessment_id = a.assessment_id
-                      WHERE a.assessment_id = %s AND a.user_id = %s""", (test_id, g.user_id))
+    cursor.execute(
+        """SELECT a.assessment_id AS id, a.test_name,
+                  r.quality_score AS score, r.noise_level,
+                  r.distortion_level, r.bass, r.treble, r.loudness,
+                  r.sharpness, r.flatness, a.result_status AS status,
+                  a.assessment_status, a.analysis_purpose, a.duration_seconds,
+                  a.assessment_date AS created_at
+           FROM assessment a
+           LEFT JOIN audio_analysis_result r
+             ON r.assessment_id = a.assessment_id
+           WHERE a.assessment_id = %s AND a.user_id = %s""",
+        (test_id, g.user_id),
+    )
     row = cursor.fetchone()
     cursor.close()
     conn.close()
-    return (jsonify(row), 200) if row else (jsonify({"error": "Not found"}), 404)
+    if not row:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(_enrich_audio_test_row(row)), 200
 
 
 @app.post("/api/audio-tests")
@@ -1206,30 +1423,26 @@ def create_audio_test():
     distortion = bounded_number(data.get("distortion_level", 0), "distortion_level", 0, 100)
     duration = int(bounded_number(data.get("duration_seconds", 0), "duration_seconds", 0, 86400))
     status = data.get("status", "Acceptable")
+    analysis_purpose = data.get("analysis_purpose", "quality_evaluation")
+    if analysis_purpose not in ALLOWED_ANALYSIS_PURPOSES:
+        raise ValueError("analysis_purpose is invalid")
     if status not in VALID_STATUSES:
         raise ValueError("status is invalid")
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute(
-        """INSERT INTO assessment (user_id, test_name, result_status, duration_seconds, assessment_status)
-           VALUES (%s, %s, %s, %s, 'Completed')""",
-        (g.user_id, test_name, status, duration),
+        """INSERT INTO assessment
+           (user_id, test_name, result_status, duration_seconds,
+            assessment_status, analysis_purpose)
+           VALUES (%s, %s, %s, %s, 'Completed', %s)""",
+        (g.user_id, test_name, status, duration, analysis_purpose),
     )
     test_id = cursor.lastrowid
-    cursor.execute("SELECT threshold_id FROM audio_quality_threshold ORDER BY threshold_id LIMIT 1")
-    threshold = cursor.fetchone()
-    cursor.execute("SELECT preset_id FROM genre_preset ORDER BY preset_id LIMIT 1")
-    preset = cursor.fetchone()
-    if not threshold or not preset:
-        conn.rollback()
-        cursor.close()
-        conn.close()
-        return jsonify({"error": "Audio reference data is not configured"}), 503
     cursor.execute(
         """INSERT INTO audio_analysis_result
            (assessment_id, threshold_id, preset_id, quality_score, noise_level, distortion_level)
            VALUES (%s, %s, %s, %s, %s, %s)""",
-        (test_id, threshold[0], preset[0], score, noise, distortion),
+        (test_id, None, None, score, noise, distortion),
     )
     conn.commit()
     cursor.close()
@@ -1242,14 +1455,33 @@ def create_audio_test():
 @require_auth("technician", "owner")
 def delete_audio_test(test_id: int):
     conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM assessment WHERE assessment_id = %s AND user_id = %s", (test_id, g.user_id))
-    deleted = cursor.rowcount
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        """SELECT audio_file_path FROM assessment
+           WHERE assessment_id = %s AND user_id = %s
+           FOR UPDATE""",
+        (test_id, g.user_id),
+    )
+    assessment = cursor.fetchone()
+    if not assessment:
+        cursor.close()
+        conn.close()
+        return jsonify({"error": "Not found"}), 404
+    cursor.execute(
+        "DELETE FROM assessment WHERE assessment_id = %s AND user_id = %s",
+        (test_id, g.user_id),
+    )
     conn.commit()
     cursor.close()
     conn.close()
-    if not deleted:
-        return jsonify({"error": "Not found"}), 404
+    try:
+        cleanup_audio_artifacts(
+            g.user_id,
+            test_id,
+            assessment.get("audio_file_path"),
+        )
+    except (OSError, RuntimeError):
+        app.logger.exception("Deleted assessment artifact cleanup failed")
     audit("audio_test_deleted", "success", user_id=g.user_id, resource_type="audio_test", resource_id=test_id)
     return jsonify({"message": "Deleted"})
 
@@ -1283,9 +1515,17 @@ def save_genre_settings():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute(
-        """INSERT INTO user_genre_setting (user_id, genre_name, volume, bass, treble, flatness, sharpness)
-           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-        (g.user_id, genre, *values),
+        """SELECT preset_id FROM genre_preset
+           WHERE LOWER(genre_name) = LOWER(%s) LIMIT 1""",
+        (genre,),
+    )
+    preset = cursor.fetchone()
+    cursor.execute(
+        """INSERT INTO user_genre_setting
+           (user_id, preset_id, genre_name, volume, bass, treble,
+            flatness, sharpness)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+        (g.user_id, preset[0] if preset else None, genre, *values),
     )
     conn.commit()
     setting_id = cursor.lastrowid
@@ -1296,13 +1536,18 @@ def save_genre_settings():
 
 
 @app.get("/api/audio-uploads")
-@require_auth("owner")
+@require_auth("technician", "owner")
 def get_audio_uploads():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        """SELECT upload_id AS id, file_name, genre_name AS genre, score, status, created_at
-           FROM audio_upload WHERE user_id = %s ORDER BY created_at DESC""",
+        """SELECT au.upload_id AS id, au.file_name,
+                  au.genre_name AS genre, au.score, au.status,
+                  au.size_bytes, au.mime_type, a.duration_seconds,
+                  a.analysis_purpose, au.created_at
+           FROM audio_upload au
+           JOIN assessment a ON a.assessment_id = au.assessment_id
+           WHERE a.user_id = %s ORDER BY au.created_at DESC""",
         (g.user_id,),
     )
     rows = cursor.fetchall()
@@ -1321,6 +1566,11 @@ def create_audio_upload():
     extension = original_name.rsplit(".", 1)[-1].lower() if "." in original_name else ""
     if extension not in ALLOWED_AUDIO_EXTENSIONS:
         return jsonify({"error": "Unsupported audio format"}), 415
+    mime_type = (
+        mimetypes.guess_type(original_name)[0]
+        or upload.mimetype
+        or "application/octet-stream"
+    )[:100]
     try:
         client_duration = int(request.form.get("duration_seconds", "0"))
     except ValueError:
@@ -1355,16 +1605,30 @@ def create_audio_upload():
     try:
         cursor.execute(
             """INSERT INTO assessment
-               (user_id, audio_file_path, assessment_status, test_name, duration_seconds, result_status)
-               VALUES (%s, %s, 'Processing', %s, %s, 'Acceptable')""",
-            (g.user_id, stored_path, original_name[:120], duration),
+               (user_id, audio_file_path, assessment_status, test_name,
+                duration_seconds, result_status, analysis_purpose)
+               VALUES (%s, %s, 'Processing', %s, %s, 'Acceptable', %s)""",
+            (
+                g.user_id,
+                stored_path,
+                original_name[:120],
+                duration,
+                analysis_purpose,
+            ),
         )
         assessment_id = cursor.lastrowid
         cursor.execute(
             """INSERT INTO audio_upload
-               (user_id, assessment_id, file_name, genre_name, score, status)
-               VALUES (%s, %s, %s, %s, NULL, 'Acceptable')""",
-            (g.user_id, assessment_id, original_name, genre),
+               (assessment_id, file_name, genre_name, score, status,
+                size_bytes, mime_type)
+               VALUES (%s, %s, %s, NULL, 'Acceptable', %s, %s)""",
+            (
+                assessment_id,
+                original_name,
+                genre,
+                size,
+                mime_type,
+            ),
         )
         upload_id = cursor.lastrowid
         conn.commit()
@@ -1384,11 +1648,16 @@ def create_audio_upload():
             original_name=original_name,
             analysis_purpose=analysis_purpose,
         )
-        persist_audio_analysis(assessment_id, upload_id, analysis_dump)
+        analysis_summary = persist_audio_analysis(
+            assessment_id,
+            upload_id,
+            analysis_dump,
+        )
         status = "Completed"
         audit_result = "success"
     except AudioAnalyzerExecutionError as error:
         analysis_dump = error.dump
+        analysis_summary = None
         processing_time = _nested_number(
             analysis_dump,
             "analyzer_process",
@@ -1415,6 +1684,7 @@ def create_audio_upload():
         _write_analysis_dump(destination, failure_dump)
         mark_audio_analysis_failed(assessment_id, upload_id)
         analysis_dump = failure_dump
+        analysis_summary = None
         status = "Failed"
         audit_result = "failure"
 
@@ -1435,7 +1705,36 @@ def create_audio_upload():
                 "genre": genre,
                 "duration_seconds": duration,
                 "size_bytes": size,
+                "mime_type": mime_type,
                 "status": status,
+                "result_status": (
+                    analysis_summary["status"] if analysis_summary else "Failed"
+                ),
+                "score": analysis_summary["score"] if analysis_summary else None,
+                "noise_level": (
+                    analysis_summary["noise_level"] if analysis_summary else None
+                ),
+                "distortion_level": (
+                    analysis_summary["distortion_level"]
+                    if analysis_summary
+                    else None
+                ),
+                "bass": analysis_summary["bass"] if analysis_summary else None,
+                "treble": analysis_summary["treble"] if analysis_summary else None,
+                "loudness": (
+                    analysis_summary["loudness"] if analysis_summary else None
+                ),
+                "sharpness": (
+                    analysis_summary["sharpness"] if analysis_summary else None
+                ),
+                "flatness": (
+                    analysis_summary["flatness"] if analysis_summary else None
+                ),
+                "empirical_quality": (
+                    analysis_summary["empirical_quality"]
+                    if analysis_summary
+                    else None
+                ),
                 "analysis_purpose": analysis_purpose,
                 "analysis_dump_url": f"/api/audio-uploads/{upload_id}/analysis-dump",
                 "analysis_dump": analysis_dump,
@@ -1451,8 +1750,10 @@ def get_audio_analysis_dump(upload_id: int):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        """SELECT assessment_id FROM audio_upload
-           WHERE upload_id = %s AND user_id = %s""",
+        """SELECT au.assessment_id
+           FROM audio_upload au
+           JOIN assessment a ON a.assessment_id = au.assessment_id
+           WHERE au.upload_id = %s AND a.user_id = %s""",
         (upload_id, g.user_id),
     )
     upload_record = cursor.fetchone()
@@ -1488,6 +1789,24 @@ def get_audit_logs():
     cursor.execute(
         """SELECT audit_log_id AS id, user_id, action, resource_type, resource_id, result, ip_address, created_at
            FROM audit_log ORDER BY created_at DESC LIMIT 200"""
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(rows)
+
+
+@app.get("/api/request-logs")
+@require_auth("admin")
+def get_request_logs():
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        """SELECT request_log_id AS id, user_id, method, path, endpoint,
+                  status_code, duration_ms, ip_address, user_agent, created_at
+           FROM api_request_log
+           ORDER BY created_at DESC, request_log_id DESC
+           LIMIT 200"""
     )
     rows = cursor.fetchall()
     cursor.close()

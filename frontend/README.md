@@ -13,6 +13,7 @@ Repository: [github.com/jbl2023-2879-91296-cpu/KaraOK](https://github.com/jbl202
 - Server-side input validation, login rate limiting, and security audit logs
 - Guest access for trying the application without saving a session
 - Role-specific home screens and result histories
+- Selectable recent-analysis cards that open their individual result report
 - Separate audio-quality evaluation and settings-suggestion entry flows, each
   supporting microphone recording or audio-file selection
 - Shared upper-left navigation drawer for Home, Reports, account Settings, and
@@ -27,6 +28,8 @@ Repository: [github.com/jbl2023-2879-91296-cpu/KaraOK](https://github.com/jbl202
   estimated noise/SNR, and no-reference distortion indicators
 - NumPy-derived empirical good-audio ranges, per-feature scoring, a weighted
   overall score, and separate worst-feature reporting
+- Immediate post-upload empirical grading with measured values and individual
+  status/score rows for loudness, bass, treble, sharpness, and flatness
 
 Microphone recordings are saved under the application's private documents
 directory so a successful upload does not delete the local recording. Selected

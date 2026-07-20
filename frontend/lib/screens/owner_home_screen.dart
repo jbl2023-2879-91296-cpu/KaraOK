@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import 'audio_test_screen.dart';
 import 'audio_settings_suggestion_screen.dart';
 import 'owner_previous_results_screen.dart';
+import 'results_screen.dart';
 
 class OwnerHomeScreen extends StatefulWidget {
   const OwnerHomeScreen({super.key});
@@ -185,7 +186,15 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                       )
                     else
                       ..._recentAnalysis.map(
-                        (item) => _AnalysisListItem(test: item),
+                        (item) => _AnalysisListItem(
+                          test: Map<String, dynamic>.from(item as Map),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ResultsScreen.fromRecord(item),
+                            ),
+                          ),
+                        ),
                       ),
                   ],
                 ),
@@ -263,8 +272,9 @@ class _ActionCard extends StatelessWidget {
 }
 
 class _AnalysisListItem extends StatelessWidget {
-  const _AnalysisListItem({required this.test});
-  final Map<dynamic, dynamic> test;
+  const _AnalysisListItem({required this.test, required this.onTap});
+  final Map<String, dynamic> test;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -272,62 +282,79 @@ class _AnalysisListItem extends StatelessWidget {
     final date = (test['created_at'] ?? '').toString();
     final score = test['score'] as num?;
     final status = (test['status'] ?? 'Pending').toString();
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
+    final color = status == 'Acceptable'
+        ? const Color(0xFF4CAF50)
+        : status == 'Needs Improvement'
+        ? const Color(0xFFFF9800)
+        : const Color(0xFFF44336);
+    return Semantics(
+      button: true,
+      label: 'View analysis $name',
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 10),
         color: const Color(0xFF1C1C2E),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
               children: [
-                Text(
-                  name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        date,
+                        style: const TextStyle(
+                          color: Color(0xFF888888),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  date,
-                  style: const TextStyle(
-                    color: Color(0xFF888888),
-                    fontSize: 11,
-                  ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      status,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    Text(
+                      score == null ? '--/100' : '${score.round()}/100',
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.chevron_right,
+                  color: Color(0xFF666666),
+                  size: 20,
                 ),
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                status,
-                style: const TextStyle(
-                  color: Color(0xFF4CAF50),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              Text(
-                score == null ? '--/100' : '${score.round()}/100',
-                style: const TextStyle(
-                  color: Color(0xFF4CAF50),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(width: 8),
-          const Icon(Icons.chevron_right, color: Color(0xFF666666), size: 20),
-        ],
+        ),
       ),
     );
   }

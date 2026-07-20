@@ -79,41 +79,50 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
             // Filter tabs
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: ['All', 'Acceptable', 'Problematic'].map((f) {
-                  final selected = _filter == f;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: GestureDetector(
-                      onTap: () => setState(() => _filter = f),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: selected
-                              ? widget.accentColor
-                              : const Color(0xFF1C1C2E),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          f,
-                          style: TextStyle(
-                            color: selected
-                                ? Colors.white
-                                : const Color(0xFF888888),
-                            fontSize: 13,
-                            fontWeight: selected
-                                ? FontWeight.w600
-                                : FontWeight.normal,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children:
+                      [
+                        'All',
+                        'Acceptable',
+                        'Needs Improvement',
+                        'Problematic',
+                      ].map((f) {
+                        final selected = _filter == f;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: GestureDetector(
+                            onTap: () => setState(() => _filter = f),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? widget.accentColor
+                                    : const Color(0xFF1C1C2E),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                f,
+                                style: TextStyle(
+                                  color: selected
+                                      ? Colors.white
+                                      : const Color(0xFF888888),
+                                  fontSize: 13,
+                                  fontWeight: selected
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
+                        );
+                      }).toList(),
+                ),
               ),
             ),
             const SizedBox(height: 16),
@@ -140,21 +149,22 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
                         itemCount: _filtered.length,
                         itemBuilder: (_, i) {
                           final item = _filtered[i];
-                          final score = item['score'] ?? 0;
+                          final score = item['score'] as num?;
                           final status = item['status'] ?? 'Acceptable';
                           final date = (item['created_at'] ?? '').toString();
                           final name = item['test_name'] ?? '';
                           final color = status == 'Acceptable'
                               ? const Color(0xFF4CAF50)
+                              : status == 'Needs Improvement'
+                              ? const Color(0xFFFF9800)
                               : const Color(0xFFF44336);
                           return GestureDetector(
                             onTap: () {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => ResultsScreen(
-                                    testName: name,
-                                    score: score,
+                                  builder: (_) => ResultsScreen.fromRecord(
+                                    Map<dynamic, dynamic>.from(item as Map),
                                   ),
                                 ),
                               );
@@ -209,7 +219,9 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
                                         ),
                                       ),
                                       Text(
-                                        '$score/100',
+                                        score == null
+                                            ? '--/100'
+                                            : '${score.round()}/100',
                                         style: TextStyle(
                                           color: color,
                                           fontSize: 13,
