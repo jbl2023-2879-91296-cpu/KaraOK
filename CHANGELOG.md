@@ -4,6 +4,14 @@ All notable changes to KaraOK are documented here.
 
 ## 2026-07-20
 
+- Enabled one successful device-local guest assessment shared across audio
+  quality evaluation and settings suggestion. Completed guest results are shown
+  once without business-history persistence; later attempts direct the guest to
+  sign in. Failed analyses remain retryable, and authentication token cleanup no
+  longer clears the guest-use flag.
+- Added an IP-rate-limited transient guest analysis endpoint that runs the real
+  analyzer, returns measured and empirical results, deletes working files, and
+  does not insert guest assessment, upload, or result rows.
 - Changed authenticated audio uploads from placeholder-style output to real
   `audio_analyzer.py` results. Uploaded audio and analyzer JSON are now transient
   server working files and are deleted after processing; applicable feature,

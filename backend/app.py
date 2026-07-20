@@ -459,11 +459,8 @@ def _enrich_audio_test_row(row: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-def persist_audio_analysis(
-    assessment_id: int,
-    upload_id: int,
-    dump: dict[str, Any],
-) -> dict[str, Any]:
+def summarize_audio_analysis(dump: dict[str, Any]) -> dict[str, Any]:
+    """Convert transient analyzer output into the public measured result."""
     analysis = dump.get("analysis")
     if not isinstance(analysis, dict):
         raise RuntimeError("Analyzer output is missing")
@@ -484,6 +481,36 @@ def persist_audio_analysis(
         loudness = _nested_number(analysis, "loudness", "mean_dbfs")
     sharpness = _nested_number(analysis, "sharpness", "normalized_score")
     flatness = _nested_number(analysis, "flatness", "mean")
+    return {
+        "score": quality_score,
+        "status": result_status,
+        "noise_level": noise_level,
+        "distortion_level": distortion_level,
+        "bass": bass,
+        "treble": treble,
+        "loudness": loudness,
+        "sharpness": sharpness,
+        "flatness": flatness,
+        "empirical_quality": empirical,
+    }
+
+
+def persist_audio_analysis(
+    assessment_id: int,
+    upload_id: int,
+    dump: dict[str, Any],
+) -> dict[str, Any]:
+    summary = summarize_audio_analysis(dump)
+    quality_score = summary["score"]
+    result_status = summary["status"]
+    noise_level = summary["noise_level"]
+    distortion_level = summary["distortion_level"]
+    bass = summary["bass"]
+    treble = summary["treble"]
+    loudness = summary["loudness"]
+    sharpness = summary["sharpness"]
+    flatness = summary["flatness"]
+    empirical = summary["empirical_quality"]
     processing_time = _nested_number(dump, "analyzer_process", "duration_seconds")
     empirical_status = str(empirical["overall_status"])
     worst_feature_status = str(empirical["worst_feature_status"])
@@ -567,18 +594,7 @@ def persist_audio_analysis(
     finally:
         cursor.close()
         conn.close()
-    return {
-        "score": quality_score,
-        "status": result_status,
-        "noise_level": noise_level,
-        "distortion_level": distortion_level,
-        "bass": bass,
-        "treble": treble,
-        "loudness": loudness,
-        "sharpness": sharpness,
-        "flatness": flatness,
-        "empirical_quality": empirical,
-    }
+    return summary
 
 
 def mark_audio_analysis_failed(
@@ -1570,6 +1586,139 @@ def get_audio_uploads():
     cursor.close()
     conn.close()
     return jsonify(rows)
+
+
+@app.post("/api/guest/audio-analysis")
+@limiter.limit("3 per hour")
+def create_guest_audio_analysis():
+    """Analyze one client-limited guest upload without saving business records."""
+    upload = request.files.get("audio")
+    if upload is None or not upload.filename:
+        return jsonify(
+            {"error": "A multipart audio file is required in the 'audio' field"}
+        ), 400
+    original_name = secure_filename(upload.filename)
+    extension = original_name.rsplit(".", 1)[-1].lower() if "." in original_name else ""
+    if extension not in ALLOWED_AUDIO_EXTENSIONS:
+        return jsonify({"error": "Unsupported audio format"}), 415
+    mime_type = (
+        mimetypes.guess_type(original_name)[0]
+        or upload.mimetype
+        or "application/octet-stream"
+    )[:100]
+    try:
+        client_duration = int(request.form.get("duration_seconds", "0"))
+    except ValueError:
+        return jsonify({"error": "duration_seconds must be an integer"}), 400
+    if client_duration < 1:
+        return jsonify({"error": "duration_seconds is required"}), 400
+    analysis_purpose = request.form.get("analysis_purpose", "quality_evaluation")
+    if analysis_purpose not in ALLOWED_ANALYSIS_PURPOSES:
+        return jsonify({"error": "analysis_purpose is invalid"}), 400
+
+    guest_dir = os.path.join(AUDIO_UPLOAD_DIR, "_guest")
+    os.makedirs(guest_dir, exist_ok=True)
+    stored_name = f"{uuid.uuid4().hex}.{extension}"
+    stored_path = os.path.abspath(os.path.join(guest_dir, stored_name))
+    if os.path.commonpath([AUDIO_UPLOAD_DIR, stored_path]) != AUDIO_UPLOAD_DIR:
+        return jsonify({"error": "Invalid upload path"}), 400
+    upload.save(stored_path)
+    size = os.path.getsize(stored_path)
+    if size == 0 or size > MAX_AUDIO_BYTES:
+        os.remove(stored_path)
+        return jsonify({"error": "Audio file is empty or exceeds the 25 MB limit"}), 413
+    try:
+        duration = audio_duration_seconds(stored_path)
+    except Exception:
+        os.remove(stored_path)
+        return jsonify({"error": "Audio file is corrupted or unreadable"}), 422
+
+    work_id = secrets.randbelow(2_000_000_000) + 1
+    try:
+        try:
+            analysis_dump = run_audio_analyzer(
+                stored_path,
+                user_id=0,
+                assessment_id=work_id,
+                original_name=original_name,
+                analysis_purpose=analysis_purpose,
+            )
+            analysis_summary = summarize_audio_analysis(analysis_dump)
+            status = "Completed"
+        except AudioAnalyzerExecutionError as error:
+            analysis_dump = error.dump
+            analysis_summary = None
+            status = "Failed"
+        except Exception:
+            app.logger.exception("Guest audio analysis failed")
+            analysis_dump = {
+                "dump_schema_version": 1,
+                "analysis_status": "failed",
+                "analysis_purpose": analysis_purpose,
+                "upload": {
+                    "assessment_id": None,
+                    "original_file_name": original_name,
+                },
+                "analysis": None,
+                "error": "Audio analysis failed unexpectedly",
+            }
+            analysis_summary = None
+            status = "Failed"
+    finally:
+        try:
+            cleanup_audio_artifacts(0, work_id, stored_path)
+        except (OSError, RuntimeError):
+            app.logger.exception("Transient guest audio cleanup failed")
+
+    upload_details = analysis_dump.get("upload")
+    if isinstance(upload_details, dict):
+        upload_details["assessment_id"] = None
+    return (
+        jsonify(
+            {
+                "id": None,
+                "assessment_id": None,
+                "guest": True,
+                "persisted": False,
+                "file_name": original_name,
+                "duration_seconds": duration,
+                "size_bytes": size,
+                "mime_type": mime_type,
+                "status": status,
+                "result_status": (
+                    analysis_summary["status"] if analysis_summary else "Failed"
+                ),
+                "score": analysis_summary["score"] if analysis_summary else None,
+                "noise_level": (
+                    analysis_summary["noise_level"] if analysis_summary else None
+                ),
+                "distortion_level": (
+                    analysis_summary["distortion_level"]
+                    if analysis_summary
+                    else None
+                ),
+                "bass": analysis_summary["bass"] if analysis_summary else None,
+                "treble": analysis_summary["treble"] if analysis_summary else None,
+                "loudness": (
+                    analysis_summary["loudness"] if analysis_summary else None
+                ),
+                "sharpness": (
+                    analysis_summary["sharpness"] if analysis_summary else None
+                ),
+                "flatness": (
+                    analysis_summary["flatness"] if analysis_summary else None
+                ),
+                "empirical_quality": (
+                    analysis_summary["empirical_quality"]
+                    if analysis_summary
+                    else None
+                ),
+                "analysis_purpose": analysis_purpose,
+                "analysis_dump": analysis_dump,
+            }
+        ),
+        201,
+    )
 
 
 @app.post("/api/audio-uploads")

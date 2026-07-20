@@ -122,80 +122,84 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                         if (mounted) _loadAnalysis();
                       },
                     ),
-                    const SizedBox(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Recent Analysis',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                    if (!UserSession.instance.isGuest) ...[
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Recent Analysis',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
-                        GestureDetector(
-                          onTap: () {
-                            Navigator.push(
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      const OwnerPreviousResultsScreen(),
+                                ),
+                              );
+                            },
+                            child: const Text(
+                              'View all',
+                              style: TextStyle(
+                                color: Color(0xFFFF8C00),
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      if (_loading)
+                        const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(24),
+                            child: CircularProgressIndicator(
+                              color: Color(0xFFFF8C00),
+                            ),
+                          ),
+                        )
+                      else if (_loadError != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 24),
+                          child: Center(
+                            child: Text(
+                              _loadError!,
+                              style: const TextStyle(
+                                color: Color(0xFFF44336),
+                              ),
+                            ),
+                          ),
+                        )
+                      else if (_recentAnalysis.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 24),
+                          child: Center(
+                            child: Text(
+                              'No analyses yet. Evaluate your first audio recording!',
+                              style: TextStyle(color: Color(0xFF666666)),
+                            ),
+                          ),
+                        )
+                      else
+                        ..._recentAnalysis.map(
+                          (item) => _AnalysisListItem(
+                            test: Map<String, dynamic>.from(item as Map),
+                            onTap: () => Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>
-                                    const OwnerPreviousResultsScreen(),
+                                builder: (_) => ResultsScreen.fromRecord(item),
                               ),
-                            );
-                          },
-                          child: const Text(
-                            'View all',
-                            style: TextStyle(
-                              color: Color(0xFFFF8C00),
-                              fontSize: 13,
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    if (_loading)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(24),
-                          child: CircularProgressIndicator(
-                            color: Color(0xFFFF8C00),
-                          ),
-                        ),
-                      )
-                    else if (_loadError != null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 24),
-                        child: Center(
-                          child: Text(
-                            _loadError!,
-                            style: const TextStyle(color: Color(0xFFF44336)),
-                          ),
-                        ),
-                      )
-                    else if (_recentAnalysis.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 24),
-                        child: Center(
-                          child: Text(
-                            'No analyses yet. Evaluate your first audio recording!',
-                            style: TextStyle(color: Color(0xFF666666)),
-                          ),
-                        ),
-                      )
-                    else
-                      ..._recentAnalysis.map(
-                        (item) => _AnalysisListItem(
-                          test: Map<String, dynamic>.from(item as Map),
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ResultsScreen.fromRecord(item),
-                            ),
-                          ),
-                        ),
-                      ),
+                    ],
                   ],
                 ),
               ),

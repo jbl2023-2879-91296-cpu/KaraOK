@@ -1,4 +1,5 @@
 import json
+from io import BytesIO
 import os
 from pathlib import Path
 import subprocess
@@ -259,6 +260,56 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertEqual(payload["analysis"]["bass"]["energy_percentage"], 40.0)
         self.assertEqual(payload["empirical_quality"]["overall_score"], 91.5)
         self.assertIn("JOIN assessment", cursor.execute.call_args.args[0])
+
+    def test_guest_analysis_returns_results_without_database_history(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        upload_root = root / "uploads"
+        analysis_root = root / "analysis"
+        dump = {
+            "analysis_status": "completed",
+            "analysis_purpose": "quality_evaluation",
+            "upload": {
+                "assessment_id": 99,
+                "original_file_name": "guest.wav",
+            },
+            "analyzer_process": {"duration_seconds": 0.5},
+            "analysis": _analyzer_result("passed"),
+        }
+
+        with api.app.test_request_context(
+            "/api/guest/audio-analysis",
+            method="POST",
+            data={
+                "audio": (BytesIO(b"RIFF-test"), "guest.wav"),
+                "duration_seconds": "2",
+                "analysis_purpose": "quality_evaluation",
+            },
+            content_type="multipart/form-data",
+        ), patch.object(
+            api, "AUDIO_UPLOAD_DIR", str(upload_root)
+        ), patch.object(
+            api, "ANALYSIS_OUTPUT_DIR", str(analysis_root)
+        ), patch.object(
+            api, "audio_duration_seconds", return_value=2
+        ), patch.object(
+            api, "run_audio_analyzer", return_value=dump
+        ), patch.object(
+            api, "get_db", side_effect=AssertionError("guest history must not persist")
+        ):
+            response, status_code = api.create_guest_audio_analysis.__wrapped__()
+
+        payload = response.get_json()
+        self.assertEqual(status_code, 201)
+        self.assertEqual(payload["status"], "Completed")
+        self.assertTrue(payload["guest"])
+        self.assertFalse(payload["persisted"])
+        self.assertIsNone(payload["assessment_id"])
+        self.assertIsNone(payload["analysis_dump"]["upload"]["assessment_id"])
+        self.assertGreater(payload["score"], 0)
+        self.assertFalse(any(upload_root.rglob("*.wav")))
+        self.assertFalse(any(analysis_root.rglob("*_analysis.json")))
 
 
 if __name__ == "__main__":

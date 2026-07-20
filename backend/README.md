@@ -291,6 +291,13 @@ Configure `AUDIO_ANALYSIS_OUTPUT_DIR` and
 and Nginx request windows. This synchronous implementation is suitable for validation; a durable
 background queue should replace it before high-concurrency use.
 
+`POST /api/guest/audio-analysis` accepts the same supported audio formats and
+analysis-purpose values without authentication. It is IP-rate-limited to three
+attempts per hour as an abuse safeguard, returns the real transient analyzer
+result, and never creates `assessment`, `audio_upload`, or
+`audio_analysis_result` rows. The client owns the approved one-assessment device
+allowance; failed analyses do not consume it.
+
 ## OVHcloud production deployment
 
 Production deployment for Ubuntu 26.04 on OVH VPS `139.99.89.112` is defined in
@@ -594,7 +601,7 @@ Public endpoints:
 
 `POST /api/auth/login` accepts an `identifier` containing either the username or email address, together with `password`.
 
-Authenticated endpoints:
+Application endpoints:
 
 - `POST /api/auth/change-password` — owner, technician, or admin changing their own password
 - `GET /api/users` — admin only
@@ -604,6 +611,7 @@ Authenticated endpoints:
 - `POST /api/genre-settings` — owner only
 - `GET /api/audio-uploads` — owner or technician upload history, scoped to the authenticated user
 - `POST /api/audio-uploads` — owner or technician; authenticated `multipart/form-data` upload using file field `audio`, required `duration_seconds` (1–300), `analysis_purpose` (`quality_evaluation` or `settings_suggestion`), and optional `genre`. Accepted extensions are WAV, MP3, M4A, AAC, OGG, and FLAC; the default maximum is 25 MB. The server runs `audio_analyzer.py`, stores the applicable results, deletes the transient server-side audio and analyzer files, and returns HTTP 201 with `Completed` or `Failed` plus the real `analysis_dump` response object.
+- `POST /api/guest/audio-analysis` — unauthenticated, IP-rate-limited transient analysis used by the single device-local guest allowance; returns the result without creating guest history rows
 - `GET /api/audio-uploads/<id>/analysis-dump` — owner or technician; rebuilds saved analysis details from database fields when the upload belongs to the authenticated user
 - `GET /api/audit-logs` — admin only
 - `GET /api/request-logs` — admin only; returns the latest 200 sanitized API request records

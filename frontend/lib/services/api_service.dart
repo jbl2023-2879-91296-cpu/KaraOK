@@ -147,7 +147,10 @@ class ApiService {
     }
   }
 
-  Future<void> clearTokens() => _storage.deleteAll();
+  Future<void> clearTokens() async {
+    await _storage.delete(key: _accessTokenKey);
+    await _storage.delete(key: _refreshTokenKey);
+  }
 
   Future<bool> checkHealth() async {
     try {
@@ -323,9 +326,11 @@ class ApiService {
     required int durationSeconds,
     String? genre,
     String analysisPurpose = 'quality_evaluation',
+    bool guest = false,
   }) async {
-    final request = http.MultipartRequest('POST', _uri('/audio-uploads'));
-    final headers = await _headers();
+    final endpoint = guest ? '/guest/audio-analysis' : '/audio-uploads';
+    final request = http.MultipartRequest('POST', _uri(endpoint));
+    final headers = await _headers(authenticated: !guest);
     headers.remove('Content-Type');
     request.headers.addAll(headers);
     request.fields['duration_seconds'] =

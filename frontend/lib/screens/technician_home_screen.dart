@@ -113,67 +113,69 @@ class _TechnicianHomeScreenState extends State<TechnicianHomeScreen> {
                         if (mounted) _loadTests();
                       },
                     ),
-                    const SizedBox(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Recent Analysis',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const PreviousResultsScreen(),
-                            ),
-                          ),
-                          child: const Text(
-                            'View all',
+                    if (!UserSession.instance.isGuest) ...[
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Recent Analysis',
                             style: TextStyle(
-                              color: Color(0xFF4A90D9),
-                              fontSize: 13,
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    if (_loading)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(24),
-                          child: CircularProgressIndicator(
-                            color: Color(0xFF4A90D9),
-                          ),
-                        ),
-                      )
-                    else if (_recentTests.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 24),
-                        child: Center(
-                          child: Text(
-                            'No tests yet. Evaluate your first audio recording!',
-                            style: TextStyle(color: Color(0xFF666666)),
-                          ),
-                        ),
-                      )
-                    else
-                      ..._recentTests.map(
-                        (test) => _AnalysisListItem(
-                          test: Map<String, dynamic>.from(test as Map),
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ResultsScreen.fromRecord(test),
+                          GestureDetector(
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const PreviousResultsScreen(),
+                              ),
+                            ),
+                            child: const Text(
+                              'View all',
+                              style: TextStyle(
+                                color: Color(0xFF4A90D9),
+                                fontSize: 13,
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
+                      const SizedBox(height: 12),
+                      if (_loading)
+                        const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(24),
+                            child: CircularProgressIndicator(
+                              color: Color(0xFF4A90D9),
+                            ),
+                          ),
+                        )
+                      else if (_recentTests.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 24),
+                          child: Center(
+                            child: Text(
+                              'No tests yet. Evaluate your first audio recording!',
+                              style: TextStyle(color: Color(0xFF666666)),
+                            ),
+                          ),
+                        )
+                      else
+                        ..._recentTests.map(
+                          (test) => _AnalysisListItem(
+                            test: Map<String, dynamic>.from(test as Map),
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ResultsScreen.fromRecord(test),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ],
                 ),
               ),

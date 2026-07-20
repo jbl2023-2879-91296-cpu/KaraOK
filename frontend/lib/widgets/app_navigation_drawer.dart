@@ -109,11 +109,12 @@ class AppNavigationDrawer extends StatelessWidget {
               label: 'Home',
               onTap: () => _openRoute(context, '/home', clearHistory: true),
             ),
-            _DrawerItem(
-              icon: Icons.bar_chart_outlined,
-              label: 'Reports',
-              onTap: () => _openRoute(context, '/reports'),
-            ),
+            if (!session.isGuest)
+              _DrawerItem(
+                icon: Icons.bar_chart_outlined,
+                label: 'Reports',
+                onTap: () => _openRoute(context, '/reports'),
+              ),
             _DrawerItem(
               icon: Icons.settings_outlined,
               label: 'Settings',
