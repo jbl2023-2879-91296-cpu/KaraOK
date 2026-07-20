@@ -256,7 +256,7 @@ The suite includes settings validation, controlled phone THD/THD+N and noise
 measurements, BS.1770 loudness output, quality pass/warning/failure decisions,
 pre-decode file-size enforcement, shared CSV behavior, prefix-scoped cleanup,
 empirical-threshold derivation and scoring, audio upload validation, and security
-regressions. The current suite completes 38 tests, including eight dedicated
+regressions. The current suite completes 42 tests, including eight dedicated
 empirical-threshold tests.
 
 ### API upload analysis and output dump
@@ -282,9 +282,11 @@ completed analysis. Technical failures are stored with `analysis_status` set to
 later through `GET /api/audio-uploads/<id>/analysis-dump`; ownership is enforced.
 
 The API maps noise, distortion, bass, treble, loudness, sharpness, and flatness
-into `audio_analysis_result`. No placeholder numerical quality score is
-invented; `quality_score` remains null until the empirical scorer is connected
-to this request path.
+into `audio_analysis_result`. It evaluates the five empirical features against
+the checked 30-recording reference, stores the weighted `quality_score` in both
+the analysis and upload records, and includes the overall and per-feature score
+breakdown in the output dump and history API. Legacy rows with stored features
+but a null score are scored when read instead of being displayed as zero.
 
 Configure `AUDIO_ANALYSIS_OUTPUT_DIR` and
 `AUDIO_ANALYSIS_TIMEOUT_SECONDS` in `.env`. Production currently uses a
@@ -339,7 +341,7 @@ sudo ls -lah /var/backups/karaok
 ```
 
 The backup service should finish successfully, and the final command should show
-recent database/upload backup files. Do not continue with a database migration if
+recent database/upload backup files. Do not continue with a database reset if
 the backup failed.
 
 #### 4. Review and download the new revision
@@ -363,46 +365,41 @@ backend/.venv/bin/python -m pip install -r backend/requirements.txt
 Normal output contains `Requirement already satisfied` or successful package
 installations. Do not restart the service if pip reports an error.
 
-#### 6. Apply only new database migrations
+#### 6. Recreate the database from the consolidated schema
 
-`git pull` does not update MySQL automatically. Read the release notes and apply
-only the migration introduced by that release. Never rerun every migration file.
-For the temporary-password recovery migration, check the column first:
+This release intentionally replaces the previous database structure with the
+single authoritative `database/schema.sql`. Confirm the production backup from
+the earlier step before continuing; the following database reset removes all
+current rows.
+
+Stop the API so it cannot write during the reset, then recreate and import the
+schema:
 
 ```bash
+sudo systemctl stop karaok-api
+sudo mysql -e "DROP DATABASE karaok_db;"
+sudo mysql < /opt/karaok/app/database/schema.sql
+```
+
+Do not run any historical migration afterward. Confirm the normalized upload
+relationship and required application tables:
+
+```bash
+sudo mysql -D karaok_db -e "SHOW COLUMNS FROM audio_upload;"
+sudo mysql -D karaok_db -e "SHOW CREATE TABLE audio_upload\G"
+sudo mysql -D karaok_db -e "SHOW TABLES LIKE 'api_request_log';"
 sudo mysql -D karaok_db -e "SHOW COLUMNS FROM user LIKE 'requires_password_change';"
-```
-
-If this displays a `requires_password_change` row, the migration is already
-installed and must not be run again. If it displays no row, run it once:
-
-```bash
-sudo mysql < /opt/karaok/app/database/migrations/20260718_temporary_password_recovery.sql
-```
-
-No output means the migration succeeded. `ERROR 1060 ... Duplicate column name`
-means the column already existed; do not run the migration again.
-
-For the registration-OTP user foreign key, check the verification column:
-
-```bash
 sudo mysql -D karaok_db -e "SHOW COLUMNS FROM user LIKE 'email_verified_at';"
 ```
 
-If it displays no row, run this migration once before restarting the backend:
-
-```bash
-sudo mysql < /opt/karaok/app/database/migrations/20260720_registration_otp_user_fk.sql
-```
-
-This migration marks existing accounts as verified and recreates the
-`registration_otp` table with a `user_id` foreign key. Recreating the table
-invalidates unfinished OTPs; affected users must submit registration again.
+`audio_upload` must contain a required unique `assessment_id`, must not contain
+`user_id`, and its assessment foreign key must use `ON DELETE CASCADE`.
 
 #### 7. Run the backend tests
 
 ```bash
-backend/.venv/bin/python -m unittest discover -s backend/tests -v
+cd /opt/karaok/app/backend
+.venv/bin/python -m unittest discover -s tests -v
 ```
 
 Continue only if the result ends with `OK`. A result containing `FAILED` or
@@ -471,6 +468,8 @@ cannot replace them. See the complete update, backup, and rollback preparation i
 - Admin/owner/technician permissions are enforced at each route. Public registration permits owner and technician accounts; the privileged `admin` role must be provisioned administratively.
 - Authentication endpoints are rate limited, and sensitive responses use `Cache-Control: no-store`.
 - Authentication, authorization failures, password recovery, and data changes are recorded in `audit_log`.
+- Every non-preflight API request stores sanitized method/path/status/timing and
+  client metadata in `api_request_log`; request bodies and secrets are excluded.
 - Login accepts either the account username or verified email address through the `identifier` field.
 - Registration uses a six-digit, expiring OTP. Registration creates an
   unverified `user`, and `registration_otp.user_id` references that account.
@@ -491,6 +490,7 @@ All requested application-level security controls are implemented. The database 
 | Input validation and sanitization  | Implemented                                                   | JSON bodies must be objects. Text is trimmed and whitespace-normalized, email is normalized and format-checked, passwords and numbers have bounds, and roles/status values use allowlists. SQL uses connector parameters. IDs use typed routes and ownership predicates.                                    | Flask JSON parsing and typed route converters; Python regular expressions, normalization helpers, bounds, and allowlists; MySQL Connector parameterized queries; Werkzeug`secure_filename`; Mutagen audio validation; request-size and file-extension limits. | Server validation is authoritative because clients can be bypassed. Normalization gives consistent values, allowlists prevent unexpected states, and parameterized SQL prevents inputs becoming executable SQL. JSON output avoids treating destructive HTML filtering as universal sanitization. |
 | Forgot/reset password              | Implemented                                                   | Requests are rate-limited and return a uniform response. A random temporary password replaces the old password, active refresh sessions are revoked, and the temporary password is emailed. Login requires immediate password replacement and other protected operations are blocked until it is completed. | Flask-Limiter; Python`secrets` and `SystemRandom`; Argon2id hashing; SMTP with `EmailMessage` and STARTTLS; MySQL `requires_password_change`; session revocation; uniform API responses; mandatory-change screen in Flutter.                                  | Uniform responses reduce enumeration. Forced replacement limits the temporary credential to account recovery and prevents normal application use until the user establishes a private password.                                                                                                   |
 | Audit logging                      | Implemented                                                   | Authentication outcomes, refresh/logout, access denial, validation failure, password recovery, registration, password changes, and mutations record actor, action, result, resource, IP, user agent, details, and server time. Audit-log access requires admin.                                             | Central`audit()` helper; MySQL `audit_log`; UTC server timestamps; authenticated actor ID; client IP and user-agent metadata; parameterized inserts; admin-only audit endpoint; secret-field exclusion.                                                       | Security events are separate rows so history is not overwritten by current entity state. Passwords, OTPs, temporary passwords, and bearer tokens are excluded from logs.                                                                                                                          |
+| Request persistence                | Implemented                                                   | Every non-OPTIONS `/api` response writes method, sanitized path, endpoint, status, duration, attributable user, IP, user agent, and server time. Request queries, bodies, tokens, OTPs, passwords, and audio bytes are not stored.                                                                            | Flask request hooks; MySQL `api_request_log`; parameterized inserts; foreign key to `user`; admin-only request-log endpoint.                                                                                                                                | Request metadata proves which application operations reached the API without duplicating sensitive payloads or business data. Business entities remain in their corresponding normalized tables.                                                                                                |
 | Accountability and non-repudiation | Application support implemented; deployment controls required | The application records attributable events and ignores forwarded IP headers unless configured behind a trusted proxy. Production must deny audit updates/deletes and export records to immutable or append-only storage.                                                                                   | `audit_log`; JWT identity; trusted-proxy configuration with Werkzeug `ProxyFix`; Nginx; database privilege separation; protected backups and recommended off-server append-only log export.                                                                   | A mutable database controlled by one operator cannot alone establish strong or legal non-repudiation. That requires separation of duties, restricted privileges, trustworthy attribution, retention controls, and an independently protected log destination.                                     |
 | Documentation and verification     | Implemented                                                   | This section records the control, mechanism, and reason for every feature. Regression tests cover password policy, normalization, token hashing, JWT claims, technician registration, and rejection of public admin registration.                                                                           | `backend/README.md`; `DeployOVH.md`; `database/schema.sql`; Python `unittest`; Flask test client; `flutter analyze`; `flutter test`; production health checks.                                                                                           | Tests prevent silent policy regression, while documentation makes code assumptions and deployment responsibilities explicit.                                                                                                                                                                      |
 
@@ -503,25 +503,33 @@ All requested application-level security controls are implemented. The database 
 | Read and manage own assessments                    |  Yes  |    Yes     |  No   |
 | Read genre settings                                |  Yes  |    Yes     |  No   |
 | Save owner genre settings                          |  Yes  |     No     |  No   |
-| Read and create owner upload records               |  Yes  |     No     |  No   |
+| Read and create own upload records                  |  Yes  |    Yes     |  No   |
 | List users                                         |  No   |     No     |  Yes  |
 | Read centralized audit logs                        |  No   |     No     |  Yes  |
+| Read centralized API request logs                  |  No   |     No     |  Yes  |
 
 Administrator accounts must be provisioned through a controlled operational process. Never expose an unauthenticated endpoint that assigns the `admin` role.
 
 ## Database design
 
-The active schema is [`database/schema.sql`](../database/schema.sql). It keeps the original database model as its foundation and appends only tables needed by the security and application workflows. [`database/schema_original.sql`](../database/schema_original.sql) is retained as the reference copy of the original design.
+The active schema is [`database/schema.sql`](../database/schema.sql). It is the
+single authoritative bootstrap for a new empty database and already includes
+all changes from migrations through 2026-07-20. A fresh database created from
+this file must not run those historical migrations afterward.
+[`database/schema_original.sql`](../database/schema_original.sql) is retained
+only as the reference copy of the original design. This release intentionally
+does not support an in-place upgrade of the prior structure: back up the
+populated database, recreate it, and import the consolidated schema.
 
 ### Original foundation tables
 
 | Table                     | What it stores                                                                                                                                                                                                 | How the application uses it                                                                                                                                                                                                                                                                    |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `user`                    | One account per row: login name, password hash, email, email-verification time, role, active status, mandatory-password-change state, security-update time, and creation time. The`user_id` value is the identity used by foreign keys. | Authentication looks up the account by`username` or `email`; `email_verified_at` remains null until OTP verification; the `password` column stores the Argon2id hash; `requires_password_change` restricts temporary-password sessions; `role` is re-checked on protected requests. Application roles are lowercase `owner`, `technician`, and `admin`. |
-| `genre_preset`            | Shared recommended sound values for a genre, including bass, treble, loudness, sharpness, and flatness.`genre_name` is unique so one shared preset cannot be accidentally duplicated.                          | The analysis result points to a preset through`preset_id`. This preserves which recommendation was used for an assessment.                                                                                                                                                                     |
-| `audio_quality_threshold` | Named quality rules: maximum noise, maximum distortion, and minimum quality score.                                                                                                                             | An analysis result points to the threshold used through`threshold_id`, making the decision reproducible if thresholds change later.                                                                                                                                                            |
-| `assessment`              | The uploaded-audio job itself: owner (`user_id`), file path, processing status, date, external API reference, processing time, display name, duration, and result status.                                      | This is the parent record for one audio assessment. Its lifecycle is represented by`assessment_status`; application metadata is stored on the same row because it depends directly on `assessment_id`; detailed measurements belong in `audio_analysis_result`.                                |
-| `audio_analysis_result`   | The measured output for one assessment: quality score, noise, distortion, recommended sound values, waveform path, and spectrogram path.                                                                       | `assessment_id` is unique, so one assessment has at most one detailed result. `threshold_id` and `preset_id` document the rules and recommendation used for that result.                                                                                                                       |
+| `genre_preset`            | Shared recommended sound values for a genre, including bass, treble, loudness, sharpness, and flatness.`genre_name` is unique so one shared preset cannot be accidentally duplicated.                          | An analysis result points to a preset only when the request supplied a matching genre. A genre-free quality evaluation keeps `preset_id` null instead of recording an arbitrary preset.                                                                                                         |
+| `audio_quality_threshold` | Named legacy/configurable quality rules: maximum noise, maximum distortion, and minimum quality score.                                                                                                         | `threshold_id` is optional and is used only when one of these database rules actually produced the result. The current five-feature empirical bounds and weights are stored in each result's JSON snapshot instead of linking an unrelated default row.                                           |
+| `assessment`              | The uploaded-audio job itself: owner (`user_id`), file path, analysis purpose, processing status, date, external API reference, processing time, display name, duration, and result status.                    | This is the parent record for one audio assessment. Its lifecycle is represented by`assessment_status`; application metadata is stored on the same row because it depends directly on `assessment_id`; detailed measurements belong in `audio_analysis_result`.                                |
+| `audio_analysis_result`   | The measured output and immutable empirical snapshot for one assessment: overall/feature scores and statuses, noise, distortion, five feature measurements, algorithm version, and reference cohort size.       | `assessment_id` is unique, so one assessment has at most one detailed result. Persisting the scoring JSON prevents historical results from silently changing when a future threshold artifact is introduced.                                                                                  |
 
 ### Additive tables
 
@@ -533,17 +541,19 @@ These tables do not replace the original tables. They add capabilities that the 
 | `revoked_access_token` | The JWT`jti`, owner, expiry, and revocation time for access tokens invalidated before natural expiry.                                                                                     | Access tokens are normally stateless. This small denylist allows logout and emergency revocation while retaining short-lived tokens.                            |
 | `audit_log`            | Security and accountability events such as login failures, authorization failures, password resets, and data changes, including actor, action, result, client information, and timestamp. | Audit records are append-only events. They should not be columns on`user` or `assessment`, because one actor can create many events across many resource types. |
 | `user_genre_setting`   | A user's saved genre adjustment, optionally linked to the shared`genre_preset`, including volume and tone values.                                                                         | Shared presets and user-specific overrides have different ownership and lifecycles, so overrides belong in a child table.                                       |
-| `audio_upload`         | An upload record with owner, optional assessment, filename, genre label, score, status, and creation time.                                                                                | An upload may exist before processing creates an`assessment`; the nullable relationship supports that workflow without changing the original assessment table.  |
+| `audio_upload`         | An upload record with one unique assessment, filename, genre label, score, status, byte size, MIME type, and creation time.                                                               | Its owner is derived through `audio_upload.assessment_id` to `assessment.user_id`. Removing the duplicate `audio_upload.user_id` prevents conflicting ownership, while the unique link allows zero or one upload per assessment. |
 | `registration_otp`     | A hashed, expiring six-digit code, attempt count, and `user_id` foreign key for one unverified account.                                                                                   | OTP state is short-lived and separate from the account; the foreign key enforces that every pending OTP belongs to a real user row.                              |
+| `api_request_log`      | Sanitized metadata for each API request: actor when authenticated, method, path, endpoint, response status, duration, IP, user agent, and timestamp.                                      | Request accountability is append-only and cross-cutting; it must not create artificial rows in unrelated business tables. Sensitive request payloads are excluded. |
 
 ### Relationships and normalization
 
 The schema uses `user.user_id` as the account key. `registration_otp.user_id`,
-`assessment.user_id`, security tables, and upload records reference it with
-foreign keys. `audio_analysis_result` references `assessment`,
-`audio_quality_threshold`, and `genre_preset`, while upload records reference
-`assessment` when applicable. Account security state and assessment application
-metadata are stored directly on their one-to-one parent rows.
+`assessment.user_id`, and the security tables reference it with foreign keys.
+`audio_analysis_result` and `audio_upload` reference `assessment`; upload
+ownership is derived from `assessment.user_id` instead of being stored twice.
+An analysis result optionally references `audio_quality_threshold` and
+`genre_preset`. Account security state and assessment application metadata are
+stored directly on their one-to-one parent rows.
 
 The design is approximately in third normal form: each table describes one subject or event, non-key attributes depend on that table's key, and cross-table relationships are represented by foreign keys. `user_security` and `assessment_metadata` were merged because their columns depended directly and exclusively on `user_id` and `assessment_id`, respectively. Historical measurements such as `quality_score`, `noise_level`, and `bass` intentionally remain on `audio_analysis_result`; they are snapshots of a completed assessment and must not change when a newer preset or threshold is created. That is controlled historical duplication, not an accidental normalization violation.
 
@@ -558,6 +568,11 @@ When `DEV_MODE=true`, the forgot-password request endpoint is exempt from its pr
 ### Audit integrity and proxy trust
 
 Audit records are written separately from business transactions so a failed audit write does not corrupt application data. They provide accountability metadata, but a mutable application database alone cannot guarantee legal non-repudiation. In production, grant the API database identity INSERT/SELECT-only access to `audit_log`, deny application UPDATE/DELETE privileges, and export logs to an access-controlled immutable or append-only logging service. Restrict audit-log reading to `admin` accounts.
+
+`api_request_log` follows the same best-effort isolation: a logging failure does
+not replace the real API response. Establish a production retention policy and
+archive or purge old request rows operationally; the application intentionally
+does not record query strings, bodies, credentials, tokens, OTPs, or audio data.
 
 Client IP addresses come directly from the transport peer. Forwarded client-IP headers are not trusted.
 
@@ -589,10 +604,11 @@ Authenticated endpoints:
 - `GET|DELETE /api/audio-tests/<id>` — owner or technician, ownership enforced
 - `GET /api/genre-settings` — owner or technician
 - `POST /api/genre-settings` — owner only
-- `GET /api/audio-uploads` — owner upload history, scoped to the authenticated user
+- `GET /api/audio-uploads` — owner or technician upload history, scoped to the authenticated user
 - `POST /api/audio-uploads` — owner or technician; authenticated `multipart/form-data` upload using file field `audio`, required `duration_seconds` (1–300), `analysis_purpose` (`quality_evaluation` or `settings_suggestion`), and optional `genre`. Accepted extensions are WAV, MP3, M4A, AAC, OGG, and FLAC; the default maximum is 25 MB. The server runs `audio_analyzer.py` and returns HTTP 201 with `Completed` or `Failed` plus the placeholder `analysis_dump`.
 - `GET /api/audio-uploads/<id>/analysis-dump` — owner or technician; returns the stored raw analyzer dump when the upload belongs to the authenticated user
 - `GET /api/audit-logs` — admin only
+- `GET /api/request-logs` — admin only; returns the latest 200 sanitized API request records
 
 Send the access token on protected requests:
 

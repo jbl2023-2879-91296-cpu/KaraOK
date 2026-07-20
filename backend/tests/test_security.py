@@ -1,14 +1,41 @@
 import os
 from pathlib import Path
+import time
 import unittest
 from unittest.mock import patch
+
+from flask import g
 
 os.environ.setdefault("JWT_SECRET", "test-only-secret-that-is-at-least-32-characters")
 
 import app as api
 
+api.app.config["TESTING"] = True
+
 
 class SecurityValidationTests(unittest.TestCase):
+    def test_api_request_log_stores_sanitized_metadata(self):
+        connection = unittest.mock.MagicMock()
+        cursor = connection.cursor.return_value
+        with api.app.test_request_context(
+            "/api/audio-uploads?token=must-not-be-stored",
+            method="POST",
+            headers={"User-Agent": "KaraOK test"},
+        ), patch.object(api, "get_db", return_value=connection):
+            g.api_request_started = time.monotonic()
+            g.authenticated_user_id = 7
+            response = api.app.response_class(status=201)
+            returned = api.complete_api_request_log(response)
+
+        self.assertEqual(returned.status_code, 201)
+        parameters = cursor.execute.call_args.args[1]
+        self.assertEqual(
+            parameters[0:5],
+            (7, "POST", "/api/audio-uploads", "create_audio_upload", 201),
+        )
+        self.assertNotIn("token", parameters[2])
+        connection.commit.assert_called_once()
+
     def test_password_policy_accepts_strong_password(self):
         self.assertEqual(api.validate_password("Correct-Horse-7"), "Correct-Horse-7")
 
@@ -91,6 +118,50 @@ class SecurityValidationTests(unittest.TestCase):
         self.assertIn("user_id INT NOT NULL", otp_table)
         self.assertIn("FOREIGN KEY (user_id) REFERENCES user(user_id)", otp_table)
         self.assertIn("email_verified_at DATETIME NULL", schema)
+
+    def test_schema_persists_request_and_empirical_metadata(self):
+        schema = (
+            Path(__file__).resolve().parents[2] / "database" / "schema.sql"
+        ).read_text(encoding="utf-8")
+        self.assertIn("requires_password_change BOOLEAN", schema)
+        self.assertIn("email_verified_at DATETIME NULL", schema)
+        self.assertIn("CREATE TABLE IF NOT EXISTS api_request_log", schema)
+        self.assertIn("analysis_purpose VARCHAR(40)", schema)
+        self.assertIn("empirical_details JSON", schema)
+        self.assertIn("worst_feature_status VARCHAR(40)", schema)
+        self.assertIn("reference_recording_count INT", schema)
+        self.assertIn("size_bytes BIGINT UNSIGNED", schema)
+        self.assertIn("mime_type VARCHAR(100)", schema)
+        self.assertIn(
+            "UNIQUE KEY uq_audio_upload_assessment (assessment_id)", schema
+        )
+        upload_table = schema.split(
+            "CREATE TABLE IF NOT EXISTS audio_upload", 1
+        )[1].split("CREATE TABLE IF NOT EXISTS api_request_log", 1)[0]
+        self.assertIn("assessment_id INT NOT NULL", upload_table)
+        self.assertNotIn("user_id INT", upload_table)
+        self.assertIn("ON DELETE CASCADE", upload_table)
+        self.assertNotIn("CREATE TABLE IF NOT EXISTS password_reset_token", schema)
+
+    def test_upload_history_derives_ownership_from_assessment(self):
+        connection = unittest.mock.MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchall.return_value = []
+        with api.app.test_request_context("/api/audio-uploads"), patch.object(
+            api, "get_db", return_value=connection
+        ):
+            g.user_id = 7
+            response = api.get_audio_uploads.__wrapped__()
+
+        self.assertEqual(response.status_code, 200)
+        statement, parameters = cursor.execute.call_args.args
+        self.assertIn(
+            "JOIN assessment a ON a.assessment_id = au.assessment_id",
+            statement,
+        )
+        self.assertIn("WHERE a.user_id = %s", statement)
+        self.assertNotIn("au.user_id", statement)
+        self.assertEqual(parameters, (7,))
 
     def test_verification_marks_linked_user_email_as_verified(self):
         connection = unittest.mock.MagicMock()

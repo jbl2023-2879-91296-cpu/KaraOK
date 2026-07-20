@@ -2,6 +2,25 @@
 
 All notable changes to KaraOK are documented here.
 
+## 2026-07-20
+
+- Consolidated every migration through 2026-07-20 into `database/schema.sql`
+  as the authoritative fresh-install schema, including temporary-password and
+  OTP account state, empirical audio persistence, upload metadata, request
+  logging, indexes, and repeat-safe seed data.
+- Constrained `audio_upload.assessment_id` to be unique, matching the intended
+  zero-or-one upload per assessment relationship.
+- Removed the redundant `audio_upload.user_id` relationship. Upload ownership
+  is now derived from `assessment.user_id`, `assessment_id` is required and
+  unique, and assessment deletion cascades to its upload metadata.
+- Updated upload creation, listing, dump authorization, fresh-schema setup,
+  and deletion cleanup for the normalized ownership path. Deleting an
+  assessment now removes its stored audio and analyzer artifacts with
+  root-boundary safeguards.
+- Added `database/README.md` documenting why account logs, sessions, token
+  revocations, requests, and OTP state use child-side foreign keys and their
+  intended cardinalities.
+
 ## 2026-07-19 - Standalone audio feature analysis and safeguards
 
 ### Added
@@ -74,6 +93,21 @@ All notable changes to KaraOK are documented here.
   files and browser recordings now use Blob URLs and in-memory bytes instead of
   native filesystem paths, and multipart requests leave boundary generation to
   the HTTP client.
+- Connected the five-feature empirical scorer to server uploads and persistence.
+  Completed analyses now store and return a weighted score derived from the
+  30-recording good-audio reference; history reads also recover scores for
+  legacy rows that contain all five measurements but have a null score.
+- Changed recent owner and technician analysis entries into accessible buttons
+  that open the selected result. Result reports now show the measured and scored
+  loudness, bass, treble, sharpness, and flatness values without substituting a
+  missing database score with zero.
+- Added complete request persistence: every non-preflight API request now writes
+  sanitized metadata to `api_request_log`, while business actions continue to
+  populate their normalized tables without copying bodies or secrets into logs.
+- Added persisted analysis purpose, upload size/MIME metadata, and immutable
+  empirical scoring snapshots including overall/worst statuses, worst features,
+  algorithm version, cohort size, and all five feature results. Existing local
+  analysis/upload rows were backfilled where their stored data allowed it.
 - Changed CSV output from one timestamped file per recording to one appended
   `results/results.csv`, while keeping JSON and plots in per-recording folders.
 - Changed decoder diagnostics to clear recovery metadata and progress messages
