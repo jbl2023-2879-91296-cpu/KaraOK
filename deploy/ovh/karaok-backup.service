@@ -1,5 +1,5 @@
 [Unit]
-Description=Back up KaraOK MySQL data and audio uploads
+Description=Back up KaraOK MySQL analysis and application data
 After=mysql.service
 
 [Service]

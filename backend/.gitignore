@@ -4,4 +4,3 @@ __pycache__/
 *.py[cod]
 uploads/
 good_audio_thresholds
-tests

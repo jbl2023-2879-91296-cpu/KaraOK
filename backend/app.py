@@ -33,7 +33,7 @@ from mysql.connector import Error, IntegrityError
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
 
-from good_audio_thresholds import evaluate_features, load_thresholds
+from audio_thresholds import evaluate_features, load_thresholds
 
 
 load_dotenv()
@@ -193,15 +193,6 @@ def _process_text(value: str | bytes | None, limit: int = 20_000) -> str:
     return text[-limit:]
 
 
-def _write_analysis_dump(destination: Path, dump: dict[str, Any]) -> Path:
-    dump_path = destination / "analysis_dump.json"
-    temporary_path = destination / ".analysis_dump.json.tmp"
-    with temporary_path.open("w", encoding="utf-8") as handle:
-        json.dump(dump, handle, indent=2, ensure_ascii=False, allow_nan=False)
-    os.replace(temporary_path, dump_path)
-    return dump_path
-
-
 def _execute_analyzer_command(
     command: list[str],
     *,
@@ -249,7 +240,7 @@ def _execute_analyzer_command(
     return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
-def run_audio_analyzer(
+def _run_audio_analyzer(
     audio_path: str,
     *,
     user_id: int,
@@ -257,7 +248,7 @@ def run_audio_analyzer(
     original_name: str,
     analysis_purpose: str,
 ) -> dict[str, Any]:
-    """Run the standalone analyzer and persist an inspectable API output dump."""
+    """Run the standalone analyzer and return its transient structured output."""
     if analysis_purpose not in ALLOWED_ANALYSIS_PURPOSES:
         raise ValueError("analysis_purpose is invalid")
     if not os.path.isfile(AUDIO_ANALYZER_PATH):
@@ -348,7 +339,6 @@ def run_audio_analyzer(
     )
     dump: dict[str, Any] = {
         "dump_schema_version": 1,
-        "placeholder_output": True,
         "analysis_status": "completed" if analysis_completed else "failed",
         "analysis_purpose": analysis_purpose,
         "upload": {
@@ -368,10 +358,35 @@ def run_audio_analyzer(
     }
     if process_error is not None:
         dump["error"] = process_error
-    _write_analysis_dump(destination, dump)
     if not analysis_completed:
         raise AudioAnalyzerExecutionError(process_error or "Audio analysis failed", dump)
     return dump
+
+
+def run_audio_analyzer(
+    audio_path: str,
+    *,
+    user_id: int,
+    assessment_id: int,
+    original_name: str,
+    analysis_purpose: str,
+) -> dict[str, Any]:
+    """Analyze an upload without retaining analyzer working files on the server."""
+    try:
+        return _run_audio_analyzer(
+            audio_path,
+            user_id=user_id,
+            assessment_id=assessment_id,
+            original_name=original_name,
+            analysis_purpose=analysis_purpose,
+        )
+    finally:
+        root = Path(ANALYSIS_OUTPUT_DIR).resolve()
+        destination = (root / str(user_id) / str(assessment_id)).resolve()
+        if os.path.commonpath((str(root), str(destination))) != str(root):
+            app.logger.error("Refused to clean an invalid analyzer working path")
+        elif destination.is_dir():
+            shutil.rmtree(destination, ignore_errors=True)
 
 
 def _nested_number(data: dict[str, Any], *keys: str) -> float | None:
@@ -531,12 +546,13 @@ def persist_audio_analysis(
         cursor.execute(
             """UPDATE assessment
                SET assessment_status = 'Completed', result_status = %s,
-                   processing_time = %s, api_reference = %s
+                   processing_time = %s, api_reference = %s,
+                   audio_file_path = NULL
                WHERE assessment_id = %s""",
             (
                 result_status,
                 processing_time,
-                f"analysis-dump:{upload_id}",
+                f"/api/audio-uploads/{upload_id}/analysis-dump",
                 assessment_id,
             ),
         )
@@ -1605,12 +1621,11 @@ def create_audio_upload():
     try:
         cursor.execute(
             """INSERT INTO assessment
-               (user_id, audio_file_path, assessment_status, test_name,
+               (user_id, assessment_status, test_name,
                 duration_seconds, result_status, analysis_purpose)
-               VALUES (%s, %s, 'Processing', %s, %s, 'Acceptable', %s)""",
+               VALUES (%s, 'Processing', %s, %s, 'Acceptable', %s)""",
             (
                 g.user_id,
-                stored_path,
                 original_name[:120],
                 duration,
                 analysis_purpose,
@@ -1670,7 +1685,6 @@ def create_audio_upload():
         app.logger.exception("Uploaded audio analysis failed")
         failure_dump = {
             "dump_schema_version": 1,
-            "placeholder_output": True,
             "analysis_status": "failed",
             "analysis_purpose": analysis_purpose,
             "upload": {
@@ -1680,13 +1694,16 @@ def create_audio_upload():
             "analysis": None,
             "error": str(error).strip() or type(error).__name__,
         }
-        destination = _analysis_directory(g.user_id, assessment_id)
-        _write_analysis_dump(destination, failure_dump)
         mark_audio_analysis_failed(assessment_id, upload_id)
         analysis_dump = failure_dump
         analysis_summary = None
         status = "Failed"
         audit_result = "failure"
+    finally:
+        try:
+            cleanup_audio_artifacts(g.user_id, assessment_id, stored_path)
+        except (OSError, RuntimeError):
+            app.logger.exception("Transient uploaded audio cleanup failed")
 
     audit(
         "audio_upload_analyzed",
@@ -1750,9 +1767,17 @@ def get_audio_analysis_dump(upload_id: int):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        """SELECT au.assessment_id
+        """SELECT au.assessment_id, au.file_name,
+                  a.analysis_purpose, a.assessment_status, a.result_status,
+                  r.quality_score, r.noise_level, r.distortion_level,
+                  r.bass, r.treble, r.loudness, r.sharpness, r.flatness,
+                  r.empirical_status, r.worst_feature_status,
+                  r.worst_features, r.empirical_details,
+                  r.scoring_algorithm_version, r.reference_recording_count
            FROM audio_upload au
            JOIN assessment a ON a.assessment_id = au.assessment_id
+           LEFT JOIN audio_analysis_result r
+             ON r.assessment_id = a.assessment_id
            WHERE au.upload_id = %s AND a.user_id = %s""",
         (upload_id, g.user_id),
     )
@@ -1761,24 +1786,58 @@ def get_audio_analysis_dump(upload_id: int):
     conn.close()
     if not upload_record or upload_record["assessment_id"] is None:
         return jsonify({"error": "Analysis output not found"}), 404
-    dump_path = (
-        Path(ANALYSIS_OUTPUT_DIR)
-        / str(g.user_id)
-        / str(upload_record["assessment_id"])
-        / "analysis_dump.json"
-    ).resolve()
-    root = Path(ANALYSIS_OUTPUT_DIR).resolve()
-    if os.path.commonpath((str(root), str(dump_path))) != str(root):
-        return jsonify({"error": "Invalid analysis output path"}), 400
-    try:
-        with dump_path.open("r", encoding="utf-8") as handle:
-            dump = json.load(handle)
-    except FileNotFoundError:
+    if upload_record["quality_score"] is None:
         return jsonify({"error": "Analysis output not found"}), 404
-    except (OSError, json.JSONDecodeError):
-        app.logger.exception("Analysis dump could not be read")
-        return jsonify({"error": "Analysis output is unavailable"}), 500
-    return jsonify(dump)
+
+    def decoded_json(value: Any, fallback: Any) -> Any:
+        if value is None:
+            return fallback
+        if isinstance(value, (dict, list)):
+            return value
+        try:
+            return json.loads(value)
+        except (TypeError, json.JSONDecodeError):
+            return fallback
+
+    return jsonify(
+        {
+            "dump_schema_version": 1,
+            "analysis_status": "completed",
+            "analysis_purpose": upload_record["analysis_purpose"],
+            "upload": {
+                "assessment_id": upload_record["assessment_id"],
+                "original_file_name": upload_record["file_name"],
+            },
+            "analysis": {
+                "noise": {"noise_dbfs": upload_record["noise_level"]},
+                "distortion": {
+                    "estimated_score": upload_record["distortion_level"]
+                },
+                "bass": {"energy_percentage": upload_record["bass"]},
+                "treble": {"energy_percentage": upload_record["treble"]},
+                "loudness": {"integrated_lufs": upload_record["loudness"]},
+                "sharpness": {"normalized_score": upload_record["sharpness"]},
+                "flatness": {"mean": upload_record["flatness"]},
+                "quality_assessment": {
+                    "status": upload_record["result_status"],
+                    "empirical_status": upload_record["empirical_status"],
+                    "worst_feature_status": upload_record["worst_feature_status"],
+                    "worst_features": decoded_json(
+                        upload_record["worst_features"], []
+                    ),
+                },
+            },
+            "empirical_quality": decoded_json(
+                upload_record["empirical_details"], {}
+            ),
+            "scoring_algorithm_version": upload_record[
+                "scoring_algorithm_version"
+            ],
+            "reference_recording_count": upload_record[
+                "reference_recording_count"
+            ],
+        }
+    )
 
 
 @app.get("/api/audit-logs")
