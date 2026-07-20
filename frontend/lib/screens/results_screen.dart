@@ -306,6 +306,16 @@ class _ResultsScreenState extends State<ResultsScreen> {
                       height: 52,
                       child: OutlinedButton(
                         onPressed: () {
+                          if (widget.isGuest) {
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const LoginScreen(),
+                              ),
+                              (route) => false,
+                            );
+                            return;
+                          }
                           Navigator.pushAndRemoveUntil(
                             context,
                             MaterialPageRoute(
@@ -323,9 +333,11 @@ class _ResultsScreenState extends State<ResultsScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        child: const Text(
-                          'Test another audio',
-                          style: TextStyle(
+                        child: Text(
+                          widget.isGuest
+                              ? 'Sign in to assess another audio'
+                              : 'Test another audio',
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
@@ -349,7 +361,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         child: Column(
                           children: [
                             const Text(
-                              'Want to save your results?',
+                              'Guest assessment complete',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 14,
@@ -358,7 +370,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                             ),
                             const SizedBox(height: 4),
                             const Text(
-                              'Create a free account to keep track of all your audio tests.',
+                              'This device has used its one guest assessment. Sign in or create an account to continue.',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 color: Color(0xFF888888),

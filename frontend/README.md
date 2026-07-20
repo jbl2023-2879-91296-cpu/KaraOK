@@ -11,7 +11,8 @@ Repository: [github.com/jbl2023-2879-91296-cpu/KaraOK](https://github.com/jbl202
 - Argon2id password hashing, expiring token sessions, logout revocation, and role-based API access
 - Email-delivered temporary passwords with a mandatory in-app password change
 - Server-side input validation, login rate limiting, and security audit logs
-- Guest access for trying the application without saving a session
+- Device-local guest access for one successful assessment across the entire app;
+  subsequent quality or settings assessments require sign-in
 - Role-specific home screens and result histories
 - Selectable recent-analysis cards that open their individual result report
 - Separate audio-quality evaluation and settings-suggestion entry flows, each
@@ -39,6 +40,12 @@ Blob URL, and are submitted as multipart bytes with the original filename. The
 API temporarily stages the upload only while `audio_analyzer.py` is running,
 returns the real feature extraction and empirical scoring output, persists the
 applicable result fields, and deletes the server-side audio and working JSON.
+For guests, the first completed result is displayed but no assessment, upload,
+or analysis-result business row is created. The device allowance is stored in
+secure local application storage and is not cleared by login or logout. Recent
+analysis and Reports history are hidden in guest mode. Because this is
+intentionally device-only enforcement, clearing application/browser storage or
+reinstalling the app can reset it.
 
 The repository now includes a complete standalone analyzer at
 [`backend/audio_analyzer.py`](../backend/audio_analyzer.py). Authenticated audio

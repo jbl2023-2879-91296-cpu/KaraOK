@@ -11,7 +11,9 @@ import 'package:record/record.dart';
 
 import '../services/api_service.dart';
 import '../services/audio_staging_service.dart';
+import '../services/guest_assessment_service.dart';
 import '../services/user_session.dart';
+import 'login_screen.dart';
 import 'results_screen.dart';
 
 enum AudioInputState {
@@ -92,6 +94,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   String? _message;
   Map<String, dynamic>? _analysisDump;
   String? _recordingFileName;
+  bool _guestLimitDialogVisible = false;
 
   bool get _busy => const {
     AudioInputState.requestingPermission,
@@ -119,9 +122,47 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
         setState(() => _previewDuration = duration);
       }
     });
-    if (widget.selectFileOnOpen) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _selectFile());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!await _guestCanAssess()) return;
+      if (widget.selectFileOnOpen) await _selectFile();
+    });
+  }
+
+  Future<bool> _guestCanAssess() async {
+    if (!UserSession.instance.isGuest) return true;
+    if (await GuestAssessmentService.instance.canAssess()) return true;
+    if (!mounted || _guestLimitDialogVisible) return false;
+
+    _guestLimitDialogVisible = true;
+    final signIn = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Guest assessment already used'),
+        content: const Text(
+          'This device has used its one guest assessment. Sign in or create an account to continue.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Back'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Sign In'),
+          ),
+        ],
+      ),
+    );
+    _guestLimitDialogVisible = false;
+    if (signIn == true && mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
     }
+    return false;
   }
 
   @override
@@ -136,6 +177,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   }
 
   Future<void> _start() async {
+    if (!await _guestCanAssess()) return;
     if (_busy ||
         _state == AudioInputState.recording ||
         _state == AudioInputState.paused) {
@@ -302,6 +344,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   }
 
   Future<void> _selectFile() async {
+    if (!await _guestCanAssess()) return;
     if (_busy ||
         _state == AudioInputState.recording ||
         _state == AudioInputState.paused ||
@@ -405,10 +448,8 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   Future<void> _send() async {
     final item = _staging.current;
     if (item == null || _state == AudioInputState.uploading) return;
-    if (UserSession.instance.isGuest) {
-      setState(() => _message = 'Sign in before submitting audio.');
-      return;
-    }
+    if (!await _guestCanAssess()) return;
+    final isGuest = UserSession.instance.isGuest;
     if (!await _staging.currentIsAvailable()) {
       setState(() {
         _state = AudioInputState.failed;
@@ -429,18 +470,32 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
         durationSeconds: item.duration.inSeconds,
         genre: widget.genre,
         analysisPurpose: widget.purpose.requestValue,
+        guest: isGuest,
       );
       final dumpValue = response['analysis_dump'];
       final analysisDump = dumpValue is Map
           ? Map<String, dynamic>.from(dumpValue)
           : null;
       final completed = response['status'] == 'Completed';
+      if (completed && isGuest) {
+        try {
+          await GuestAssessmentService.instance.markAssessmentUsed();
+        } catch (e, st) {
+          developer.log(
+            'Guest allowance could not be persisted',
+            error: e,
+            stackTrace: st,
+          );
+        }
+      }
       await _staging.discard();
       if (mounted) {
         setState(() {
           _state = completed ? AudioInputState.success : AudioInputState.failed;
           _message = completed
-              ? widget.purpose.successMessage
+              ? isGuest
+                    ? '${widget.purpose.successMessage} Sign in to assess another audio.'
+                    : widget.purpose.successMessage
               : 'Audio was uploaded, but analysis could not be completed.';
           _analysisDump = analysisDump;
         });
@@ -451,7 +506,12 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
             ..['status'] = response['result_status'];
           await Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => ResultsScreen.fromRecord(result)),
+            MaterialPageRoute(
+              builder: (_) => ResultsScreen.fromRecord(
+                result,
+                isGuest: isGuest,
+              ),
+            ),
           );
         }
       }
@@ -745,6 +805,19 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
                   ),
                 ],
               ),
+            ),
+          ],
+          if (_state == AudioInputState.success &&
+              UserSession.instance.isGuest) ...[
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () => Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (route) => false,
+              ),
+              icon: const Icon(Icons.login),
+              label: const Text('Sign in to continue'),
             ),
           ],
           if (_message?.contains('Settings') == true)

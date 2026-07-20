@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../services/guest_assessment_service.dart';
 import '../services/user_session.dart';
 import 'signup_screen.dart';
 import 'technician_home_screen.dart';
@@ -86,7 +87,15 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _continueAsGuest() {
+  Future<void> _continueAsGuest() async {
+    if (!await GuestAssessmentService.instance.canAssess()) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'This device has already used its guest assessment. Sign in or create an account to continue.';
+      });
+      return;
+    }
+    if (!mounted) return;
     UserSession.instance.setGuest('owner');
     _navigateHome();
   }
@@ -294,7 +303,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: Color(0xFF888888),
                     ),
                     label: const Text(
-                      'Continue as Guest',
+                      'Continue as Guest (1 assessment)',
                       style: TextStyle(
                         color: Color(0xFFAAAAAA),
                         fontSize: 15,
@@ -314,7 +323,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  '⚠ Guest sessions are not saved. Your recordings and results will be lost when you exit.',
+                  'Guest mode allows one assessment on this device. The result is shown once and is not added to history.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Color(0xFF666666),

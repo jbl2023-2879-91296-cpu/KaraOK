@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/guest_assessment_service.dart';
 import '../services/user_session.dart';
 import 'login_screen.dart';
 import 'owner_home_screen.dart';
@@ -41,12 +42,18 @@ class SplashScreen extends StatelessWidget {
                 width: double.infinity,
                 height: 52,
                 child: OutlinedButton.icon(
-                  onPressed: () {
+                  onPressed: () async {
+                    if (!await GuestAssessmentService.instance.canAssess()) {
+                      if (!context.mounted) return;
+                      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+                      return;
+                    }
+                    if (!context.mounted) return;
                     UserSession.instance.setGuest('owner');
                     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const OwnerHomeScreen()));
                   },
                   icon: const Icon(Icons.visibility_outlined, color: Color(0xFFAAAAAA)),
-                  label: const Text('Continue as Guest', style: TextStyle(color: Color(0xFFAAAAAA), fontSize: 15, fontWeight: FontWeight.w600)),
+                  label: const Text('Continue as Guest (1 assessment)', style: TextStyle(color: Color(0xFFAAAAAA), fontSize: 15, fontWeight: FontWeight.w600)),
                   style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xFF3A3A5E), width: 1.5), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                 ),
               ),
