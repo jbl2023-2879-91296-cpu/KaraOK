@@ -2,16 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:karaok_app/main.dart';
-import 'package:karaok_app/screens/audio_settings_suggestion_screen.dart';
-import 'package:karaok_app/screens/change_password_screen.dart';
-import 'package:karaok_app/screens/owner_home_screen.dart';
-import 'package:karaok_app/screens/owner_previous_results_screen.dart';
-import 'package:karaok_app/screens/results_screen.dart';
-import 'package:karaok_app/screens/technician_home_screen.dart';
-import 'package:karaok_app/services/api_service.dart';
-import 'package:karaok_app/services/guest_assessment_service.dart';
-import 'package:karaok_app/services/user_session.dart';
-import 'package:karaok_app/widgets/app_navigation_drawer.dart';
+import 'package:karaok_app/app/navigation/app_navigation_drawer.dart';
+import 'package:karaok_app/core/network/api_service.dart';
+import 'package:karaok_app/core/security/guest_assessment_service.dart';
+import 'package:karaok_app/core/security/session_manager.dart';
+import 'package:karaok_app/features/account/presentation/pages/change_password_screen.dart';
+import 'package:karaok_app/features/assessments/presentation/pages/audio_settings_suggestion_screen.dart';
+import 'package:karaok_app/features/home/presentation/pages/owner_home_screen.dart';
+import 'package:karaok_app/features/home/presentation/pages/technician_home_screen.dart';
+import 'package:karaok_app/features/reports/presentation/pages/owner_previous_results_screen.dart';
+import 'package:karaok_app/features/reports/presentation/pages/results_screen.dart';
 
 void main() {
   setUp(() async {
@@ -243,10 +243,7 @@ void main() {
       ),
     );
 
-    expect(
-      find.textContaining('88.5', findRichText: true),
-      findsWidgets,
-    );
+    expect(find.textContaining('88.5', findRichText: true), findsWidgets);
     expect(find.text('Empirical five-feature grading'), findsOneWidget);
     expect(find.text('Loudness'), findsOneWidget);
     expect(find.text('Bass'), findsOneWidget);

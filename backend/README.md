@@ -16,6 +16,25 @@ python app.py
 
 The local API listens on `http://127.0.0.1:5000` by default. `GET /api/health` verifies both the API and database connection.
 
+## Backend module layout
+
+The API is a feature-oriented modular monolith under `karaok/`:
+
+- `config.py` owns environment-derived configuration;
+- `extensions.py` initializes CORS and rate limiting;
+- `common/` contains shared validation primitives;
+- `infrastructure/` contains the MySQL adapter;
+- `security/` contains password policy and hashing, JWT creation, response
+  hardening, and upload-path containment;
+- `modules/` owns the Flask blueprints for authentication, users,
+  assessments, audio analysis, genre settings, audit logs, and health checks.
+
+`app.py` remains a compatibility entry point for deployments and existing test
+imports. New development commands may use `python run.py`. The standalone
+signal-processing implementation lives in `audio_engine/`; the historical
+`python audio_analyzer.py` command remains supported through a compatibility
+entry point.
+
 ## Standalone audio feature analyzer
 
 [`audio_analyzer.py`](audio_analyzer.py) is a standalone command-line utility for

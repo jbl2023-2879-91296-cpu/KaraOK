@@ -118,8 +118,17 @@ observed envelope rather than a validated perceptual diagnosis.
 ```text
 KaraOK/
 |-- backend/
-|   |-- app.py                         # Flask API
-|   |-- audio_analyzer.py              # Standalone feature and quality analysis CLI
+|   |-- app.py                         # Backward-compatible Flask entry point
+|   |-- run.py                         # Packaged development entry point
+|   |-- karaok/
+|   |   |-- application.py             # API composition and handlers
+|   |   |-- config.py                  # Environment configuration
+|   |   |-- extensions.py              # CORS and rate limiting
+|   |   |-- security/                  # Passwords, JWTs, headers, and upload policy
+|   |   |-- infrastructure/            # Database adapters
+|   |   `-- modules/                   # Feature-owned Flask blueprints
+|   |-- audio_analyzer.py              # Compatibility analyzer CLI
+|   |-- audio_engine/                  # Standalone signal-processing package
 |   |-- audio_analyzer_settings.json   # Adjustable analysis and fail-safe limits
 |   |-- audio_thresholds/              # Empirical range derivation and scoring
 |   |-- requirements.txt               # Python dependencies
@@ -129,9 +138,12 @@ KaraOK/
 |   `-- schema.sql            # MySQL schema
 `-- frontend/
     |-- lib/
-    |   |-- screens/      # Application screens and flows
-    |   |-- services/     # API access and user session state
-    |   `-- widgets/      # Shared UI components
+    |   |-- app/           # App shell, navigation, and route table
+    |   |-- core/
+    |   |   |-- network/  # HTTP transport and API errors
+    |   |   `-- security/ # Secure tokens, session, roles, and guest policy
+    |   |-- features/      # Auth, account, home, assessments, reports, and settings
+    |   `-- shared/        # Cross-feature presentation components
     |-- test/              # Flutter tests
     `-- pubspec.yaml       # Flutter dependencies and metadata
 ```
@@ -180,7 +192,8 @@ The development API runs at `http://localhost:5000`. Check its database connecti
 
 ### 4. Configure the client API address
 
-Edit `baseUrl` in [`lib/services/api_service.dart`](lib/services/api_service.dart) for the target device:
+The API address is defined in
+[`lib/core/network/api_service.dart`](lib/core/network/api_service.dart):
 
 | Target | API base URL |
 |---|---|
