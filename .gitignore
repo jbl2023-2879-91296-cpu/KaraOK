@@ -7,3 +7,5 @@ backend/uploads/
 /tests/
 __pycache__/
 *.py[cod]
+SECURITY.md
+IAS_Finals.docx

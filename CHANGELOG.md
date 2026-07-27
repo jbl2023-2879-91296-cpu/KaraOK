@@ -2,6 +2,150 @@
 
 All notable changes to KaraOK are documented here.
 
+## 2026-07-27 - Guest-first single-page application flow
+
+### Added
+
+- Added real Matplotlib waveform and spectrogram generation to every completed
+  audio analysis. Signed-in results retain ownership-protected PNG artifacts;
+  guest results receive the generated images with the transient response.
+- Added an authenticated visualization endpoint and Flutter byte-image loading
+  so the detailed report displays analyzer output instead of generated UI art.
+- Added required first name, last name, structured address, area/postal code,
+  ISO country code, phone number, and birthday fields to public registration
+  and the fresh-install `user` schema.
+- Added optional JPEG, PNG, or WebP user profile images up to 2 MB. Images are
+  stored with the user profile and shown in a centered circle at the top of
+  Settings.
+- Added a website-style address form with separate street, city/municipality,
+  province/state, postal code, and searchable country selection. The app derives
+  the ISO country code locally and requires no geocoding service or API key.
+- Added a persistent single-page application shell with bottom navigation for
+  Home, Records, and Settings. Primary destinations now switch in place while
+  retaining dedicated screens for focused recording and result workflows.
+- Added guest-specific Records and Settings states that explain unsaved guest
+  results and provide Create Account and Log In actions.
+- Added an on-device counter for three successful guest audio evaluations. The
+  guest banner and completed-result screen display the remaining allowance.
+- Added Flutter coverage for direct guest startup, bottom navigation, the
+  three-attempt lifecycle, guest account prompts, and authenticated settings.
+
+### Changed
+
+- Improved registration readability with lower-opacity placeholder text,
+  multi-word name coverage, and a narrower postal-code field. Removed the
+  redundant country-code input and the inactive Records information button.
+- Changed rate-limit and unexpected server failures to return JSON API errors;
+  the Flutter client also converts non-JSON proxy failures into readable text.
+- Added inline Settings editing for profile image, username, name, phone,
+  birthday, and structured address. Email remains read-only and is visually
+  separated from editable fields; Change Password remains independent.
+- Changed Results back navigation to clear the recording flow and return to the
+  Home landing tab. Removed the raw expandable audio-analysis JSON panel.
+- Removed the inactive top-right information buttons from Results and the
+  detailed visual report.
+- Changed public account creation to one `user` account type. Removed the
+  owner/technician selector while retaining unique username registration and
+  username-or-verified-email login. `admin` remains internally provisioned.
+- Replaced owner/technician customer-route authorization with the single `user`
+  role while retaining per-user ownership checks.
+- Reworked `database/schema.sql` as the 2026-07-27 v2 fresh-install definition.
+  The `user` table now contains the required profile fields, an optional image,
+  and a `user`/`admin` role enum. Existing deployments require backup and a
+  deliberate fresh database import; the script does not drop a database.
+- Changed the recorded-audio **Preview** button label to **Play**, with Pause and
+  Resume labels reflecting active playback state.
+- Changed startup to enter the main app immediately as a guest when no user is
+  authenticated. Opening KaraOK no longer displays a splash screen or requires
+  a login decision before the Home experience.
+- Increased the shared guest allowance from one to three successful analyses
+  across Audio Quality Evaluation and Audio Settings Suggestion. Failed analyses
+  do not consume an attempt, and the device-local counter survives login,
+  logout, and authentication-token cleanup.
+- Changed Home-screen View all actions to select the Records tab inside the app
+  shell instead of opening a separate top-level history screen.
+- Changed post-analysis guest actions so attempts one and two can proceed to
+  another evaluation; after attempt three, the app requests account creation or
+  login. Guest results remain transient and are not persisted as business rows.
+- Changed login and registration completion to return users to the shared app
+  shell while preserving owner and technician account behavior.
+- Updated the frontend README with the current startup, guest-limit,
+  persistence, Records, Settings, and bottom-navigation behavior.
+
+### Removed
+
+- Removed the unused `assessment.audio_file_path` column from the fresh schema.
+  Uploaded audio remains request-scoped and is deleted after analysis.
+- Removed the seeded random waveform and spectrogram painters from the detailed
+  report.
+
+- Removed the upper-left sidebar/navigation drawer and all hamburger-menu
+  buttons from the Flutter application.
+- Removed the obsolete get-started splash screen and its one-assessment guest
+  choice.
+
+### Validation
+
+- Completed `flutter analyze` with no issues.
+- Passed all 13 Flutter tests.
+
+## 2026-07-26 - Backend and frontend modularization
+
+### Added
+
+- Added the packaged `backend/karaok` application structure with centralized
+  environment configuration, Flask extension initialization, shared validation,
+  infrastructure adapters, and a `create_app()` entry point.
+- Added feature-owned Flask blueprints for system health, authentication, users,
+  assessments, audio analysis, genre settings, and administrative audit logs.
+- Added first-class backend security modules for password policy and Argon2
+  hashing, JWT creation and security-version checks, HTTP response hardening,
+  and upload-path containment.
+- Added a feature-first Flutter structure containing the application shell,
+  centralized routes, environment configuration, network transport, shared
+  widgets, and auth, account, home, assessment, report, and sound-setting
+  features.
+- Added explicit Flutter security components for secure credential storage,
+  session state, guest-access state, role policy, and client-side password
+  feedback. Backend validation and authorization remain authoritative.
+- Added feature-scoped `AuthApi`, `AssessmentApi`, and `SettingsApi` facades so
+  presentation code depends only on the API operations for its own feature.
+- Added backend regression coverage confirming that public API routes are owned
+  by their expected feature blueprints and that the legacy entry point exposes
+  the packaged application.
+
+### Changed
+
+- Moved the standalone signal-processing implementation into
+  `backend/audio_engine` while preserving the existing
+  `python backend/audio_analyzer.py` command and import contract.
+- Changed `backend/app.py` into a backward-compatible entry point and added
+  `backend/run.py` as the packaged development-server command. Existing API URLs
+  and deployment commands remain supported.
+- Reorganized Flutter screens, services, and widgets from global technical
+  folders into `app`, `core`, `features`, and `shared` boundaries, using stable
+  package imports after the moves.
+- Moved compile-time API configuration into
+  `frontend/lib/core/config/environment.dart` and isolated access/refresh-token
+  persistence in `SecureTokenStore`.
+- Updated the backend and frontend READMEs with the new module layout, entry
+  points, API configuration location, and compatibility behavior.
+- Consolidated the duplicated root secret scripts into
+  `tools/generate_secrets.py`; the old `jwt.py` name no longer risks shadowing
+  the installed PyJWT package.
+
+### Validation
+
+- Confirmed all original API paths remain registered after blueprint extraction.
+- Passed 46 backend security, validation, pipeline, threshold, modularity, and
+  fast analyzer-safety tests; Python compilation and analyzer CLI compatibility
+  checks also passed.
+- Passed all 12 Flutter tests and completed `flutter analyze` with no issues.
+- Three computationally expensive analyzer cases for controlled-phone
+  measurement, BS.1770 loudness, and plot rendering exceeded their command
+  timeouts without emitting assertion failures and remain pending a longer
+  performance-test run.
+
 ## 2026-07-20
 
 - Enabled one successful device-local guest assessment shared across audio

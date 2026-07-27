@@ -50,6 +50,8 @@ class AudioPipelineTests(unittest.TestCase):
                     json.dumps(_analyzer_result(result_status)),
                     encoding="utf-8",
                 )
+                (output_dir / "test_waveform.png").write_bytes(b"waveform")
+                (output_dir / "test_spectrogram.png").write_bytes(b"spectrogram")
             return subprocess.CompletedProcess(
                 command,
                 return_code,
@@ -73,12 +75,24 @@ class AudioPipelineTests(unittest.TestCase):
             )
         return root, dump
 
-    def test_analyzer_result_is_returned_and_working_files_are_removed(self):
+    def test_analyzer_result_retains_only_real_report_visualizations(self):
         root, dump = self._run_with_fake_process(0)
         self.assertEqual(dump["analysis_status"], "completed")
         self.assertNotIn("placeholder_output", dump)
         self.assertEqual(dump["analysis"]["loudness"]["integrated_lufs"], -14.0)
-        self.assertFalse((root / "outputs" / "7" / "11").exists())
+        output = root / "outputs" / "7" / "11"
+        self.assertTrue(output.is_dir())
+        self.assertEqual(
+            {path.name for path in output.iterdir()},
+            {"test_waveform.png", "test_spectrogram.png"},
+        )
+        self.assertEqual(
+            dump["visualizations"],
+            {
+                "waveform": "7/11/test_waveform.png",
+                "spectrogram": "7/11/test_spectrogram.png",
+            },
+        )
         self.assertEqual(dump["upload"]["original_file_name"], "recording.wav")
         self.assertGreater(dump["empirical_quality"]["overall_score"], 0.0)
         self.assertEqual(
@@ -164,6 +178,10 @@ class AudioPipelineTests(unittest.TestCase):
         dump = {
             "analyzer_process": {"duration_seconds": 1.25},
             "analysis": _analyzer_result("warning"),
+            "visualizations": {
+                "waveform": "7/11/test_waveform.png",
+                "spectrogram": "7/11/test_spectrogram.png",
+            },
         }
         with patch.object(api, "get_db", return_value=connection):
             api.persist_audio_analysis(11, 13, dump)
@@ -182,7 +200,15 @@ class AudioPipelineTests(unittest.TestCase):
         )
         self.assertEqual(values[11:14], ("bad", "bad", '["bass", "treble", "sharpness", "flatness"]'))
         self.assertIn('"overall_score": 31.51069476184425', values[14])
-        self.assertEqual(values[15:], ("1.0.0", 30))
+        self.assertEqual(
+            values[15:],
+            (
+                "1.0.0",
+                30,
+                "7/11/test_waveform.png",
+                "7/11/test_spectrogram.png",
+            ),
+        )
         statements = "\n".join(call.args[0] for call in cursor.execute.call_args_list)
         self.assertIn("assessment_status = 'Completed'", statements)
         self.assertIn("UPDATE audio_upload SET score", statements)
@@ -213,6 +239,10 @@ class AudioPipelineTests(unittest.TestCase):
         dump = {
             "analyzer_process": {"duration_seconds": 1.25},
             "analysis": _analyzer_result("passed"),
+            "visualizations": {
+                "waveform": "7/21/test_waveform.png",
+                "spectrogram": "7/21/test_spectrogram.png",
+            },
         }
 
         with patch.object(api, "get_db", return_value=connection):
@@ -260,6 +290,34 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertEqual(payload["analysis"]["bass"]["energy_percentage"], 40.0)
         self.assertEqual(payload["empirical_quality"]["overall_score"], 91.5)
         self.assertIn("JOIN assessment", cursor.execute.call_args.args[0])
+
+    def test_visualization_is_served_from_owned_assessment_path(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        artifact = root / "7" / "11" / "recording_waveform.png"
+        artifact.parent.mkdir(parents=True)
+        artifact.write_bytes(b"real-matplotlib-png")
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.return_value = {
+            "artifact_path": "7/11/recording_waveform.png"
+        }
+
+        with api.app.test_request_context(
+            "/api/audio-tests/11/visualizations/waveform"
+        ), patch.object(api, "ANALYSIS_OUTPUT_DIR", str(root)), patch.object(
+            api, "get_db", return_value=connection
+        ):
+            api.g.user_id = 7
+            response = api.get_audio_visualization.__wrapped__(11, "waveform")
+
+        response.direct_passthrough = False
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "image/png")
+        self.assertEqual(response.get_data(), b"real-matplotlib-png")
+        self.assertEqual(cursor.execute.call_args.args[1], (11, 7))
+        response.close()
 
     def test_guest_analysis_returns_results_without_database_history(self):
         temporary = tempfile.TemporaryDirectory()

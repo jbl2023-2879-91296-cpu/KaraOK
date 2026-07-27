@@ -1,7 +1,8 @@
-import 'dart:math';
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
-import 'package:karaok_app/app/navigation/app_navigation_drawer.dart';
-import 'package:karaok_app/features/assessments/presentation/widgets/waveform_painter.dart';
+import 'package:karaok_app/features/assessments/data/assessment_api.dart';
 
 class DetailedReportScreen extends StatefulWidget {
   const DetailedReportScreen({
@@ -10,23 +11,44 @@ class DetailedReportScreen extends StatefulWidget {
     this.score = 82,
     this.noiseLevelDb = -4.8,
     this.distortionLevel = 0.12,
+    this.assessmentId,
+    this.visualizationImages = const {},
   });
 
   final String testName;
   final int score;
   final double noiseLevelDb;
   final double distortionLevel;
+  final int? assessmentId;
+  final Map<String, String> visualizationImages;
 
   @override
   State<DetailedReportScreen> createState() => _DetailedReportScreenState();
 }
 
 class _DetailedReportScreenState extends State<DetailedReportScreen> {
-  // Generate pseudo-random waveform bars for display
-  final List<double> _waveformBars = List.generate(
-    60,
-    (i) => 0.2 + Random(i * 31).nextDouble() * 0.8,
-  );
+  final AssessmentApi _api = AssessmentApi();
+  late final Future<Uint8List> _waveformImage;
+  late final Future<Uint8List> _spectrogramImage;
+
+  @override
+  void initState() {
+    super.initState();
+    _waveformImage = _loadVisualization('waveform');
+    _spectrogramImage = _loadVisualization('spectrogram');
+  }
+
+  Future<Uint8List> _loadVisualization(String kind) async {
+    final encoded = widget.visualizationImages[kind];
+    if (encoded != null && encoded.isNotEmpty) {
+      return base64Decode(encoded);
+    }
+    final assessmentId = widget.assessmentId;
+    if (assessmentId == null) {
+      throw StateError('This analysis does not have a saved visualization.');
+    }
+    return _api.getAudioVisualization(assessmentId, kind);
+  }
 
   String get _grade {
     if (widget.score >= 80) return 'GOOD';
@@ -44,11 +66,9 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
-      drawer: const AppNavigationDrawer(),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D0D0D),
         elevation: 0,
-        leading: const AppDrawerButton(),
         title: const Text(
           'Detailed Report with Visual',
           style: TextStyle(
@@ -58,12 +78,6 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
           ),
         ),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.info_outline, color: Colors.white),
-            onPressed: () {},
-          ),
-        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -82,68 +96,20 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
               ),
               const SizedBox(height: 10),
               Container(
-                height: 120,
+                height: 220,
                 width: double.infinity,
                 decoration: BoxDecoration(
                   color: const Color(0xFF0A1628),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: const Color(0xFF1E3A5F), width: 1),
                 ),
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Y-axis labels + waveform
-                    Expanded(
-                      child: Row(
-                        children: [
-                          // Y-axis labels
-                          Column(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: const [
-                              Text(
-                                '100',
-                                style: TextStyle(
-                                  color: Color(0xFF666666),
-                                  fontSize: 9,
-                                ),
-                              ),
-                              Text(
-                                '50',
-                                style: TextStyle(
-                                  color: Color(0xFF666666),
-                                  fontSize: 9,
-                                ),
-                              ),
-                              Text(
-                                '0',
-                                style: TextStyle(
-                                  color: Color(0xFF666666),
-                                  fontSize: 9,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: CustomPaint(
-                              painter: WaveformPainter(bars: _waveformBars),
-                              size: const Size(
-                                double.infinity,
-                                double.infinity,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                clipBehavior: Clip.antiAlias,
+                child: _VisualizationImage(image: _waveformImage),
               ),
               const SizedBox(height: 20),
               // Spectrogram Analysis
               const Text(
-                'Spectogram Analysis',
+                'Spectrogram Analysis',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 15,
@@ -152,26 +118,15 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
               ),
               const SizedBox(height: 10),
               Container(
-                height: 130,
+                height: 220,
                 width: double.infinity,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(10),
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFF0D0030),
-                      Color(0xFF4A0080),
-                      Color(0xFFAA2200),
-                      Color(0xFFFF6600),
-                      Color(0xFFFFCC00),
-                    ],
-                  ),
+                  color: const Color(0xFF0A1628),
+                  border: Border.all(color: const Color(0xFF1E3A5F), width: 1),
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: CustomPaint(painter: _SpectrogramPainter()),
-                ),
+                clipBehavior: Clip.antiAlias,
+                child: _VisualizationImage(image: _spectrogramImage),
               ),
               const SizedBox(height: 20),
               // Noise level bar
@@ -254,59 +209,42 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
 
 // ── Spectrogram placeholder painter ──────────────────────────────────────────
 
-class _SpectrogramPainter extends CustomPainter {
-  final Random _rng = Random(42);
+class _VisualizationImage extends StatelessWidget {
+  const _VisualizationImage({required this.image});
+
+  final Future<Uint8List> image;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final cols = 60;
-    final rows = 20;
-    final cellW = size.width / cols;
-    final cellH = size.height / rows;
-
-    for (int c = 0; c < cols; c++) {
-      for (int r = 0; r < rows; r++) {
-        final intensity = _rng.nextDouble();
-        final color = _spectralColor(intensity);
-        canvas.drawRect(
-          Rect.fromLTWH(c * cellW, r * cellH, cellW, cellH),
-          Paint()..color = color,
+  Widget build(BuildContext context) {
+    return FutureBuilder<Uint8List>(
+      future: image,
+      builder: (context, snapshot) {
+        if (snapshot.hasData) {
+          return Image.memory(
+            snapshot.data!,
+            fit: BoxFit.contain,
+            width: double.infinity,
+            gaplessPlayback: true,
+          );
+        }
+        if (snapshot.hasError) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Visualization is unavailable for this analysis.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Color(0xFF888888), fontSize: 12),
+              ),
+            ),
+          );
+        }
+        return const Center(
+          child: CircularProgressIndicator(color: Color(0xFF4A90D9)),
         );
-      }
-    }
+      },
+    );
   }
-
-  Color _spectralColor(double t) {
-    if (t < 0.25) {
-      return Color.lerp(
-        const Color(0xFF0D0030),
-        const Color(0xFF4A0080),
-        t * 4,
-      )!;
-    }
-    if (t < 0.5) {
-      return Color.lerp(
-        const Color(0xFF4A0080),
-        const Color(0xFFAA2200),
-        (t - 0.25) * 4,
-      )!;
-    }
-    if (t < 0.75) {
-      return Color.lerp(
-        const Color(0xFFAA2200),
-        const Color(0xFFFF6600),
-        (t - 0.5) * 4,
-      )!;
-    }
-    return Color.lerp(
-      const Color(0xFFFF6600),
-      const Color(0xFFFFCC00),
-      (t - 0.75) * 4,
-    )!;
-  }
-
-  @override
-  bool shouldRepaint(_SpectrogramPainter old) => false;
 }
 
 // ── Shared metric bar ─────────────────────────────────────────────────────────

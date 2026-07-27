@@ -1,10 +1,22 @@
 # KaraOK Database
 
-`schema.sql` is the authoritative bootstrap for a new empty KaraOK database.
-It already contains all structural changes introduced by migrations through
-2026-07-20. This release uses a deliberate fresh-database deployment: back up
-the existing database, recreate `karaok_db`, and import this file. No migration
-file is required afterward.
+`schema.sql` is the authoritative v2 bootstrap for a new empty KaraOK database
+as of 2026-07-27. This release uses a deliberate fresh-database deployment:
+back up the existing database, recreate `karaok_db`, and import this file. No
+migration file is required afterward. The script itself does not drop an
+existing database.
+
+The v2 `user` table removes the public owner/technician account types. Public
+registration always creates the internal role `user`; `admin` remains available
+only for accounts provisioned outside public registration. Authentication
+accepts either the unique username or verified email address.
+
+Each user stores required `username`, `first_name`, `last_name`, street
+`address`, `city`, `state_province`, `area_code`, `country`, two-letter ISO
+`country_code`, unique `phone_number`, and `birthday` values.
+The optional `profile_image` and `profile_image_mime` columns store a validated
+JPEG, PNG, or WebP image of at most 2 MB. Keeping optional image bytes on the
+account row ensures account deletion does not leave an orphaned profile file.
 
 `schema_original.sql` is retained only as a reference for the original design.
 `Audio_Analysis_db.mwb` is the MySQL Workbench model and should reflect the
@@ -87,3 +99,9 @@ WHERE a.user_id = ?;
 This removes the possibility that an assessment names one user while its upload
 names another. Deleting an assessment cascades to its upload metadata because
 that metadata has no independent owner or analysis lifecycle.
+
+The uploaded audio itself is request-scoped, so `assessment` does not store an
+`audio_file_path`. After a completed analysis, `audio_analysis_result` stores
+relative `waveform_path` and `spectrogram_path` values for the two Matplotlib
+PNGs used by the detailed report. The API resolves them inside the configured
+analysis-output root and verifies assessment ownership before serving a file.

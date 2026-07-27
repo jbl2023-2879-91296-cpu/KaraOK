@@ -285,15 +285,21 @@ empirical-threshold tests.
 `analysis_purpose` of `quality_evaluation` or `settings_suggestion`. After the
 server validates and temporarily stages the file, it invokes `audio_analyzer.py` in an
 isolated subprocess using the same Python executable as Flask. API analysis
-disables plots and shared CSV writes to reduce server latency; the analyzer's
-nested JSON feature output is returned to the client.
+disables shared CSV writes but generates the Matplotlib waveform and spectrogram
+used by the detailed report; the analyzer's nested JSON feature output is also
+returned to the client.
 
 The response includes process status, exit code, bounded stdout/stderr, analysis
 purpose, and the complete analyzer JSON. Exit code `3` means feature extraction
 completed but quality thresholds failed, so it is treated as a completed
 analysis. Technical failures return `analysis_status` set to `failed`. Before
-the request completes, the server deletes the uploaded audio and analyzer working
-JSON. `GET /api/audio-uploads/<id>/analysis-dump` remains ownership-protected and
+the request completes, the server deletes the uploaded audio, analyzer working
+JSON, and unused plots. For signed-in assessments it retains only the waveform
+and spectrogram PNGs under `AUDIO_ANALYSIS_OUTPUT_DIR`, stores their relative
+paths, and serves them through the ownership-protected
+`GET /api/audio-tests/<id>/visualizations/<waveform|spectrogram>` endpoint.
+Guest images are returned inline and then deleted. `GET
+/api/audio-uploads/<id>/analysis-dump` remains ownership-protected and
 rebuilds historical analysis details from database fields instead of a retained
 file.
 
@@ -307,14 +313,16 @@ but a null score are scored when read instead of being displayed as zero.
 Configure `AUDIO_ANALYSIS_OUTPUT_DIR` and
 `AUDIO_ANALYSIS_TIMEOUT_SECONDS` in `.env`. Production currently uses a
 300-second analyzer limit, a 360-second Flutter timeout, and 420-second Gunicorn
-and Nginx request windows. This synchronous implementation is suitable for validation; a durable
+and Nginx request windows. The analysis output directory must be persistent and
+writable in production so saved visual reports remain available. A multi-server
+deployment should replace it with shared or object storage. This synchronous implementation is suitable for validation; a durable
 background queue should replace it before high-concurrency use.
 
 `POST /api/guest/audio-analysis` accepts the same supported audio formats and
 analysis-purpose values without authentication. It is IP-rate-limited to three
 attempts per hour as an abuse safeguard, returns the real transient analyzer
 result, and never creates `assessment`, `audio_upload`, or
-`audio_analysis_result` rows. The client owns the approved one-assessment device
+`audio_analysis_result` rows. The client owns the approved three-assessment device
 allowance; failed analyses do not consume it.
 
 ## OVHcloud production deployment
@@ -489,12 +497,14 @@ backup, and rollback preparation in
 - Password recovery replaces the account password with a random temporary password, revokes existing refresh sessions, and requires a password change after the next login.
 - Protected requests re-check the account's active state and role. Security changes invalidate older access tokens through `security_updated_at`.
 - Protected routes derive identity from the access token instead of trusting client-provided user IDs.
-- Admin/owner/technician permissions are enforced at each route. Public registration permits owner and technician accounts; the privileged `admin` role must be provisioned administratively.
+- Public registration always creates a `user` account. The privileged `admin`
+  role is internal-only and must be provisioned administratively.
 - Authentication endpoints are rate limited, and sensitive responses use `Cache-Control: no-store`.
 - Authentication, authorization failures, password recovery, and data changes are recorded in `audit_log`.
 - Every non-preflight API request stores sanitized method/path/status/timing and
   client metadata in `api_request_log`; request bodies and secrets are excluded.
-- Login accepts either the account username or verified email address through the `identifier` field.
+- Login accepts either the account username or verified email address through
+  the `identifier` field.
 - Registration uses a six-digit, expiring OTP. Registration creates an
   unverified `user`, and `registration_otp.user_id` references that account.
   The code is delivered to the user's normalized email, and only its hash is
@@ -506,31 +516,29 @@ All requested application-level security controls are implemented. The database 
 
 | Security requirement               | Status                                                        | Implementation                                                                                                                                                                                                                                                                                              | Tools, assets, and approaches used                                                                                                                                                                                                                            | Security decision and rationale                                                                                                                                                                                                                                                                   |
 | ---------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Authentication and authorization   | Implemented                                                   | Registration requires email OTP verification. Login accepts a username or verified email and returns authenticated tokens. Protected endpoints validate the bearer token and load the current account security state.                                                                                       | Flask routes and decorators; PyJWT bearer tokens using HS256; SMTP email OTP; Python`secrets`; MySQL `user` and `registration_otp` tables; authenticated identity derived from the token `sub` claim.                                                         | Email verification reduces registrations using addresses the caller does not control. Protected operations use identity from the signed token, never a client-supplied`user_id`, preventing impersonation and insecure direct-object references.                                                  |
+| Authentication and authorization   | Implemented                                                   | Registration creates one user profile, requires email OTP verification, and login accepts its username or verified email. Protected endpoints validate the bearer token and load the current account security state.                                                                                       | Flask routes and decorators; PyJWT bearer tokens using HS256; SMTP email OTP; Python`secrets`; MySQL `user` and `registration_otp` tables; authenticated identity derived from the token `sub` claim.                                                         | Email verification reduces registrations using addresses the caller does not control. Protected operations use identity from the signed token, never a client-supplied`user_id`, preventing impersonation and insecure direct-object references.                                                  |
 | Password hashing                   | Implemented                                                   | Passwords are hashed with Argon2id. Registration, password changes, and resets apply the same 12-128 character policy. Successful login rehashes passwords when parameters become outdated.                                                                                                                 | `argon2-cffi` `PasswordHasher` configured for Argon2id; per-password random salts embedded in encoded hashes; constant-time verification; `check_needs_rehash`; MySQL `user.password`.                                                                        | Argon2id is memory-hard and resistant to accelerated cracking. Each encoded hash contains its random salt and parameters. Passwords are never encrypted or stored in plaintext.                                                                                                                   |
 | Session management                 | Implemented                                                   | Access JWTs expire after 15 minutes. Random refresh tokens expire after seven days, are stored only as SHA-256 hashes, and rotate transactionally with a row lock. Flutter uses platform secure storage. Logout revokes the refresh token and denylists the presented access token.                         | PyJWT with HS256,`iat`, `nbf`, `exp`, `iss`, `sub`, `role`, and `jti` claims; Python `secrets.token_urlsafe`; `hashlib.sha256`; MySQL `refresh_token` and `revoked_access_token`; `SELECT ... FOR UPDATE`; Flutter `flutter_secure_storage`.                  | Short access-token lifetime limits exposure. Opaque refresh tokens support revocation without storing reusable bearer credentials in plaintext. Rotation with`FOR UPDATE` prevents concurrent reuse.                                                                                              |
 | Session invalidation               | Implemented                                                   | Protected requests re-check`is_active`, `role`, `security_updated_at`, and the access-token denylist. Password or role changes invalidate older JWTs. Password changes and resets revoke active refresh sessions.                                                                                           | Live MySQL account-state lookup on every protected request; JWT`iat` comparison; `security_updated_at`; access-token `jti` denylist; refresh-token revocation timestamps; Flask `require_auth` decorator.                                                     | A signed JWT must not preserve access after deactivation, role removal, or credential recovery. Live state checks close that gap without adding schema columns.                                                                                                                                   |
-| Role-based access control          | Implemented                                                   | Roles are lowercase`owner`, `technician`, and `admin`. Public registration permits owner and technician accounts and rejects admin. User-directory and central audit-log access require admin. Owner-specific routes require owner; assessment routes allow owner and technician while enforcing ownership. | MySQL`user.role`; JWT `role` claim; Flask `require_auth(*roles)` decorator; role allowlists; ownership predicates using authenticated `g.user_id`; explicit `SELF_REGISTER_ROLES`.                                                                            | Owner and technician are legitimate application account types. Administrator is privileged and must be assigned through a controlled process, preventing self-service privilege escalation.                                                                                                       |
+| Role-based access control          | Implemented                                                   | Roles are lowercase `user` and `admin`. Public registration always creates `user` and rejects attempts to self-assign `admin`. User-directory and central audit-log access require admin; customer data routes require user and enforce ownership.                                                         | MySQL `user.role`; JWT `role` claim; Flask `require_auth(*roles)` decorator; role allowlists; ownership predicates using authenticated `g.user_id`; fixed public `SELF_REGISTER_ROLE`.                                                                         | A single customer role removes unnecessary account-type choice. Administrator remains privileged and must be assigned through a controlled process, preventing self-service privilege escalation.                                                                                                   |
 | Input validation and sanitization  | Implemented                                                   | JSON bodies must be objects. Text is trimmed and whitespace-normalized, email is normalized and format-checked, passwords and numbers have bounds, and roles/status values use allowlists. SQL uses connector parameters. IDs use typed routes and ownership predicates.                                    | Flask JSON parsing and typed route converters; Python regular expressions, normalization helpers, bounds, and allowlists; MySQL Connector parameterized queries; Werkzeug`secure_filename`; Mutagen audio validation; request-size and file-extension limits. | Server validation is authoritative because clients can be bypassed. Normalization gives consistent values, allowlists prevent unexpected states, and parameterized SQL prevents inputs becoming executable SQL. JSON output avoids treating destructive HTML filtering as universal sanitization. |
 | Forgot/reset password              | Implemented                                                   | Requests are rate-limited and return a uniform response. A random temporary password replaces the old password, active refresh sessions are revoked, and the temporary password is emailed. Login requires immediate password replacement and other protected operations are blocked until it is completed. | Flask-Limiter; Python`secrets` and `SystemRandom`; Argon2id hashing; SMTP with `EmailMessage` and STARTTLS; MySQL `requires_password_change`; session revocation; uniform API responses; mandatory-change screen in Flutter.                                  | Uniform responses reduce enumeration. Forced replacement limits the temporary credential to account recovery and prevents normal application use until the user establishes a private password.                                                                                                   |
 | Audit logging                      | Implemented                                                   | Authentication outcomes, refresh/logout, access denial, validation failure, password recovery, registration, password changes, and mutations record actor, action, result, resource, IP, user agent, details, and server time. Audit-log access requires admin.                                             | Central`audit()` helper; MySQL `audit_log`; UTC server timestamps; authenticated actor ID; client IP and user-agent metadata; parameterized inserts; admin-only audit endpoint; secret-field exclusion.                                                       | Security events are separate rows so history is not overwritten by current entity state. Passwords, OTPs, temporary passwords, and bearer tokens are excluded from logs.                                                                                                                          |
 | Request persistence                | Implemented                                                   | Every non-OPTIONS `/api` response writes method, sanitized path, endpoint, status, duration, attributable user, IP, user agent, and server time. Request queries, bodies, tokens, OTPs, passwords, and audio bytes are not stored.                                                                            | Flask request hooks; MySQL `api_request_log`; parameterized inserts; foreign key to `user`; admin-only request-log endpoint.                                                                                                                                | Request metadata proves which application operations reached the API without duplicating sensitive payloads or business data. Business entities remain in their corresponding normalized tables.                                                                                                |
 | Accountability and non-repudiation | Application support implemented; deployment controls required | The application records attributable events and ignores forwarded IP headers unless configured behind a trusted proxy. Production must deny audit updates/deletes and export records to immutable or append-only storage.                                                                                   | `audit_log`; JWT identity; trusted-proxy configuration with Werkzeug `ProxyFix`; Nginx; database privilege separation; protected backups and recommended off-server append-only log export.                                                                   | A mutable database controlled by one operator cannot alone establish strong or legal non-repudiation. That requires separation of duties, restricted privileges, trustworthy attribution, retention controls, and an independently protected log destination.                                     |
-| Documentation and verification     | Implemented                                                   | This section records the control, mechanism, and reason for every feature. Regression tests cover password policy, normalization, token hashing, JWT claims, technician registration, and rejection of public admin registration.                                                                           | `backend/README.md`; `DeployOVH.md`; `database/schema.sql`; Python `unittest`; Flask test client; `flutter analyze`; `flutter test`; production health checks.                                                                                           | Tests prevent silent policy regression, while documentation makes code assumptions and deployment responsibilities explicit.                                                                                                                                                                      |
+| Documentation and verification     | Implemented                                                   | This section records the control, mechanism, and reason for every feature. Regression tests cover password policy, normalization, profile registration, token hashing, JWT claims, the user-only public role, address fallback, and rejection of public admin registration.                                  | `backend/README.md`; `DeployOVH.md`; `database/schema.sql`; Python `unittest`; Flask test client; `flutter analyze`; `flutter test`; production health checks.                                                                                           | Tests prevent silent policy regression, while documentation makes code assumptions and deployment responsibilities explicit.                                                                                                                                                                      |
 
 ### RBAC matrix
 
-| Capability                                         | Owner | Technician | Admin |
-| -------------------------------------------------- | :---: | :--------: | :---: |
-| Self-register with email verification              |  Yes  |    Yes     |  No   |
-| Sign in, refresh, log out, and change own password |  Yes  |    Yes     |  Yes  |
-| Read and manage own assessments                    |  Yes  |    Yes     |  No   |
-| Read genre settings                                |  Yes  |    Yes     |  No   |
-| Save owner genre settings                          |  Yes  |     No     |  No   |
-| Read and create own upload records                  |  Yes  |    Yes     |  No   |
-| List users                                         |  No   |     No     |  Yes  |
-| Read centralized audit logs                        |  No   |     No     |  Yes  |
-| Read centralized API request logs                  |  No   |     No     |  Yes  |
+| Capability                                         | User | Admin |
+| -------------------------------------------------- | :--: | :---: |
+| Self-register with email verification              | Yes  |  No   |
+| Sign in, refresh, log out, and change own password | Yes  |  Yes  |
+| Read and manage own assessments                    | Yes  |  No   |
+| Read and save own genre settings                   | Yes  |  No   |
+| Read and create own upload records                 | Yes  |  No   |
+| List users                                         | No   |  Yes  |
+| Read centralized audit and request logs            | No   |  Yes  |
 
 Administrator accounts must be provisioned through a controlled operational process. Never expose an unauthenticated endpoint that assigns the `admin` role.
 
@@ -538,7 +546,7 @@ Administrator accounts must be provisioned through a controlled operational proc
 
 The active schema is [`database/schema.sql`](../database/schema.sql). It is the
 single authoritative bootstrap for a new empty database and already includes
-all changes from migrations through 2026-07-20. A fresh database created from
+the v2 user-profile changes through 2026-07-27. A fresh database created from
 this file must not run those historical migrations afterward.
 [`database/schema_original.sql`](../database/schema_original.sql) is retained
 only as the reference copy of the original design. This release intentionally
@@ -549,10 +557,10 @@ populated database, recreate it, and import the consolidated schema.
 
 | Table                     | What it stores                                                                                                                                                                                                 | How the application uses it                                                                                                                                                                                                                                                                    |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `user`                    | One account per row: login name, password hash, email, email-verification time, role, active status, mandatory-password-change state, security-update time, and creation time. The`user_id` value is the identity used by foreign keys. | Authentication looks up the account by`username` or `email`; `email_verified_at` remains null until OTP verification; the `password` column stores the Argon2id hash; `requires_password_change` restricts temporary-password sessions; `role` is re-checked on protected requests. Application roles are lowercase `owner`, `technician`, and `admin`. |
+| `user`                    | One account per row: unique username, first and last name, verified email, password hash, structured address, unique phone, birthday, optional profile-image bytes/MIME, role, active status, password-change state, security-update time, and creation time. | Authentication looks up the account by username or verified email; `password` stores the Argon2id hash; `requires_password_change` restricts temporary-password sessions; public accounts always use `user`, while `admin` is internal-only. |
 | `genre_preset`            | Shared recommended sound values for a genre, including bass, treble, loudness, sharpness, and flatness.`genre_name` is unique so one shared preset cannot be accidentally duplicated.                          | An analysis result points to a preset only when the request supplied a matching genre. A genre-free quality evaluation keeps `preset_id` null instead of recording an arbitrary preset.                                                                                                         |
 | `audio_quality_threshold` | Named legacy/configurable quality rules: maximum noise, maximum distortion, and minimum quality score.                                                                                                         | `threshold_id` is optional and is used only when one of these database rules actually produced the result. The current five-feature empirical bounds and weights are stored in each result's JSON snapshot instead of linking an unrelated default row.                                           |
-| `assessment`              | The uploaded-audio job itself: owner (`user_id`), file path, analysis purpose, processing status, date, external API reference, processing time, display name, duration, and result status.                    | This is the parent record for one audio assessment. Its lifecycle is represented by`assessment_status`; application metadata is stored on the same row because it depends directly on `assessment_id`; detailed measurements belong in `audio_analysis_result`.                                |
+| `assessment`              | The uploaded-audio job itself: user (`user_id`), file path, analysis purpose, processing status, date, external API reference, processing time, display name, duration, and result status.                     | This is the parent record for one audio assessment. Its lifecycle is represented by `assessment_status`; application metadata is stored on the same row because it depends directly on `assessment_id`; detailed measurements belong in `audio_analysis_result`.                               |
 | `audio_analysis_result`   | The measured output and immutable empirical snapshot for one assessment: overall/feature scores and statuses, noise, distortion, five feature measurements, algorithm version, and reference cohort size.       | `assessment_id` is unique, so one assessment has at most one detailed result. Persisting the scoring JSON prevents historical results from silently changing when a future threshold artifact is introduced.                                                                                  |
 
 ### Additive tables
@@ -581,7 +589,8 @@ stored directly on their one-to-one parent rows.
 
 The design is approximately in third normal form: each table describes one subject or event, non-key attributes depend on that table's key, and cross-table relationships are represented by foreign keys. `user_security` and `assessment_metadata` were merged because their columns depended directly and exclusively on `user_id` and `assessment_id`, respectively. Historical measurements such as `quality_score`, `noise_level`, and `bass` intentionally remain on `audio_analysis_result`; they are snapshots of a completed assessment and must not change when a newer preset or threshold is created. That is controlled historical duplication, not an accidental normalization violation.
 
-The role column is a `VARCHAR`, not an enum, so roles can be introduced without changing the schema. The application uses lowercase `owner`, `technician`, and `admin`; legacy mixed-case values must be normalized.
+The v2 role column is an enum containing `user` and `admin`. Public registration
+always writes `user`; there is no client-supplied account-type selection.
 
 `CREATE DATABASE` and `CREATE TABLE` statements are initialization statements, not migrations. Back up existing data before applying this file to an existing database, and add future changes through explicit migration scripts.
 
@@ -618,20 +627,20 @@ Public endpoints:
 - `POST /api/auth/logout`
 - `POST /api/auth/forgot-password`
 
-`POST /api/auth/login` accepts an `identifier` containing either the username or email address, together with `password`.
+`POST /api/auth/login` accepts an `identifier` containing either the username
+or verified email address, together with `password`.
 
 Application endpoints:
 
-- `POST /api/auth/change-password` — owner, technician, or admin changing their own password
+- `POST /api/auth/change-password` — user or admin changing their own password
 - `GET /api/users` — admin only
-- `GET|POST /api/audio-tests` — owner or technician, scoped to the authenticated user
-- `GET|DELETE /api/audio-tests/<id>` — owner or technician, ownership enforced
-- `GET /api/genre-settings` — owner or technician
-- `POST /api/genre-settings` — owner only
-- `GET /api/audio-uploads` — owner or technician upload history, scoped to the authenticated user
-- `POST /api/audio-uploads` — owner or technician; authenticated `multipart/form-data` upload using file field `audio`, required `duration_seconds` (1–300), `analysis_purpose` (`quality_evaluation` or `settings_suggestion`), and optional `genre`. Accepted extensions are WAV, MP3, M4A, AAC, OGG, and FLAC; the default maximum is 25 MB. The server runs `audio_analyzer.py`, stores the applicable results, deletes the transient server-side audio and analyzer files, and returns HTTP 201 with `Completed` or `Failed` plus the real `analysis_dump` response object.
+- `GET|POST /api/audio-tests` — user, scoped to the authenticated account
+- `GET|DELETE /api/audio-tests/<id>` — user, ownership enforced
+- `GET|POST /api/genre-settings` — user
+- `GET /api/audio-uploads` — user upload history, scoped to the authenticated account
+- `POST /api/audio-uploads` — user; authenticated `multipart/form-data` upload using file field `audio`, required `duration_seconds` (1–300), `analysis_purpose` (`quality_evaluation` or `settings_suggestion`), and optional `genre`. Accepted extensions are WAV, MP3, M4A, AAC, OGG, and FLAC; the default maximum is 25 MB. The server runs `audio_analyzer.py`, stores the applicable results, deletes the transient server-side audio and analyzer files, and returns HTTP 201 with `Completed` or `Failed` plus the real `analysis_dump` response object.
 - `POST /api/guest/audio-analysis` — unauthenticated, IP-rate-limited transient analysis used by the single device-local guest allowance; returns the result without creating guest history rows
-- `GET /api/audio-uploads/<id>/analysis-dump` — owner or technician; rebuilds saved analysis details from database fields when the upload belongs to the authenticated user
+- `GET /api/audio-uploads/<id>/analysis-dump` — user; rebuilds saved analysis details from database fields when the upload belongs to the authenticated user
 - `GET /api/audit-logs` — admin only
 - `GET /api/request-logs` — admin only; returns the latest 200 sanitized API request records
 
@@ -654,13 +663,25 @@ Authorization: Bearer <access-token>
 ## Email-verified registration
 
 Registration is two-step: `POST /api/auth/register` validates the account
-details, creates a `user` with `email_verified_at = NULL`, links an OTP through
+details, creates a single-role `user` with `email_verified_at = NULL`, links an OTP through
 `registration_otp.user_id`, and sends the code through SMTP.
 `POST /api/auth/register/verify` joins the OTP to that user by foreign key,
 matches the normalized email and code, and sets `email_verified_at`. Unverified
 accounts cannot log in, refresh tokens, or access protected routes. The Flutter
 client presents verification on a dedicated OTP screen after registration. The
 code is hashed before storage and is never logged in plaintext.
+
+Required registration fields are `username`, `first_name`, `last_name`,
+`email`, `password`, `address`, `city`, `state_province`, `area_code`,
+`country`, two-letter ISO `country_code`, `phone_number`, and a past `birthday`
+in `YYYY-MM-DD` form. `profile_image_base64` and
+`profile_image_mime` are optional; the server accepts matching JPEG, PNG, or
+WebP content up to 2 MB. Public callers cannot select an account type.
+
+The client collects addresses through separate website-style fields for street,
+city/municipality, province/state, postal code, and searchable country selection.
+It derives the ISO country code from the selected country locally, so users do
+not type that code and no third-party geocoding key is required.
 
 Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, and `REGISTRATION_OTP_MINUTES` in `backend/.env`. The SQL seed section adds baseline genre presets and quality thresholds with `INSERT IGNORE`, so it can be rerun safely.
 

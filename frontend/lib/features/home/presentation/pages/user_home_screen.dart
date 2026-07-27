@@ -1,21 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:karaok_app/app/navigation/app_navigation_drawer.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/assessments/data/assessment_api.dart';
 import 'package:karaok_app/features/assessments/presentation/pages/audio_settings_suggestion_screen.dart';
 import 'package:karaok_app/features/assessments/presentation/pages/audio_test_screen.dart';
-import 'package:karaok_app/features/reports/presentation/pages/owner_previous_results_screen.dart';
+import 'package:karaok_app/features/reports/presentation/pages/user_previous_results_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/results_screen.dart';
 import 'package:karaok_app/shared/widgets/guest_banner.dart';
 
-class OwnerHomeScreen extends StatefulWidget {
-  const OwnerHomeScreen({super.key});
+class UserHomeScreen extends StatefulWidget {
+  const UserHomeScreen({super.key, this.onOpenRecords});
+
+  final VoidCallback? onOpenRecords;
 
   @override
-  State<OwnerHomeScreen> createState() => _OwnerHomeScreenState();
+  State<UserHomeScreen> createState() => _UserHomeScreenState();
 }
 
-class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
+class _UserHomeScreenState extends State<UserHomeScreen> {
   List<dynamic> _recentAnalysis = [];
   bool _loading = true;
   String? _loadError;
@@ -60,16 +61,33 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
-      drawer: const AppNavigationDrawer(),
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         backgroundColor: const Color(0xFF0D0D0D),
         elevation: 0,
-        title: const Text(
-          'Owner',
-          style: TextStyle(
-            color: Color(0xFFFF8C00),
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
+        title: Semantics(
+          label: 'KaraOK',
+          child: const ExcludeSemantics(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'karaO',
+                    style: TextStyle(color: Color(0xFF4A90D9)),
+                  ),
+                  TextSpan(
+                    text: 'K',
+                    style: TextStyle(color: Color(0xFFFF8C00)),
+                  ),
+                ],
+              ),
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w900,
+                fontStyle: FontStyle.italic,
+                letterSpacing: -1,
+              ),
+            ),
           ),
         ),
         centerTitle: true,
@@ -79,7 +97,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
         color: const Color(0xFFFF8C00),
         child: Column(
           children: [
-            GuestBanner(userType: 'owner'),
+            const GuestBanner(),
             Expanded(
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -136,15 +154,15 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                             ),
                           ),
                           GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      const OwnerPreviousResultsScreen(),
+                            onTap:
+                                widget.onOpenRecords ??
+                                () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        const UserPreviousResultsScreen(),
+                                  ),
                                 ),
-                              );
-                            },
                             child: const Text(
                               'View all',
                               style: TextStyle(

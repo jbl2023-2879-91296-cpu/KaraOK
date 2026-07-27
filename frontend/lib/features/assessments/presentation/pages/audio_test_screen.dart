@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:developer' as developer;
 
 import 'package:flutter/foundation.dart';
@@ -92,7 +91,6 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   late final StreamSubscription<Duration?> _durationSubscription;
   Timer? _timer;
   String? _message;
-  Map<String, dynamic>? _analysisDump;
   String? _recordingFileName;
   bool _guestLimitDialogVisible = false;
 
@@ -138,9 +136,9 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Guest assessment already used'),
+        title: const Text('Guest evaluation limit reached'),
         content: const Text(
-          'This device has used its one guest assessment. Sign in or create an account to continue.',
+          'This device has used all three guest audio evaluations. Sign in or create an account to continue.',
         ),
         actions: [
           TextButton(
@@ -186,7 +184,6 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
     setState(() {
       _state = AudioInputState.requestingPermission;
       _message = null;
-      _analysisDump = null;
     });
     final permission = kIsWeb ? null : await Permission.microphone.request();
     final permissionGranted = kIsWeb
@@ -354,7 +351,6 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
     setState(() {
       _state = AudioInputState.selecting;
       _message = null;
-      _analysisDump = null;
     });
     try {
       await _resetPreview();
@@ -440,7 +436,6 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
         _state = AudioInputState.idle;
         _elapsed = Duration.zero;
         _message = null;
-        _analysisDump = null;
       });
     }
   }
@@ -472,11 +467,8 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
         analysisPurpose: widget.purpose.requestValue,
         guest: isGuest,
       );
-      final dumpValue = response['analysis_dump'];
-      final analysisDump = dumpValue is Map
-          ? Map<String, dynamic>.from(dumpValue)
-          : null;
       final completed = response['status'] == 'Completed';
+      int? guestRemaining;
       if (completed && isGuest) {
         try {
           await GuestAssessmentService.instance.markAssessmentUsed();
@@ -487,6 +479,8 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
             stackTrace: st,
           );
         }
+        guestRemaining = await GuestAssessmentService.instance
+            .remainingAttempts();
       }
       await _staging.discard();
       if (mounted) {
@@ -494,10 +488,11 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
           _state = completed ? AudioInputState.success : AudioInputState.failed;
           _message = completed
               ? isGuest
-                    ? '${widget.purpose.successMessage} Sign in to assess another audio.'
+                    ? guestRemaining == 0
+                          ? '${widget.purpose.successMessage} Create an account to continue.'
+                          : '${widget.purpose.successMessage} $guestRemaining guest evaluations left.'
                     : widget.purpose.successMessage
               : 'Audio was uploaded, but analysis could not be completed.';
-          _analysisDump = analysisDump;
         });
         if (completed &&
             widget.purpose == AudioAnalysisPurpose.qualityEvaluation) {
@@ -710,10 +705,10 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
                           ),
                           label: Text(
                             _player.playing
-                                ? 'Pause preview'
+                                ? 'Pause'
                                 : _previewPosition > Duration.zero
-                                ? 'Resume preview'
-                                : 'Preview',
+                                ? 'Resume'
+                                : 'Play',
                           ),
                         ),
                         TextButton.icon(
@@ -773,49 +768,25 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
                 ),
               ),
             ),
-          if (_analysisDump != null) ...[
-            const SizedBox(height: 12),
-            Card(
-              child: ExpansionTile(
-                initiallyExpanded: true,
-                title: const Text('Audio analysis details'),
-                subtitle: const Text(
-                  'Feature extraction and empirical scoring returned by the server',
-                ),
-                children: [
-                  Container(
-                    width: double.infinity,
-                    constraints: const BoxConstraints(maxHeight: 420),
-                    padding: const EdgeInsets.all(16),
-                    color: const Color(0xFF11111A),
-                    child: SingleChildScrollView(
-                      child: SelectableText(
-                        const JsonEncoder.withIndent(
-                          '  ',
-                        ).convert(_analysisDump),
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 12,
-                          color: Color(0xFFCCCCCC),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
           if (_state == AudioInputState.success &&
               UserSession.instance.isGuest) ...[
             const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: () => Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-                (route) => false,
-              ),
-              icon: const Icon(Icons.login),
-              label: const Text('Sign in to continue'),
+            FutureBuilder<int>(
+              future: GuestAssessmentService.instance.remainingAttempts(),
+              builder: (context, snapshot) {
+                if ((snapshot.data ?? 0) > 0) {
+                  return const SizedBox.shrink();
+                }
+                return FilledButton.icon(
+                  onPressed: () => Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    (route) => false,
+                  ),
+                  icon: const Icon(Icons.login),
+                  label: const Text('Create Account or Log In'),
+                );
+              },
             ),
           ],
           if (_message?.contains('Settings') == true)
