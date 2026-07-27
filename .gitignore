@@ -1,11 +1,9 @@
-BUILDING_APK.md
-audio sample(good)
-DeployOVH.md
-SECURITY_IMPLEMENTATION.pdf
-results
+/audio sample(good)
+/results
+/build.md
+/project.md
 backend/uploads/
 /tests/
 __pycache__/
 *.py[cod]
-SECURITY.md
-IAS_Finals.docx
+/build/
