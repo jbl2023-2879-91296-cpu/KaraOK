@@ -59,6 +59,13 @@ class ApiService {
           body: jsonEncode(body ?? {}),
         );
         break;
+      case 'PATCH':
+        response = await http.patch(
+          uri,
+          headers: headers,
+          body: jsonEncode(body ?? {}),
+        );
+        break;
       case 'DELETE':
         response = await http.delete(uri, headers: headers);
         break;
@@ -97,13 +104,21 @@ class ApiService {
     await _send('POST', path, body: body, authenticated: authenticated),
   );
 
+  Future<dynamic> _patch(String path, Map<String, dynamic> body) async =>
+      _decode(await _send('PATCH', path, body: body));
+
   Future<void> _delete(String path) async {
     await _send('DELETE', path);
   }
 
   void _checkStatus(http.Response response) {
     if (response.statusCode >= 400) {
-      String message = response.body;
+      String message = switch (response.statusCode) {
+        429 => 'Too many requests. Please wait before trying again.',
+        >= 500 =>
+          'The server could not complete the request. Please try again.',
+        _ => 'Request failed (${response.statusCode}).',
+      };
       try {
         final decoded = jsonDecode(response.body);
         if (decoded is Map && decoded['error'] is String) {
@@ -158,17 +173,39 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> startRegistration({
-    required String name,
+    required String username,
+    required String firstName,
+    required String lastName,
     required String email,
     required String password,
-    required String userType,
+    required String address,
+    required String city,
+    required String stateProvince,
+    required String areaCode,
+    required String country,
+    required String countryCode,
+    required String phoneNumber,
+    required String birthday,
+    String? profileImageBase64,
+    String? profileImageMime,
   }) async {
     return Map<String, dynamic>.from(
       await _post('/auth/register', {
-            'name': name,
+            'username': username,
+            'first_name': firstName,
+            'last_name': lastName,
             'email': email,
             'password': password,
-            'user_type': userType,
+            'address': address,
+            'city': city,
+            'state_province': stateProvince,
+            'area_code': areaCode,
+            'country': country,
+            'country_code': countryCode,
+            'phone_number': phoneNumber,
+            'birthday': birthday,
+            'profile_image_base64': ?profileImageBase64,
+            'profile_image_mime': ?profileImageMime,
           }, authenticated: false)
           as Map,
     );
@@ -234,6 +271,45 @@ class ApiService {
     });
   }
 
+  Future<Map<String, dynamic>> updateProfile({
+    required String username,
+    required String firstName,
+    required String lastName,
+    required String address,
+    required String city,
+    required String stateProvince,
+    required String areaCode,
+    required String country,
+    required String countryCode,
+    required String phoneNumber,
+    required String birthday,
+    String? profileImageBase64,
+    String? profileImageMime,
+    bool profileImageChanged = false,
+  }) async {
+    final body = <String, dynamic>{
+      'username': username,
+      'first_name': firstName,
+      'last_name': lastName,
+      'address': address,
+      'city': city,
+      'state_province': stateProvince,
+      'area_code': areaCode,
+      'country': country,
+      'country_code': countryCode,
+      'phone_number': phoneNumber,
+      'birthday': birthday,
+    };
+    if (profileImageChanged) {
+      body['profile_image_base64'] = profileImageBase64;
+      body['profile_image_mime'] = profileImageMime;
+    }
+    final data = Map<String, dynamic>.from(
+      await _patch('/users/me', body) as Map,
+    );
+    return Map<String, dynamic>.from(data['user'] as Map);
+  }
+
   Future<List<dynamic>> getUsers() async =>
       List<dynamic>.from(await _get('/users') as List);
 
@@ -242,6 +318,17 @@ class ApiService {
 
   Future<Map<String, dynamic>> getAudioTest(int testId) async =>
       Map<String, dynamic>.from(await _get('/audio-tests/$testId') as Map);
+
+  Future<Uint8List> getAudioVisualization(int testId, String kind) async {
+    if (kind != 'waveform' && kind != 'spectrogram') {
+      throw ArgumentError.value(kind, 'kind', 'Unsupported visualization');
+    }
+    final response = await _send(
+      'GET',
+      '/audio-tests/$testId/visualizations/$kind',
+    );
+    return response.bodyBytes;
+  }
 
   Future<Map<String, dynamic>> createAudioTest({
     required String testName,

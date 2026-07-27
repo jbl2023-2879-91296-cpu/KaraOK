@@ -15,6 +15,9 @@ class AssessmentApi {
   Future<Map<String, dynamic>> getAudioTest(int testId) =>
       _client.getAudioTest(testId);
 
+  Future<Uint8List> getAudioVisualization(int testId, String kind) =>
+      _client.getAudioVisualization(testId, kind);
+
   Future<void> deleteAudioTest(int testId) => _client.deleteAudioTest(testId);
 
   Future<Map<String, dynamic>> submitAudio({

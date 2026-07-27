@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:karaok_app/app/navigation/app_navigation_drawer.dart';
 import 'package:karaok_app/features/sound_settings/data/settings_api.dart';
 
 class RecommendedSettingsScreen extends StatefulWidget {
@@ -122,11 +121,9 @@ class _RecommendedSettingsScreenState extends State<RecommendedSettingsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
-      drawer: const AppNavigationDrawer(),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D0D0D),
         elevation: 0,
-        leading: const AppDrawerButton(),
         title: const Text(
           'Recommended Settings',
           style: TextStyle(

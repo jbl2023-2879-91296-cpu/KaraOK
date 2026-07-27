@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'package:karaok_app/app/app_shell.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/auth/data/auth_api.dart';
-import 'package:karaok_app/features/home/presentation/pages/owner_home_screen.dart';
-import 'package:karaok_app/features/home/presentation/pages/technician_home_screen.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
   const OtpVerificationScreen({
@@ -49,15 +48,24 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         name: user['name'],
         email: user['email'],
         userType: user['user_type'],
+        username: user['username'],
+        firstName: user['first_name'],
+        lastName: user['last_name'],
+        address: user['address'],
+        city: user['city'],
+        stateProvince: user['state_province'],
+        areaCode: user['area_code'],
+        country: user['country'],
+        countryCode: user['country_code'],
+        phoneNumber: user['phone_number'],
+        birthday: user['birthday'],
+        profileImageBase64: user['profile_image_base64'],
+        profileImageMime: user['profile_image_mime'],
       );
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(
-          builder: (_) => UserSession.instance.userType == 'owner'
-              ? const OwnerHomeScreen()
-              : const TechnicianHomeScreen(),
-        ),
+        MaterialPageRoute(builder: (_) => const AppShell()),
         (route) => false,
       );
     } on ApiException catch (error) {

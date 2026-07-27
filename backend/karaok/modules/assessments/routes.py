@@ -29,3 +29,10 @@ def delete_audio_test(test_id: int):
     from ... import application
 
     return application.delete_audio_test(test_id)
+
+
+@blueprint.get("/audio-tests/<int:test_id>/visualizations/<kind>")
+def get_audio_visualization(test_id: int, kind: str):
+    from ... import application
+
+    return application.get_audio_visualization(test_id, kind)

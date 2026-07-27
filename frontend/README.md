@@ -1,27 +1,43 @@
 # KaraOK
 
-KaraOK is a Flutter application for assessing karaoke audio quality and managing recommended sound settings. It provides separate experiences for karaoke owners and audio technicians, with a Flask REST API and MySQL database for accounts, saved tests, genre settings, and upload records.
+KaraOK is a Flutter application for assessing karaoke audio quality and managing recommended sound settings. It provides one user experience backed by a Flask REST API and MySQL database for profiles, saved tests, genre settings, and upload records.
 
 Repository: [github.com/jbl2023-2879-91296-cpu/KaraOK](https://github.com/jbl2023-2879-91296-cpu/KaraOK)
 
 ## Application features
 
-- Owner and technician account registration and username-or-email sign-in
+- One public user account type with verified-email sign-in; account creation no
+  longer asks the user to choose an owner or technician type
+- Registration fields for first and last name, email, structured address,
+  postal code, searchable country selection, phone number, birthday, password,
+  and an optional profile image. The country selection derives its ISO code.
+- Username-or-email login and a website-style address form with separate street,
+  city/municipality, province/state, postal code, and country fields; no
+  geocoding API key is required
 - Dedicated email OTP verification screen after registration details are submitted
 - Argon2id password hashing, expiring token sessions, logout revocation, and role-based API access
 - Email-delivered temporary passwords with a mandatory in-app password change
 - Server-side input validation, login rate limiting, and security audit logs
-- Device-local guest access for one successful assessment across the entire app;
-  subsequent quality or settings assessments require sign-in
+- Guest-first startup that opens the app proper immediately without requiring
+  login or registration
+- Device-local guest access for three successful audio evaluations shared
+  across quality evaluation and settings suggestion; a fourth evaluation
+  requires an account
 - Role-specific home screens and result histories
 - Selectable recent-analysis cards that open their individual result report
 - Separate audio-quality evaluation and settings-suggestion entry flows, each
   supporting microphone recording or audio-file selection
-- Shared upper-left navigation drawer for Home, Reports, account Settings, and
-  session-aware Sign In or Log Out actions across the main app screens
-- Settings displays the signed-in user's username, email, and account type
+- Single-page app shell with persistent Home, Records, and Settings buttons in
+  the bottom navigation bar; the former sidebar and hamburger menu are removed
+- Guest Records and Settings tabs explain account benefits and provide Create
+  Account and Log In actions without interrupting the initial app experience
+- Settings displays and edits the signed-in user's circular profile image,
+  username, name, phone number, birthday, and structured address inline. Email
+  remains visible but immutable.
 - Quality results including noise and distortion indicators
-- Searchable genre selection for owner tests
+- Detailed reports display the real Matplotlib waveform and spectrogram
+  generated alongside each completed analysis; they do not use random UI data
+- Searchable genre selection for user tests
 - Recommended volume, bass, treble, flatness, and sharpness settings by genre
 - Audio-upload workflow and saved upload records
 - Saved audio-test history with individual result lookup and deletion
@@ -40,12 +56,47 @@ Blob URL, and are submitted as multipart bytes with the original filename. The
 API temporarily stages the upload only while `audio_analyzer.py` is running,
 returns the real feature extraction and empirical scoring output, persists the
 applicable result fields, and deletes the server-side audio and working JSON.
-For guests, the first completed result is displayed but no assessment, upload,
-or analysis-result business row is created. The device allowance is stored in
-secure local application storage and is not cleared by login or logout. Recent
-analysis and Reports history are hidden in guest mode. Because this is
-intentionally device-only enforcement, clearing application/browser storage or
-reinstalling the app can reset it.
+For signed-in users, only the generated waveform and spectrogram PNGs remain in
+persistent analysis storage and are fetched through an ownership-protected API.
+Guest responses carry those two images inline before the server deletes them.
+For guests, each of the first three completed results is displayed but no
+assessment, upload, or analysis-result business row is created. Only successful
+analyses consume an attempt, so failed analyses remain retryable. The remaining
+allowance is shown in the guest banner and is stored in secure local application
+storage; it is not cleared by login, logout, or authentication-token cleanup.
+After the third successful evaluation, the app directs the guest to create an
+account or log in before another evaluation. Guest Records shows an account
+upgrade explanation because guest results are intentionally not saved. Because
+this is device-only enforcement, clearing application/browser storage or
+reinstalling the app can reset the allowance.
+
+### Application flow and navigation
+
+KaraOK launches directly into the main application shell. When there is no
+authenticated session, the client creates an in-memory guest session and shows
+the same primary Home experience without first displaying a splash, login, or
+role-selection screen. Registration and login remain available from the guest
+banner and Settings tab whenever the user chooses to create an account.
+
+The three primary destinations switch in place through the persistent bottom
+navigation bar:
+
+- **Home** provides Audio Quality Evaluation and Audio Settings Suggestion.
+- **Records** lists saved results for authenticated users and presents an
+  account-creation prompt for guests.
+- **Settings** provides inline account/profile editing and the existing password
+  controls for authenticated users, or Create Account and Log In actions for
+  guests. Email is intentionally read-only.
+
+Focused tasks such as recording, choosing a file, viewing a completed result,
+or changing a required temporary password may still open a dedicated screen and
+return to the shell. No application screen uses a navigation drawer.
+
+During audio review, the former **Preview** control is labeled **Play** and
+changes to **Pause** or **Resume** according to playback state.
+After a completed quality result, app-bar and system back actions clear the
+recording flow and return to the Home landing tab. Raw server analysis JSON is
+not displayed in the user interface.
 
 The repository now includes a complete standalone analyzer at
 [`backend/audio_analyzer.py`](../backend/audio_analyzer.py). Authenticated audio
@@ -253,8 +304,8 @@ The Flutter client uses these REST resources:
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `GET` | `/api/health` | Check API and database availability |
-| `POST` | `/api/auth/register` | Register an owner or technician |
-| `POST` | `/api/auth/login` | Authenticate with a username or email address |
+| `POST` | `/api/auth/register` | Register one user profile and send its email OTP |
+| `POST` | `/api/auth/login` | Authenticate with a username or verified email address |
 | `POST` | `/api/auth/refresh` | Rotate a refresh token and issue a new session pair |
 | `POST` | `/api/auth/logout` | Revoke access and refresh tokens |
 | `POST` | `/api/auth/forgot-password` | Generate and email a temporary password |
@@ -262,10 +313,11 @@ The Flutter client uses these REST resources:
 | `GET`, `POST` | `/api/users` | List or create users |
 | `GET`, `POST` | `/api/audio-tests` | List or save audio-test results |
 | `GET`, `DELETE` | `/api/audio-tests/<id>` | Retrieve or delete a test result |
+| `GET` | `/api/audio-tests/<id>/visualizations/<waveform\|spectrogram>` | Return an owned assessment's generated Matplotlib PNG |
 | `GET`, `POST` | `/api/genre-settings` | Retrieve or save genre settings |
 | `GET`, `POST` | `/api/audio-uploads` | List uploads or upload and analyze an audio file |
 | `GET` | `/api/audio-uploads/<id>/analysis-dump` | Rebuild the authenticated user's analysis details from persisted result fields |
-| `GET` | `/api/audit-logs` | Review recent security and data-change events (owner only) |
+| `GET` | `/api/audit-logs` | Review recent security and data-change events (internal admin only) |
 
 ## Development checks
 
@@ -313,7 +365,13 @@ development work.
 
 The backend provides Argon2id password hashing, token-based sessions, role-based API authorization, forced temporary-password recovery, rate limiting, input validation, and audit logging. See [`backend/README.md`](../../backend/README.md) for the security model and table-by-table schema explanation.
 
-Registration asks for a username instead of a full name. After submitting the form, the app opens a separate verification screen where the user enters the six-digit OTP delivered to the supplied email address. The backend must have SMTP settings configured before registration emails can be sent. Login accepts either the username or email address.
+Registration collects the user's username, first and last name, verified email,
+structured address, postal code, country, phone number, birthday, password, and
+optional profile image. The client derives the ISO country code from the selected
+country. After submission, the app opens a separate screen
+for the six-digit OTP delivered to the supplied email address. The backend must
+have SMTP settings configured before registration emails can be sent. Login uses
+either the username or verified email address.
 
 The original design is retained at [`database/schema_original.sql`](../../database/schema_original.sql). The active [`database/schema.sql`](../../database/schema.sql) keeps those original foundation tables and adds only the missing security/application tables. The one-to-one `user_security` and `assessment_metadata` additions are now merged into `user` and `assessment`, respectively. See the backend README for longer onboarding descriptions of every table, its foreign keys, and the reason each additive table exists.
 
@@ -321,4 +379,11 @@ See [`CHANGELOG.md`](../../CHANGELOG.md) for the dated list of security, API, cl
 
 ## Email registration
 
-Registration asks for a username instead of a full name, then opens a dedicated screen for the six-digit OTP delivered to the supplied email address. SMTP must be configured in the backend before real registration emails can be sent. The visible registration flow is role-neutral; roles remain an internal authorization concern. Users can subsequently sign in with either their username or email address.
+Public registration creates only a `user` account and never exposes role
+selection. It then opens a dedicated screen for the six-digit OTP delivered to
+the supplied email address. SMTP must be configured in the backend before real
+registration emails can be sent.
+
+Address entry uses separate website-style fields for street, city/municipality,
+province/state, postal code, and a searchable country picker. The picker derives
+the ISO country code locally, with no external address API or API key.

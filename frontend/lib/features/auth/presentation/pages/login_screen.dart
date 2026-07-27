@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:karaok_app/app/app_shell.dart';
 import 'package:karaok_app/core/security/guest_assessment_service.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/auth/data/auth_api.dart';
 import 'package:karaok_app/features/account/presentation/pages/change_password_screen.dart';
 import 'package:karaok_app/features/auth/presentation/pages/forgot_password_screen.dart';
 import 'package:karaok_app/features/auth/presentation/pages/signup_screen.dart';
-import 'package:karaok_app/features/home/presentation/pages/owner_home_screen.dart';
-import 'package:karaok_app/features/home/presentation/pages/technician_home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  /// Pre-selected user type coming from splash ('technician' or 'owner')
   const LoginScreen({super.key, this.initialIdentifier});
 
   final String? initialIdentifier;
@@ -57,6 +55,19 @@ class _LoginScreenState extends State<LoginScreen> {
         name: res['name'],
         email: res['email'],
         userType: res['user_type'],
+        username: res['username'],
+        firstName: res['first_name'],
+        lastName: res['last_name'],
+        address: res['address'],
+        city: res['city'],
+        stateProvince: res['state_province'],
+        areaCode: res['area_code'],
+        country: res['country'],
+        countryCode: res['country_code'],
+        phoneNumber: res['phone_number'],
+        birthday: res['birthday'],
+        profileImageBase64: res['profile_image_base64'],
+        profileImageMime: res['profile_image_mime'],
         requiresPasswordChange: res['requires_password_change'] == true,
       );
       if (UserSession.instance.requiresPasswordChange) {
@@ -92,23 +103,19 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       setState(() {
         _error =
-            'This device has already used its guest assessment. Sign in or create an account to continue.';
+            'This device has used all three guest evaluations. Sign in or create an account to continue.';
       });
       return;
     }
     if (!mounted) return;
-    UserSession.instance.setGuest('owner');
+    UserSession.instance.setGuest('user');
     _navigateHome();
   }
 
   void _navigateHome() {
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(
-        builder: (_) => UserSession.instance.userType == 'owner'
-            ? const OwnerHomeScreen()
-            : const TechnicianHomeScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const AppShell()),
       (route) => false,
     );
   }
@@ -151,7 +158,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 36),
-                // Username or email
                 _FieldLabel('Username or Email'),
                 const SizedBox(height: 6),
                 _AuthField(
@@ -159,7 +165,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   hint: 'Username or email address',
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) {
-                      return 'Enter your username or email';
+                      return 'Enter your username or email address';
                     }
                     return null;
                   },
@@ -304,7 +310,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: Color(0xFF888888),
                     ),
                     label: const Text(
-                      'Continue as Guest (1 assessment)',
+                      'Continue as Guest (3 evaluations)',
                       style: TextStyle(
                         color: Color(0xFFAAAAAA),
                         fontSize: 15,
@@ -324,7 +330,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'Guest mode allows one assessment on this device. The result is shown once and is not added to history.',
+                  'Guest mode allows three audio evaluations on this device. Results are shown once and are not added to history.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Color(0xFF666666),

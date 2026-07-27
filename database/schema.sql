@@ -1,9 +1,10 @@
--- KaraOK consolidated schema
+-- KaraOK fresh-install schema v2
 --
--- Authoritative bootstrap for a new empty database. It includes the final
--- structure introduced by all migrations through 2026-07-20. It intentionally
--- does not DROP an existing database and should not be used as a substitute for
--- migrations on a populated deployment.
+-- Authoritative bootstrap for a new empty database as of 2026-07-27. This
+-- version replaces public owner/technician account types with one public `user`
+-- account and expands the required personal profile fields. Import this
+-- file into a new/empty karaok_db; it intentionally does not destroy an existing
+-- populated deployment.
 --
 -- Password recovery uses user.requires_password_change and does not require
 -- the retired password_reset_token table.
@@ -19,12 +20,29 @@ CREATE TABLE IF NOT EXISTS user (
     user_id INT AUTO_INCREMENT PRIMARY KEY,
 
     username VARCHAR(50) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,
+    first_name VARCHAR(80) NOT NULL,
+    last_name VARCHAR(80) NOT NULL,
     email VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
     email_verified_at DATETIME NULL,
 
-    -- Kept as a string so roles are extensible; no user-type ENUM is used.
-    role VARCHAR(30) NOT NULL DEFAULT 'Consumer',
+    address VARCHAR(255) NOT NULL,
+    city VARCHAR(100) NOT NULL,
+    state_province VARCHAR(100) NOT NULL,
+    area_code VARCHAR(20) NOT NULL,
+    country VARCHAR(80) NOT NULL,
+    country_code CHAR(2) NOT NULL,
+    phone_number VARCHAR(20) NOT NULL UNIQUE,
+    birthday DATE NOT NULL,
+
+    -- Optional image bytes are kept with the user so deletion cascades do not
+    -- leave profile files behind. Registration accepts JPEG, PNG, and WebP.
+    profile_image MEDIUMBLOB NULL,
+    profile_image_mime VARCHAR(30) NULL,
+
+    -- Every public registration is a user. Admin is internal-only and cannot
+    -- be selected by the account-creation API or Flutter UI.
+    role ENUM('user', 'admin') NOT NULL DEFAULT 'user',
 
     -- Merged from the former user_security table.
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -75,8 +93,6 @@ CREATE TABLE IF NOT EXISTS assessment (
     assessment_id INT AUTO_INCREMENT PRIMARY KEY,
 
     user_id INT NOT NULL,
-
-    audio_file_path VARCHAR(255),
 
     assessment_status ENUM('Pending','Processing','Completed','Failed')
         DEFAULT 'Pending',
@@ -217,7 +233,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 -- ==========================================
 -- USER GENRE SETTINGS
 -- Preserves genre_preset as the shared preset foundation while allowing
--- owner-specific saved settings.
+-- user-specific saved settings.
 -- ==========================================
 
 CREATE TABLE IF NOT EXISTS user_genre_setting (

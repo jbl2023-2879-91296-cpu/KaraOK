@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 import json
@@ -19,10 +21,11 @@ from email.message import EmailMessage
 from typing import Any, Callable
 
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
-from flask import Flask, g, jsonify, request
+from flask import Flask, g, jsonify, request, send_file
 import jwt
 from mutagen import File as MutagenFile
 from mysql.connector import Error, IntegrityError
+from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
 
@@ -45,6 +48,7 @@ from .config import (
     JWT_SECRET,
     MAX_AUDIO_BYTES,
     MAX_AUDIO_SECONDS,
+    MAX_PROFILE_IMAGE_BYTES,
     OTP_MINUTES,
     REFRESH_TOKEN_DAYS,
     SMTP_FROM,
@@ -86,8 +90,8 @@ limiter = configure_extensions(app)
 
 app.config["MAX_CONTENT_LENGTH"] = MAX_AUDIO_BYTES + (1024 * 1024)
 
-VALID_ROLES = {"technician", "owner", "admin"}
-SELF_REGISTER_ROLES = {"owner", "technician"}
+VALID_ROLES = {"user", "admin"}
+SELF_REGISTER_ROLE = "user"
 VALID_STATUSES = {"Acceptable", "Needs Improvement", "Problematic"}
 EMPIRICAL_RESULT_STATUSES = {
     "good": "Acceptable",
@@ -104,6 +108,86 @@ class AudioAnalyzerExecutionError(RuntimeError):
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _clean_profile_image(data: dict[str, Any]) -> tuple[bytes | None, str | None]:
+    encoded = data.get("profile_image_base64")
+    mime_type = data.get("profile_image_mime")
+    if encoded in (None, ""):
+        return None, None
+    if not isinstance(encoded, str) or not isinstance(mime_type, str):
+        raise ValueError("profile image is invalid")
+    if mime_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise ValueError("profile image must be JPEG, PNG, or WebP")
+    if len(encoded) > ((MAX_PROFILE_IMAGE_BYTES * 4 // 3) + 16):
+        raise ValueError("profile image must not exceed 2 MB")
+    try:
+        image = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise ValueError("profile image is invalid") from error
+    if not image or len(image) > MAX_PROFILE_IMAGE_BYTES:
+        raise ValueError("profile image must not exceed 2 MB")
+    signatures = {
+        "image/jpeg": image.startswith(b"\xff\xd8\xff"),
+        "image/png": image.startswith(b"\x89PNG\r\n\x1a\n"),
+        "image/webp": image.startswith(b"RIFF") and image[8:12] == b"WEBP",
+    }
+    if not signatures[mime_type]:
+        raise ValueError("profile image content does not match its file type")
+    return image, mime_type
+
+
+def _clean_birthday(value: Any) -> str:
+    if not isinstance(value, str):
+        raise ValueError("birthday is required")
+    try:
+        birthday = datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError as error:
+        raise ValueError("birthday must use YYYY-MM-DD") from error
+    if birthday >= utcnow().date():
+        raise ValueError("birthday must be in the past")
+    return birthday.isoformat()
+
+
+def _clean_phone(value: Any) -> str:
+    phone = clean_text(value, "phone_number", 7, 24)
+    if not re.fullmatch(r"\+?[0-9 ()-]{7,24}", phone):
+        raise ValueError("phone_number is invalid")
+    prefix = "+" if phone.startswith("+") else ""
+    digits = re.sub(r"\D", "", phone)
+    if len(digits) < 7 or len(digits) > 15:
+        raise ValueError("phone_number must contain 7-15 digits")
+    return f"{prefix}{digits}"
+
+
+def _profile_response(user: dict[str, Any]) -> dict[str, Any]:
+    first_name = user.get("first_name", "")
+    last_name = user.get("last_name", "")
+    image = user.get("profile_image")
+    return {
+        "id": user["user_id"],
+        "username": user["username"],
+        "name": " ".join(part for part in (first_name, last_name) if part),
+        "first_name": first_name,
+        "last_name": last_name,
+        "email": user["email"],
+        "address": user.get("address", ""),
+        "city": user.get("city", ""),
+        "state_province": user.get("state_province", ""),
+        "area_code": user.get("area_code", ""),
+        "country": user.get("country", ""),
+        "country_code": user.get("country_code", ""),
+        "phone_number": user.get("phone_number", ""),
+        "birthday": str(user.get("birthday") or ""),
+        "profile_image_base64": base64.b64encode(bytes(image)).decode("ascii")
+        if image
+        else None,
+        "profile_image_mime": user.get("profile_image_mime"),
+        "user_type": user["user_type"],
+        "requires_password_change": bool(
+            user.get("requires_password_change", False)
+        ),
+    }
 
 
 def audio_duration_seconds(path: str) -> int:
@@ -133,12 +217,12 @@ def _analysis_directory(user_id: int, assessment_id: int) -> Path:
 def cleanup_audio_artifacts(
     user_id: int,
     assessment_id: int,
-    audio_file_path: str | None,
+    temporary_audio_path: str | None = None,
 ) -> None:
-    """Remove a deleted assessment's upload and analyzer output safely."""
+    """Remove a temporary upload and an assessment's analyzer output safely."""
     upload_root = Path(AUDIO_UPLOAD_DIR).resolve()
-    if audio_file_path:
-        upload_path = ensure_within_root(upload_root, audio_file_path)
+    if temporary_audio_path:
+        upload_path = ensure_within_root(upload_root, temporary_audio_path)
         upload_path.unlink(missing_ok=True)
 
     analysis_path = resolve_within_root(
@@ -148,6 +232,47 @@ def cleanup_audio_artifacts(
     )
     if analysis_path.is_dir():
         shutil.rmtree(analysis_path)
+
+
+def _remove_temporary_audio(path: str) -> None:
+    ensure_within_root(AUDIO_UPLOAD_DIR, path).unlink(missing_ok=True)
+
+
+def _analysis_artifact_relative_path(path: Path) -> str:
+    root = Path(ANALYSIS_OUTPUT_DIR).resolve()
+    artifact = ensure_within_root(root, path)
+    return artifact.relative_to(root).as_posix()
+
+
+def _visualization_paths(destination: Path) -> dict[str, str]:
+    paths: dict[str, str] = {}
+    for kind in ("waveform", "spectrogram"):
+        matches = sorted(
+            destination.glob(f"*_{kind}.png"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        if not matches:
+            raise RuntimeError(f"Analyzer did not produce the {kind} visualization")
+        paths[kind] = _analysis_artifact_relative_path(matches[0])
+    return paths
+
+
+def _guest_visualization_images(dump: dict[str, Any]) -> dict[str, str]:
+    images: dict[str, str] = {}
+    visualizations = dump.get("visualizations")
+    if not isinstance(visualizations, dict):
+        return images
+    for kind in ("waveform", "spectrogram"):
+        relative_path = visualizations.get(kind)
+        if not isinstance(relative_path, str):
+            continue
+        artifact = ensure_within_root(
+            ANALYSIS_OUTPUT_DIR,
+            Path(ANALYSIS_OUTPUT_DIR).resolve() / relative_path,
+        )
+        images[kind] = base64.b64encode(artifact.read_bytes()).decode("ascii")
+    return images
 
 
 def _process_text(value: str | bytes | None, limit: int = 20_000) -> str:
@@ -229,7 +354,6 @@ def _run_audio_analyzer(
         str(destination),
         "--settings",
         AUDIO_ANALYZER_SETTINGS_PATH,
-        "--no-save-plots",
         "--no-save-csv",
     ]
     started_at = datetime.now(timezone.utc)
@@ -295,6 +419,13 @@ def _run_audio_analyzer(
         except ValueError as error:
             process_error = f"Empirical quality scoring failed: {error}"
 
+    visualizations: dict[str, str] | None = None
+    if analyzer_output is not None and process_error is None:
+        try:
+            visualizations = _visualization_paths(destination)
+        except (OSError, RuntimeError) as error:
+            process_error = str(error)
+
     duration_seconds = round(time.monotonic() - started_clock, 3)
     analysis_completed = (
         analyzer_output is not None
@@ -319,6 +450,7 @@ def _run_audio_analyzer(
         },
         "analysis": analyzer_output,
         "empirical_quality": empirical_quality,
+        "visualizations": visualizations,
     }
     if process_error is not None:
         dump["error"] = process_error
@@ -335,22 +467,39 @@ def run_audio_analyzer(
     original_name: str,
     analysis_purpose: str,
 ) -> dict[str, Any]:
-    """Analyze an upload without retaining analyzer working files on the server."""
+    """Analyze an upload and retain only its two report visualizations."""
+    dump: dict[str, Any] | None = None
     try:
-        return _run_audio_analyzer(
+        dump = _run_audio_analyzer(
             audio_path,
             user_id=user_id,
             assessment_id=assessment_id,
             original_name=original_name,
             analysis_purpose=analysis_purpose,
         )
+        return dump
     finally:
         root = Path(ANALYSIS_OUTPUT_DIR).resolve()
         destination = (root / str(user_id) / str(assessment_id)).resolve()
         if os.path.commonpath((str(root), str(destination))) != str(root):
             app.logger.error("Refused to clean an invalid analyzer working path")
         elif destination.is_dir():
-            shutil.rmtree(destination, ignore_errors=True)
+            visualizations = dump.get("visualizations") if dump else None
+            keep = {
+                ensure_within_root(root, root / relative_path)
+                for relative_path in (
+                    visualizations.values()
+                    if isinstance(visualizations, dict)
+                    else ()
+                )
+                if isinstance(relative_path, str)
+            }
+            if not keep:
+                shutil.rmtree(destination, ignore_errors=True)
+            else:
+                for artifact in destination.iterdir():
+                    if artifact.is_file() and artifact.resolve() not in keep:
+                        artifact.unlink(missing_ok=True)
 
 
 def _nested_number(data: dict[str, Any], *keys: str) -> float | None:
@@ -490,6 +639,13 @@ def persist_audio_analysis(
     )
     algorithm_version = empirical.get("algorithm_version")
     reference_recording_count = empirical.get("reference_recording_count")
+    visualizations = dump.get("visualizations")
+    if not isinstance(visualizations, dict):
+        raise RuntimeError("Analyzer visualizations are missing")
+    waveform_path = visualizations.get("waveform")
+    spectrogram_path = visualizations.get("spectrogram")
+    if not isinstance(waveform_path, str) or not isinstance(spectrogram_path, str):
+        raise RuntimeError("Analyzer visualizations are incomplete")
 
     conn = get_db()
     cursor = conn.cursor()
@@ -511,9 +667,10 @@ def persist_audio_analysis(
                 noise_level, distortion_level, bass, treble, loudness,
                 sharpness, flatness, empirical_status,
                 worst_feature_status, worst_features, empirical_details,
-                scoring_algorithm_version, reference_recording_count)
+                scoring_algorithm_version, reference_recording_count,
+                waveform_path, spectrogram_path)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                       %s, %s, %s, %s, %s, %s)""",
+                       %s, %s, %s, %s, %s, %s, %s, %s)""",
             (
                 assessment_id,
                 None,
@@ -532,13 +689,14 @@ def persist_audio_analysis(
                 empirical_details_json,
                 algorithm_version,
                 reference_recording_count,
+                waveform_path,
+                spectrogram_path,
             ),
         )
         cursor.execute(
             """UPDATE assessment
                SET assessment_status = 'Completed', result_status = %s,
-                   processing_time = %s, api_reference = %s,
-                   audio_file_path = NULL
+                   processing_time = %s, api_reference = %s
                WHERE assessment_id = %s""",
             (
                 result_status,
@@ -762,13 +920,7 @@ def auth_response(user: dict[str, Any], status: int = 200):
     g.authenticated_user_id = int(user["user_id"])
     return jsonify(
         {
-            "user": {
-                "id": user["user_id"],
-                "name": user["username"],
-                "email": user["email"],
-                "user_type": user["user_type"],
-                "requires_password_change": bool(user.get("requires_password_change", False)),
-            },
+            "user": _profile_response(user),
             "access_token": access_token,
             "access_expires_at": access_expires_at,
             "refresh_token": refresh_token,
@@ -876,6 +1028,24 @@ def handle_database_error(error: Error):
     return jsonify({"error": "Database operation failed"}), 500
 
 
+@app.errorhandler(HTTPException)
+def handle_http_error(error: HTTPException):
+    status_code = error.code or 500
+    if status_code == 429:
+        message = "Too many requests. Please wait before trying again."
+    elif status_code >= 500:
+        message = "Internal server error"
+    else:
+        message = error.description or error.name
+    return jsonify({"error": message}), status_code
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(error: Exception):
+    app.logger.exception("Unhandled application error")
+    return jsonify({"error": "Internal server error"}), 500
+
+
 @app.after_request
 def security_headers(response):
     return apply_security_headers(response)
@@ -897,12 +1067,32 @@ def health():
 @limiter.limit("5 per hour")
 def register():
     data = json_body()
-    name = clean_text(data.get("name"), "name", 2, 50)
+    username = clean_text(data.get("username"), "username", 3, 50)
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{3,50}", username):
+        raise ValueError(
+            "username may contain only letters, numbers, dots, dashes, and underscores"
+        )
+    first_name = clean_text(data.get("first_name"), "first_name", 1, 80)
+    last_name = clean_text(data.get("last_name"), "last_name", 1, 80)
     email = clean_email(data.get("email"))
     password = validate_password(data.get("password"))
-    user_type = data.get("user_type", "owner")
-    if user_type not in SELF_REGISTER_ROLES:
-        raise ValueError("public registration allows owner or technician accounts only")
+    address = clean_text(data.get("address"), "address", 5, 255)
+    city = clean_text(data.get("city"), "city", 2, 100)
+    state_province = clean_text(
+        data.get("state_province"), "state_province", 2, 100
+    )
+    area_code = clean_text(data.get("area_code"), "area_code", 2, 20)
+    country = clean_text(data.get("country"), "country", 2, 80)
+    country_code = clean_text(
+        data.get("country_code"), "country_code", 2, 2
+    ).upper()
+    if not re.fullmatch(r"[A-Z]{2}", country_code):
+        raise ValueError("country_code must be a two-letter ISO country code")
+    phone_number = _clean_phone(data.get("phone_number"))
+    birthday = _clean_birthday(data.get("birthday"))
+    profile_image, profile_image_mime = _clean_profile_image(data)
+    if "user_type" in data and data.get("user_type") != SELF_REGISTER_ROLE:
+        raise ValueError("public registration creates user accounts only")
 
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
@@ -916,13 +1106,13 @@ def register():
         cursor.execute(
             """SELECT user_id, username, email, email_verified_at
                FROM user WHERE username = %s LIMIT 1 FOR UPDATE""",
-            (name,),
+            (username,),
         )
         username_user = cursor.fetchone()
 
         if email_user and (
             email_user["email_verified_at"] is not None
-            or email_user["username"] != name
+            or email_user["username"] != username
         ):
             return jsonify({"error": "Unable to create account"}), 409
         if username_user and (
@@ -934,16 +1124,59 @@ def register():
         if email_user:
             user_id = email_user["user_id"]
             cursor.execute(
-                """UPDATE user SET password = %s, role = %s
+                """UPDATE user
+                   SET username = %s, first_name = %s, last_name = %s,
+                       password = %s, address = %s, city = %s,
+                       state_province = %s, area_code = %s, country = %s,
+                       country_code = %s,
+                       phone_number = %s, birthday = %s,
+                       profile_image = %s, profile_image_mime = %s,
+                       role = 'user'
                    WHERE user_id = %s AND email_verified_at IS NULL""",
-                (password_hash, user_type, user_id),
+                (
+                    username,
+                    first_name,
+                    last_name,
+                    password_hash,
+                    address,
+                    city,
+                    state_province,
+                    area_code,
+                    country,
+                    country_code,
+                    phone_number,
+                    birthday,
+                    profile_image,
+                    profile_image_mime,
+                    user_id,
+                ),
             )
         else:
             cursor.execute(
                 """INSERT INTO user
-                   (username, email, password, role, email_verified_at)
-                   VALUES (%s, %s, %s, %s, NULL)""",
-                (name, email, password_hash, user_type),
+                   (username, first_name, last_name, email, password, address,
+                    city, state_province, area_code, country, country_code,
+                    phone_number, birthday, profile_image, profile_image_mime,
+                    role, email_verified_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                           %s, %s, %s, %s, 'user', NULL)""",
+                (
+                    username,
+                    first_name,
+                    last_name,
+                    email,
+                    password_hash,
+                    address,
+                    city,
+                    state_province,
+                    area_code,
+                    country,
+                    country_code,
+                    phone_number,
+                    birthday,
+                    profile_image,
+                    profile_image_mime,
+                ),
             )
             user_id = cursor.lastrowid
 
@@ -963,7 +1196,10 @@ def register():
         elif not (DEV_MODE and EXPOSE_REGISTRATION_OTP):
             raise RuntimeError("SMTP is not configured")
         conn.commit()
-    except (IntegrityError, smtplib.SMTPException, RuntimeError):
+    except IntegrityError:
+        conn.rollback()
+        return jsonify({"error": "Unable to create account"}), 409
+    except (OSError, smtplib.SMTPException, RuntimeError):
         conn.rollback()
         app.logger.exception("Registration OTP delivery failed")
         return jsonify({"error": "Unable to send verification email"}), 503
@@ -993,7 +1229,11 @@ def verify_registration():
         """SELECT registration_otp.registration_id,
                   registration_otp.code_hash,
                   registration_otp.attempts,
-                  user.user_id, user.username, user.email, user.role
+                  user.user_id, user.username, user.first_name, user.last_name,
+                  user.email, user.address, user.city, user.state_province,
+                  user.area_code, user.country, user.country_code,
+                  user.phone_number, user.birthday, user.profile_image,
+                  user.profile_image_mime, user.role
            FROM registration_otp
            JOIN user ON user.user_id = registration_otp.user_id
            WHERE user.email = %s AND user.email_verified_at IS NULL
@@ -1034,7 +1274,19 @@ def verify_registration():
     user = {
         "user_id": pending["user_id"],
         "username": pending["username"],
+        "first_name": pending["first_name"],
+        "last_name": pending["last_name"],
         "email": pending["email"],
+        "address": pending["address"],
+        "city": pending["city"],
+        "state_province": pending["state_province"],
+        "area_code": pending["area_code"],
+        "country": pending["country"],
+        "country_code": pending["country_code"],
+        "phone_number": pending["phone_number"],
+        "birthday": pending["birthday"],
+        "profile_image": pending["profile_image"],
+        "profile_image_mime": pending["profile_image_mime"],
         "user_type": pending["role"],
     }
     audit(
@@ -1050,25 +1302,30 @@ def verify_registration():
 @limiter.limit("5 per minute")
 def login():
     data = json_body()
-    raw_identifier = data.get("identifier", data.get("email"))
-    identifier = clean_text(raw_identifier, "username or email", 2, 254)
+    identifier = clean_text(
+        data.get("identifier", data.get("email")), "username or email", 3, 254
+    )
     is_email = EMAIL_RE.fullmatch(identifier) is not None
     if is_email:
         identifier = clean_email(identifier)
-    elif len(identifier) > 50:
-        raise ValueError("username must be 2-50 characters")
+    elif not re.fullmatch(r"[A-Za-z0-9_.-]{3,50}", identifier):
+        raise ValueError("username is invalid")
     password = data.get("password")
     if not isinstance(password, str) or len(password) > 128:
         raise ValueError("password is invalid")
 
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
-    login_column = "email" if is_email else "username"
     cursor.execute(
-        f"""SELECT u.user_id, u.username, u.email, u.role AS user_type,
+        f"""SELECT u.user_id, u.username, u.first_name, u.last_name, u.email,
+                   u.address, u.city, u.state_province, u.area_code,
+                   u.country, u.country_code, u.phone_number,
+                   u.birthday, u.profile_image, u.profile_image_mime,
+                   u.role AS user_type,
                    u.password AS password_hash, u.is_active, u.email_verified_at,
                    u.requires_password_change
-            FROM user u WHERE u.{login_column} = %s LIMIT 1""",
+            FROM user u
+            WHERE u.{"email" if is_email else "username"} = %s LIMIT 1""",
         (identifier,),
     )
     user = cursor.fetchone()
@@ -1105,7 +1362,10 @@ def refresh():
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
         """SELECT rt.refresh_token_id AS token_id, rt.user_id, rt.expires_at, rt.revoked_at,
-                  u.username, u.email, u.role AS user_type, u.is_active,
+                  u.username, u.first_name, u.last_name, u.email, u.address,
+                  u.city, u.state_province, u.area_code, u.country,
+                  u.country_code, u.phone_number, u.birthday, u.profile_image,
+                  u.profile_image_mime, u.role AS user_type, u.is_active,
                   u.email_verified_at,
                   u.requires_password_change
            FROM refresh_token rt JOIN user u ON u.user_id = rt.user_id
@@ -1219,7 +1479,7 @@ def forgot_password():
 
 
 @limiter.limit("10 per hour", exempt_when=lambda: DEV_MODE)
-@require_auth("technician", "owner", "admin")
+@require_auth("user", "admin")
 def change_password():
     data = json_body()
     current_password = data.get("current_password")
@@ -1277,7 +1537,11 @@ def get_users():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        """SELECT user_id AS id, username AS name, email,
+        """SELECT user_id AS id, username,
+                  CONCAT(first_name, ' ', last_name) AS name,
+                  first_name, last_name, email, address, city,
+                  state_province, area_code, country, country_code,
+                  phone_number, birthday,
                   role AS user_type, is_active, email_verified_at, created_at
            FROM user ORDER BY created_at DESC"""
     )
@@ -1287,7 +1551,129 @@ def get_users():
     return jsonify(rows)
 
 
-@require_auth("technician", "owner")
+@require_auth("user")
+def update_profile():
+    data = json_body()
+    allowed_fields = {
+        "username",
+        "first_name",
+        "last_name",
+        "address",
+        "city",
+        "state_province",
+        "area_code",
+        "country",
+        "country_code",
+        "phone_number",
+        "birthday",
+        "profile_image_base64",
+        "profile_image_mime",
+    }
+    immutable_fields = {"email"}.intersection(data)
+    if immutable_fields:
+        raise ValueError("email cannot be changed")
+    unexpected_fields = set(data).difference(allowed_fields)
+    if unexpected_fields:
+        raise ValueError("profile contains unsupported fields")
+
+    username = clean_text(data.get("username"), "username", 3, 50)
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{3,50}", username):
+        raise ValueError(
+            "username may contain only letters, numbers, dots, dashes, and underscores"
+        )
+    first_name = clean_text(data.get("first_name"), "first_name", 1, 80)
+    last_name = clean_text(data.get("last_name"), "last_name", 1, 80)
+    address = clean_text(data.get("address"), "address", 5, 255)
+    city = clean_text(data.get("city"), "city", 2, 100)
+    state_province = clean_text(
+        data.get("state_province"), "state_province", 2, 100
+    )
+    area_code = clean_text(data.get("area_code"), "area_code", 2, 20)
+    country = clean_text(data.get("country"), "country", 2, 80)
+    country_code = clean_text(
+        data.get("country_code"), "country_code", 2, 2
+    ).upper()
+    if not re.fullmatch(r"[A-Z]{2}", country_code):
+        raise ValueError("country_code must be a two-letter ISO country code")
+    phone_number = _clean_phone(data.get("phone_number"))
+    birthday = _clean_birthday(data.get("birthday"))
+    image_supplied = "profile_image_base64" in data
+    profile_image = profile_image_mime = None
+    if image_supplied:
+        profile_image, profile_image_mime = _clean_profile_image(data)
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            """SELECT username, phone_number FROM user
+               WHERE user_id <> %s AND (username = %s OR phone_number = %s)
+               LIMIT 1""",
+            (g.user_id, username, phone_number),
+        )
+        conflict = cursor.fetchone()
+        if conflict:
+            return jsonify({"error": "Username or phone number is already in use"}), 409
+
+        profile_columns = ""
+        parameters: list[Any] = [
+            username,
+            first_name,
+            last_name,
+            address,
+            city,
+            state_province,
+            area_code,
+            country,
+            country_code,
+            phone_number,
+            birthday,
+        ]
+        if image_supplied:
+            profile_columns = ", profile_image = %s, profile_image_mime = %s"
+            parameters.extend((profile_image, profile_image_mime))
+        parameters.append(g.user_id)
+        cursor.execute(
+            f"""UPDATE user
+                SET username = %s, first_name = %s, last_name = %s,
+                    address = %s, city = %s, state_province = %s,
+                    area_code = %s, country = %s, country_code = %s,
+                    phone_number = %s, birthday = %s{profile_columns}
+                WHERE user_id = %s AND is_active = TRUE""",
+            tuple(parameters),
+        )
+        if cursor.rowcount != 1:
+            conn.rollback()
+            return jsonify({"error": "Account is unavailable"}), 404
+        cursor.execute(
+            """SELECT user_id, username, first_name, last_name, email,
+                      address, city, state_province, area_code, country,
+                      country_code, phone_number, birthday, profile_image,
+                      profile_image_mime, role AS user_type,
+                      requires_password_change
+               FROM user WHERE user_id = %s""",
+            (g.user_id,),
+        )
+        updated_user = cursor.fetchone()
+        conn.commit()
+    except IntegrityError:
+        conn.rollback()
+        return jsonify({"error": "Username or phone number is already in use"}), 409
+    finally:
+        cursor.close()
+        conn.close()
+
+    audit(
+        "profile_updated",
+        "success",
+        user_id=g.user_id,
+        resource_type="user",
+        resource_id=g.user_id,
+    )
+    return jsonify({"user": _profile_response(updated_user)}), 200
+
+
+@require_auth("user")
 def get_audio_tests():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
@@ -1311,7 +1697,7 @@ def get_audio_tests():
     return jsonify(rows)
 
 
-@require_auth("technician", "owner")
+@require_auth("user")
 def get_audio_test(test_id: int):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
@@ -1336,7 +1722,7 @@ def get_audio_test(test_id: int):
     return jsonify(_enrich_audio_test_row(row)), 200
 
 
-@require_auth("technician", "owner")
+@require_auth("user")
 def create_audio_test():
     data = json_body()
     test_name = clean_text(data.get("test_name"), "test_name", 1, 120)
@@ -1373,12 +1759,12 @@ def create_audio_test():
     return jsonify({"id": test_id, "test_name": test_name, "score": score}), 201
 
 
-@require_auth("technician", "owner")
+@require_auth("user")
 def delete_audio_test(test_id: int):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        """SELECT audio_file_path FROM assessment
+        """SELECT assessment_id FROM assessment
            WHERE assessment_id = %s AND user_id = %s
            FOR UPDATE""",
         (test_id, g.user_id),
@@ -1396,18 +1782,14 @@ def delete_audio_test(test_id: int):
     cursor.close()
     conn.close()
     try:
-        cleanup_audio_artifacts(
-            g.user_id,
-            test_id,
-            assessment.get("audio_file_path"),
-        )
+        cleanup_audio_artifacts(g.user_id, test_id)
     except (OSError, RuntimeError):
         app.logger.exception("Deleted assessment artifact cleanup failed")
     audit("audio_test_deleted", "success", user_id=g.user_id, resource_type="audio_test", resource_id=test_id)
     return jsonify({"message": "Deleted"})
 
 
-@require_auth("technician", "owner")
+@require_auth("user")
 def get_genre_settings():
     genre = request.args.get("genre")
     conn = get_db()
@@ -1426,7 +1808,7 @@ def get_genre_settings():
     return jsonify(result)
 
 
-@require_auth("owner")
+@require_auth("user")
 def save_genre_settings():
     data = json_body()
     genre = clean_text(data.get("genre"), "genre", 2, 50)
@@ -1454,7 +1836,7 @@ def save_genre_settings():
     return jsonify({"id": setting_id, "genre": genre}), 201
 
 
-@require_auth("technician", "owner")
+@require_auth("user")
 def get_audio_uploads():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
@@ -1519,6 +1901,7 @@ def create_guest_audio_analysis():
         return jsonify({"error": "Audio file is corrupted or unreadable"}), 422
 
     work_id = secrets.randbelow(2_000_000_000) + 1
+    visualization_images: dict[str, str] = {}
     try:
         try:
             analysis_dump = run_audio_analyzer(
@@ -1529,6 +1912,7 @@ def create_guest_audio_analysis():
                 analysis_purpose=analysis_purpose,
             )
             analysis_summary = summarize_audio_analysis(analysis_dump)
+            visualization_images = _guest_visualization_images(analysis_dump)
             status = "Completed"
         except AudioAnalyzerExecutionError as error:
             analysis_dump = error.dump
@@ -1600,13 +1984,14 @@ def create_guest_audio_analysis():
                 ),
                 "analysis_purpose": analysis_purpose,
                 "analysis_dump": analysis_dump,
+                "visualizations": visualization_images,
             }
         ),
         201,
     )
 
 
-@require_auth("technician", "owner")
+@require_auth("user")
 def create_audio_upload():
     upload = request.files.get("audio")
     if upload is None or not upload.filename:
@@ -1734,7 +2119,9 @@ def create_audio_upload():
         audit_result = "failure"
     finally:
         try:
-            cleanup_audio_artifacts(g.user_id, assessment_id, stored_path)
+            _remove_temporary_audio(stored_path)
+            if status != "Completed":
+                cleanup_audio_artifacts(g.user_id, assessment_id)
         except (OSError, RuntimeError):
             app.logger.exception("Transient uploaded audio cleanup failed")
 
@@ -1787,6 +2174,12 @@ def create_audio_upload():
                 ),
                 "analysis_purpose": analysis_purpose,
                 "analysis_dump_url": f"/api/audio-uploads/{upload_id}/analysis-dump",
+                "visualizations": {
+                    kind: f"/api/audio-tests/{assessment_id}/visualizations/{kind}"
+                    for kind in ("waveform", "spectrogram")
+                }
+                if analysis_summary
+                else {},
                 "analysis_dump": analysis_dump,
             }
         ),
@@ -1794,7 +2187,46 @@ def create_audio_upload():
     )
 
 
-@require_auth("technician", "owner")
+@require_auth("user")
+def get_audio_visualization(test_id: int, kind: str):
+    if kind not in {"waveform", "spectrogram"}:
+        return jsonify({"error": "Visualization not found"}), 404
+    column = f"{kind}_path"
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        f"""SELECT r.{column} AS artifact_path
+            FROM assessment a
+            JOIN audio_analysis_result r
+              ON r.assessment_id = a.assessment_id
+            WHERE a.assessment_id = %s AND a.user_id = %s""",
+        (test_id, g.user_id),
+    )
+    record = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    relative_path = record.get("artifact_path") if record else None
+    if not isinstance(relative_path, str):
+        return jsonify({"error": "Visualization not found"}), 404
+    try:
+        artifact = ensure_within_root(
+            ANALYSIS_OUTPUT_DIR,
+            Path(ANALYSIS_OUTPUT_DIR).resolve() / relative_path,
+        )
+    except RuntimeError:
+        app.logger.error("Refused to serve an invalid visualization path")
+        return jsonify({"error": "Visualization not found"}), 404
+    if not artifact.is_file():
+        return jsonify({"error": "Visualization not found"}), 404
+    return send_file(
+        artifact,
+        mimetype="image/png",
+        conditional=True,
+        max_age=3600,
+    )
+
+
+@require_auth("user")
 def get_audio_analysis_dump(upload_id: int):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)

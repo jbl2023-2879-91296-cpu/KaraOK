@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:karaok_app/app/navigation/app_navigation_drawer.dart';
 import 'package:karaok_app/features/assessments/presentation/pages/audio_test_screen.dart';
 
 class GenreSelectScreen extends StatefulWidget {
@@ -32,11 +31,9 @@ class _GenreSelectScreenState extends State<GenreSelectScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
-      drawer: const AppNavigationDrawer(),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D0D0D),
         elevation: 0,
-        leading: const AppDrawerButton(),
         title: _buildLogoTitle(),
         centerTitle: true,
         actions: [
