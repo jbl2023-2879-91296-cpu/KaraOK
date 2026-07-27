@@ -18,13 +18,13 @@ spectrogram reports.
 
 ## Technology
 
-| Layer | Technology |
-| --- | --- |
-| Client | Flutter and Dart |
-| API | Python, Flask, JWT, Argon2id |
+| Layer          | Technology                                |
+| -------------- | ----------------------------------------- |
+| Client         | Flutter and Dart                          |
+| API            | Python, Flask, JWT, Argon2id              |
 | Audio analysis | Librosa, NumPy, SciPy, Matplotlib, Pandas |
-| Database | MySQL |
-| Production | Gunicorn, Nginx, systemd |
+| Database       | MySQL                                     |
+| Production     | Gunicorn, Nginx, systemd                  |
 
 ## Repository layout
 
@@ -37,12 +37,6 @@ KaraOK/
 |-- CHANGELOG.md      User-visible implementation history
 `-- README.md         Public project documentation
 ```
-
-See the component documentation for details:
-
-- [Backend](backend/README.md)
-- [Frontend](frontend/README.md)
-- [Database](database/README.md)
 
 ## Prerequisites
 
