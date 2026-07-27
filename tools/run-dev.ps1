@@ -177,3 +177,6 @@ finally {
         Stop-StartedBackend
     }
 }
+- .\tools\run-dev.ps1
+- OR 
+- powershell -ExecutionPolicy Bypass -File .\tools\run-dev.ps1
