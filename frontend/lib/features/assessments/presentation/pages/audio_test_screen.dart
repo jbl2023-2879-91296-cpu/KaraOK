@@ -9,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
 
 import 'package:karaok_app/core/security/guest_assessment_service.dart';
+import 'package:karaok_app/core/storage/guest_assessment_store.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/assessments/data/assessment_api.dart';
 import 'package:karaok_app/features/assessments/data/audio_staging_service.dart';
@@ -468,8 +469,20 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
         guest: isGuest,
       );
       final completed = response['status'] == 'Completed';
+      final result = Map<String, dynamic>.from(response)
+        ..['test_name'] = item.fileName
+        ..['status'] = response['result_status'];
       int? guestRemaining;
       if (completed && isGuest) {
+        try {
+          await GuestAssessmentStore.instance.saveCompleted(result);
+        } catch (e, st) {
+          developer.log(
+            'Guest report could not be stored locally',
+            error: e,
+            stackTrace: st,
+          );
+        }
         try {
           await GuestAssessmentService.instance.markAssessmentUsed();
         } catch (e, st) {
@@ -496,9 +509,6 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
         });
         if (completed &&
             widget.purpose == AudioAnalysisPurpose.qualityEvaluation) {
-          final result = Map<String, dynamic>.from(response)
-            ..['test_name'] = item.fileName
-            ..['status'] = response['result_status'];
           await Navigator.push(
             context,
             MaterialPageRoute(

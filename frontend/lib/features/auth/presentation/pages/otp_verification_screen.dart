@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:karaok_app/app/app_shell.dart';
 import 'package:karaok_app/core/security/secure_token_store.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/auth/data/auth_api.dart';
+import 'package:karaok_app/features/assessments/data/guest_assessment_migration.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
   const OtpVerificationScreen({
@@ -50,6 +53,13 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         // Account creation succeeds even if the convenience value cannot save.
       }
       UserSession.instance.setUserFromMap(user);
+      try {
+        final migration = GuestAssessmentMigration();
+        await migration.claimForNewAccount();
+        unawaited(migration.syncPending());
+      } catch (_) {
+        // Account creation is complete; retained reports can retry next launch.
+      }
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,

@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:karaok_app/app/app_shell.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/account/presentation/pages/change_password_screen.dart';
 import 'package:karaok_app/features/auth/data/auth_api.dart';
+import 'package:karaok_app/features/assessments/data/guest_assessment_migration.dart';
 
 /// Resolves persisted authentication before any account-dependent UI is built.
 class SessionBootstrapScreen extends StatefulWidget {
@@ -44,6 +47,7 @@ class _SessionBootstrapScreenState extends State<SessionBootstrapScreen> {
         session.setGuest('user');
       } else {
         session.setUserFromMap(user);
+        unawaited(GuestAssessmentMigration().syncPending());
       }
       if (!mounted) return;
       _finishWithCurrentSession();

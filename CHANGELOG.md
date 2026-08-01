@@ -2,6 +2,65 @@
 
 All notable changes to KaraOK are documented here.
 
+## 2026-08-01 - Persistent sessions, mobile profile photos, and local reports
+
+### Added
+
+- Added startup authentication restoration using the securely stored refresh
+  token. Valid sessions rebuild the complete in-memory user profile before the
+  app shell opens; rejected sessions return to guest mode, while temporary
+  network failures keep credentials and offer Retry or Continue as Guest.
+- Added remembered-account login convenience. KaraOK stores only the last
+  successful email address, never the password, and provides a Forget saved
+  account action.
+- Added Camera and Gallery profile-image selection through the Flutter
+  `image_picker` plugin. Phone-selected images are resized/compressed before
+  validation, with iOS camera and photo-library privacy descriptions and an
+  Android API 24 minimum.
+- Added app-private, per-user persistence for analysis-history metadata and
+  waveform/spectrogram bytes. Cached history displays immediately and refreshes
+  from the server in the background; each authenticated visualization is
+  downloaded once and reused across repeated views and app restarts.
+- Added cache invalidation for logout, password replacement, and assessment
+  deletion, plus regression coverage for persistent history and visualization
+  reuse.
+- Added durable guest assessment metadata and waveform/spectrogram files in
+  app-private storage. Guest Records can reopen completed reports without a
+  backend request, including after app restarts.
+- Added post-verification guest-report migration. Server-signed receipts bind
+  authoritative results and image hashes; imports are ownership-protected,
+  idempotent, retryable, and retain the original device copy.
+
+### Changed
+
+- Increased the default profile-image limit from 2 MB to 5 MB and expanded
+  content-signature validation to JPEG, PNG, WebP, GIF, HEIC/HEIF, AVIF, and
+  BMP.
+- Changed registration, permanent-password replacement, and generated
+  temporary-password policy to exactly eight characters containing uppercase,
+  lowercase, number, and symbol characters.
+- Centralized Flutter user-response hydration so login, registration, profile
+  update, and startup restoration use the same mapping.
+- Changed Home and Records to render locally cached history first while keeping
+  the server database authoritative through background refreshes.
+- Disabled Android app-data backup and transfer restoration so report caches
+  follow strict lifecycle behavior: app closure keeps them, while uninstall or
+  Clear storage permanently removes them.
+- Changed guest Records from an unsaved-results notice to a local report list
+  with an account-migration prompt. Claimed reports are hidden from later guest
+  sessions for privacy.
+
+### Validation
+
+- Completed `flutter analyze --no-pub` with no issues.
+- Passed all 26 Flutter tests, including durable guest reports, session
+  restoration, local-cache reuse, remembered-account cleanup, and
+  password-policy coverage.
+- Passed all 57 backend tests, including signed guest-report import, common
+  phone-image signatures, and the exactly-eight-character password policy.
+- Android APK packaging was attempted, but the local Gradle/Java process timed
+  out without producing an APK or compiler diagnostic.
+
 ## 2026-07-27 - Guest-first single-page application flow
 
 ### Added

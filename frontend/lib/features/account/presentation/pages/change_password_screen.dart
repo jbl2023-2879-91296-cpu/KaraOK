@@ -2,12 +2,14 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:country_picker/country_picker.dart';
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import 'package:karaok_app/app/app_shell.dart';
+import 'package:karaok_app/core/media/profile_image_picker.dart';
+import 'package:karaok_app/core/security/password_policy.dart';
 import 'package:karaok_app/core/security/secure_token_store.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
+import 'package:karaok_app/core/storage/analysis_cache.dart';
 import 'package:karaok_app/features/account/data/account_api.dart';
 import 'package:karaok_app/features/auth/data/auth_api.dart';
 import 'package:karaok_app/features/auth/presentation/pages/login_screen.dart';
@@ -23,8 +25,6 @@ class ChangePasswordScreen extends StatefulWidget {
 }
 
 class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
-  static const _maxProfileImageBytes = 2 * 1024 * 1024;
-
   final _formKey = GlobalKey<FormState>();
   final _profileFormKey = GlobalKey<FormState>();
   final _currentController = TextEditingController();
@@ -102,35 +102,16 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       value == null || value.trim().isEmpty ? 'Enter $label.' : null;
 
   Future<void> _pickProfileImage() async {
-    final file = await openFile(
-      acceptedTypeGroups: const [
-        XTypeGroup(
-          label: 'Profile image',
-          extensions: ['jpg', 'jpeg', 'png', 'webp'],
-        ),
-      ],
-    );
-    if (file == null) return;
-    final bytes = await file.readAsBytes();
+    final result = await ProfileImagePicker.pick(context);
     if (!mounted) return;
-    if (bytes.length > _maxProfileImageBytes) {
-      setState(() => _profileError = 'Profile image must not exceed 2 MB.');
-      return;
-    }
-    final extension = file.name.split('.').last.toLowerCase();
-    final mime = switch (extension) {
-      'jpg' || 'jpeg' => 'image/jpeg',
-      'png' => 'image/png',
-      'webp' => 'image/webp',
-      _ => null,
-    };
-    if (mime == null) {
-      setState(() => _profileError = 'Choose a JPEG, PNG, or WebP image.');
+    if (result == null) return;
+    if (!result.isSuccess) {
+      setState(() => _profileError = result.error);
       return;
     }
     setState(() {
-      _draftProfileImage = bytes;
-      _draftProfileImageMime = mime;
+      _draftProfileImage = result.bytes;
+      _draftProfileImageMime = result.mimeType;
       _profileImageChanged = true;
       _profileError = null;
     });
@@ -222,13 +203,8 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   String? _validateNewPassword(String? value) {
     final password = value ?? '';
-    if (password.length < 12 ||
-        !RegExp(r'[A-Z]').hasMatch(password) ||
-        !RegExp(r'[a-z]').hasMatch(password) ||
-        !RegExp(r'\d').hasMatch(password) ||
-        !RegExp(r'[^A-Za-z0-9]').hasMatch(password)) {
-      return 'Use 12+ characters with mixed case, a number, and a symbol.';
-    }
+    final policyError = PasswordPolicy.validate(password);
+    if (policyError != null) return policyError;
     if (!widget.forceChange && password == _currentController.text) {
       return 'Choose a password different from the current password.';
     }
@@ -247,6 +223,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         newPassword: _newController.text,
       );
       final email = UserSession.instance.email;
+      await AnalysisCache.instance.clearCurrentUser();
       await AuthApi().clearTokens();
       UserSession.instance.clear();
       if (!mounted) return;
@@ -283,13 +260,16 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     required bool obscure,
     required VoidCallback toggle,
     String? Function(String?)? validator,
+    int? maxLength,
   }) {
     return TextFormField(
       controller: controller,
       obscureText: obscure,
       validator: validator,
+      maxLength: maxLength,
       decoration: InputDecoration(
         labelText: label,
+        counterText: maxLength == null ? null : '',
         suffixIcon: IconButton(
           onPressed: toggle,
           icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
@@ -655,6 +635,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         // Logging out must still complete if the convenience value cannot save.
       }
     }
+    await AnalysisCache.instance.clearCurrentUser();
     try {
       await AuthApi().logout();
     } catch (_) {
@@ -801,6 +782,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   controller: _newController,
                   label: 'New password',
                   obscure: _obscureNew,
+                  maxLength: 8,
                   toggle: () => setState(() => _obscureNew = !_obscureNew),
                   validator: _validateNewPassword,
                 ),
@@ -809,6 +791,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   controller: _confirmController,
                   label: 'Retype new password',
                   obscure: _obscureConfirm,
+                  maxLength: 8,
                   toggle: () =>
                       setState(() => _obscureConfirm = !_obscureConfirm),
                   validator: (value) => value != _newController.text

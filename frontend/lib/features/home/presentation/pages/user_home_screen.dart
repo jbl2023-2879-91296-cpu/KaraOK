@@ -41,8 +41,17 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       _loading = true;
       _loadError = null;
     });
+    final api = AssessmentApi();
+    final cached = await api.getCachedAudioTests();
+    if (!mounted) return;
+    setState(() {
+      if (cached != null) {
+        _recentAnalysis = cached.take(4).toList();
+      }
+      _loading = false;
+    });
     try {
-      final tests = await AssessmentApi().getAudioTests();
+      final tests = await api.getAudioTests();
       if (!mounted) return;
       setState(() {
         _recentAnalysis = tests.take(4).toList();
@@ -52,7 +61,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _loadError = 'Could not load your analysis records.';
+        _loadError = cached == null
+            ? 'Could not load your analysis records.'
+            : null;
       });
     }
   }

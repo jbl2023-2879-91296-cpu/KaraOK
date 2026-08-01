@@ -5,8 +5,8 @@
 abstract final class PasswordPolicy {
   static String? validate(String? value) {
     final password = value ?? '';
-    if (password.length < 12 || password.length > 128) {
-      return 'Use 12–128 characters.';
+    if (password.length != 8) {
+      return 'Password must be exactly 8 characters.';
     }
     if (!RegExp(r'[A-Z]').hasMatch(password) ||
         !RegExp(r'[a-z]').hasMatch(password) ||

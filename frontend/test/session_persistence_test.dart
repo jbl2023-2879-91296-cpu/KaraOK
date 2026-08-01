@@ -25,7 +25,8 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
 
     expect(UserSession.instance.id, 42);
     expect(UserSession.instance.email, 'saved@example.com');

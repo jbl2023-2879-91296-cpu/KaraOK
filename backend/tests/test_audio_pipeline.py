@@ -334,7 +334,16 @@ class AudioPipelineTests(unittest.TestCase):
             },
             "analyzer_process": {"duration_seconds": 0.5},
             "analysis": _analyzer_result("passed"),
+            "visualizations": {
+                "waveform": "0/99/guest_waveform.png",
+                "spectrogram": "0/99/guest_spectrogram.png",
+            },
         }
+        report_directory = analysis_root / "0" / "99"
+        report_directory.mkdir(parents=True)
+        png = b"\x89PNG\r\n\x1a\nserver-generated-report"
+        (report_directory / "guest_waveform.png").write_bytes(png)
+        (report_directory / "guest_spectrogram.png").write_bytes(png)
 
         with api.app.test_request_context(
             "/api/guest/audio-analysis",
@@ -366,8 +375,85 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertIsNone(payload["assessment_id"])
         self.assertIsNone(payload["analysis_dump"]["upload"]["assessment_id"])
         self.assertGreater(payload["score"], 0)
+        self.assertIsInstance(payload["guest_import_receipt"], str)
+        receipt = api.jwt.decode(
+            payload["guest_import_receipt"],
+            api.JWT_SECRET,
+            algorithms=["HS256"],
+            issuer=api.JWT_ISSUER,
+            options={"verify_exp": False},
+        )
+        self.assertEqual(receipt["type"], "guest_assessment_import")
+        self.assertEqual(receipt["result"]["file_name"], "guest.wav")
         self.assertFalse(any(upload_root.rglob("*.wav")))
         self.assertFalse(any(analysis_root.rglob("*_analysis.json")))
+
+    def test_signed_guest_report_import_creates_owned_server_artifacts(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        analysis_root = Path(temporary.name) / "analysis"
+        png = b"\x89PNG\r\n\x1a\nserver-generated-report"
+        encoded = api.base64.b64encode(png).decode("ascii")
+        result = {
+            "file_name": "guest.wav",
+            "duration_seconds": 2,
+            "size_bytes": 2048,
+            "mime_type": "audio/wav",
+            "status": "Completed",
+            "result_status": "Acceptable",
+            "score": 88.0,
+            "noise_level": -42.0,
+            "distortion_level": 8.0,
+            "bass": 40.0,
+            "treble": 12.0,
+            "loudness": -14.0,
+            "sharpness": 0.2,
+            "flatness": 0.03,
+            "empirical_quality": {
+                "overall_status": "good",
+                "worst_feature_status": "good",
+                "worst_features": [],
+                "algorithm_version": "test-v1",
+                "reference_recording_count": 30,
+            },
+            "analysis_purpose": "quality_evaluation",
+            "created_at": "2026-08-01T05:00:00+00:00",
+            "processing_time": 0.5,
+        }
+        receipt = api._guest_import_receipt(
+            result,
+            {"waveform": encoded, "spectrogram": encoded},
+        )
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.return_value = None
+        cursor.lastrowid = 17
+
+        with api.app.test_request_context(
+            "/api/audio-tests/import-guest",
+            method="POST",
+            json={
+                "receipt": receipt,
+                "visualizations": {
+                    "waveform": encoded,
+                    "spectrogram": encoded,
+                },
+            },
+        ), patch.object(
+            api, "ANALYSIS_OUTPUT_DIR", str(analysis_root)
+        ), patch.object(
+            api, "get_db", return_value=connection
+        ), patch.object(api, "audit"):
+            api.g.user_id = 7
+            response, status_code = api.import_guest_audio_analysis.__wrapped__()
+
+        self.assertEqual(status_code, 201)
+        self.assertEqual(response.get_json()["assessment_id"], 17)
+        self.assertEqual(
+            (analysis_root / "7" / "17" / "guest_import_waveform.png").read_bytes(),
+            png,
+        )
+        self.assertTrue(connection.commit.called)
 
 
 if __name__ == "__main__":

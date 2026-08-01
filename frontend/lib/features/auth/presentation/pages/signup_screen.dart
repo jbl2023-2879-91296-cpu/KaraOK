@@ -1,10 +1,11 @@
 import 'dart:convert';
 
 import 'package:country_picker/country_picker.dart';
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:karaok_app/core/media/profile_image_picker.dart';
+import 'package:karaok_app/core/security/password_policy.dart';
 import 'package:karaok_app/features/auth/data/auth_api.dart';
 import 'package:karaok_app/features/auth/presentation/pages/login_screen.dart';
 import 'package:karaok_app/features/auth/presentation/pages/otp_verification_screen.dart';
@@ -18,7 +19,6 @@ class SignUpScreen extends StatefulWidget {
 
 class _SignUpScreenState extends State<SignUpScreen> {
   static const _accentColor = Color(0xFF4A90D9);
-  static const _maxProfileImageBytes = 2 * 1024 * 1024;
 
   final _formKey = GlobalKey<FormState>();
   final _usernameCtrl = TextEditingController();
@@ -66,39 +66,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   Future<void> _pickProfileImage() async {
-    final file = await openFile(
-      acceptedTypeGroups: const [
-        XTypeGroup(
-          label: 'Profile image',
-          extensions: ['jpg', 'jpeg', 'png', 'webp'],
-        ),
-      ],
-    );
-    if (file == null) return;
-    final bytes = await file.readAsBytes();
+    final result = await ProfileImagePicker.pick(context);
     if (!mounted) return;
-    if (bytes.length > _maxProfileImageBytes) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile image must not exceed 2 MB.')),
-      );
-      return;
-    }
-    final extension = file.name.split('.').last.toLowerCase();
-    final mime = switch (extension) {
-      'jpg' || 'jpeg' => 'image/jpeg',
-      'png' => 'image/png',
-      'webp' => 'image/webp',
-      _ => null,
-    };
-    if (mime == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Choose a JPEG, PNG, or WebP image.')),
-      );
+    if (result == null) return;
+    if (!result.isSuccess) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(result.error!)));
       return;
     }
     setState(() {
-      _profileImage = bytes;
-      _profileImageMime = mime;
+      _profileImage = result.bytes;
+      _profileImageMime = result.mimeType;
     });
   }
 
@@ -251,7 +230,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        'Profile image (optional, max 2 MB)',
+                        'Profile image (optional, max 5 MB)',
                         style: TextStyle(
                           color: Color(0xFF888888),
                           fontSize: 12,
@@ -417,8 +396,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 _LabeledField(
                   label: 'Password',
                   controller: _passCtrl,
-                  hint: '12+ characters, mixed case, number and symbol',
+                  hint: 'Exactly 8 characters with mixed types',
                   obscure: _obscurePass,
+                  maxLength: 8,
                   suffixIcon: IconButton(
                     icon: Icon(
                       _obscurePass ? Icons.visibility_off : Icons.visibility,
@@ -426,19 +406,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     onPressed: () =>
                         setState(() => _obscurePass = !_obscurePass),
                   ),
-                  validator: (value) {
-                    final password = value ?? '';
-                    if (password.length < 12) {
-                      return 'Password must be at least 12 characters';
-                    }
-                    if (!RegExp(r'[A-Z]').hasMatch(password) ||
-                        !RegExp(r'[a-z]').hasMatch(password) ||
-                        !RegExp(r'\d').hasMatch(password) ||
-                        !RegExp(r'[^A-Za-z0-9]').hasMatch(password)) {
-                      return 'Use upper/lowercase, a number, and a symbol';
-                    }
-                    return null;
-                  },
+                  validator: PasswordPolicy.validate,
                 ),
                 const SizedBox(height: 16),
                 _LabeledField(
@@ -446,6 +414,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   controller: _confirmCtrl,
                   hint: 'Retype your password',
                   obscure: _obscureConf,
+                  maxLength: 8,
                   suffixIcon: IconButton(
                     icon: Icon(
                       _obscureConf ? Icons.visibility_off : Icons.visibility,

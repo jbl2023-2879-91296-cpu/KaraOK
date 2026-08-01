@@ -117,8 +117,8 @@ void main() {
     expect(find.byType(Drawer), findsNothing);
 
     await tester.tap(find.text('Records'));
-    await tester.pump();
-    expect(find.text('Save your evaluation records'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.text('No guest reports yet'), findsOneWidget);
     expect(find.byIcon(Icons.info_outline), findsNothing);
 
     await tester.tap(find.text('Settings'));
