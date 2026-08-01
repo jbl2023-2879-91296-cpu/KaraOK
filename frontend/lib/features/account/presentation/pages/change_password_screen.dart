@@ -687,7 +687,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 ),
                 const SizedBox(height: 10),
                 const Text(
-                  'Create an account to save records, keep your results, and continue evaluating audio after your guest attempts.',
+                  'Create an account to save future records and continue evaluating audio after your guest attempts. Existing guest-only reports are deleted when you sign in.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Color(0xFFAAAAAA), height: 1.5),
                 ),

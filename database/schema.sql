@@ -1,8 +1,8 @@
--- KaraOK fresh-install schema v3
+-- KaraOK fresh-install schema v2
 --
 -- Authoritative bootstrap for a new empty database as of 2026-07-27. This
--- version includes guest-report account claiming in addition to the unified
--- public `user` account and required personal profile fields. Import this
+-- version replaces public owner/technician account types with one public `user`
+-- account and expands the required personal profile fields. Import this
 -- file into a new/empty karaok_db; it intentionally does not destroy an existing
 -- populated deployment.
 --
@@ -104,10 +104,6 @@ CREATE TABLE IF NOT EXISTS assessment (
     processing_time FLOAT,
 
     analysis_purpose VARCHAR(40) NOT NULL DEFAULT 'quality_evaluation',
-
-    -- Idempotency/ownership key from a server-signed guest receipt. A receipt
-    -- can be claimed by exactly one account even if the phone retries.
-    guest_import_id CHAR(32) NULL UNIQUE,
 
     -- Merged from the former assessment_metadata table.
     test_name VARCHAR(120),

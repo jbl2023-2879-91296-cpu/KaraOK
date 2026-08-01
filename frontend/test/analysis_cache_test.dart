@@ -80,38 +80,24 @@ void main() {
     expect(PasswordPolicy.validate('abcdefgh'), isNotNull);
   });
 
-  test(
-    'guest reports persist locally and remain after account claim',
-    () async {
-      final guestStore = GuestAssessmentStore(
-        supportDirectoryProvider: () async => supportDirectory,
-      );
-      final image = base64Encode(Uint8List.fromList([1, 2, 3, 4]));
-      await guestStore.saveCompleted({
-        'test_name': 'Guest evaluation',
-        'status': 'Acceptable',
-        'score': 84,
-        'guest_import_receipt': 'signed-receipt',
-        'visualizations': {'waveform': image, 'spectrogram': image},
-      });
+  test('guest reports persist locally until authentication cleanup', () async {
+    final guestStore = GuestAssessmentStore(
+      supportDirectoryProvider: () async => supportDirectory,
+    );
+    final image = base64Encode(Uint8List.fromList([1, 2, 3, 4]));
+    await guestStore.saveCompleted({
+      'test_name': 'Guest evaluation',
+      'status': 'Acceptable',
+      'score': 84,
+      'visualizations': {'waveform': image, 'spectrogram': image},
+    });
 
-      final history = await guestStore.guestHistory();
-      expect(history, hasLength(1));
-      expect(history.single['test_name'], 'Guest evaluation');
-      expect(history.single['visualizations']['waveform'], image);
+    final history = await guestStore.guestHistory();
+    expect(history, hasLength(1));
+    expect(history.single['test_name'], 'Guest evaluation');
+    expect(history.single['visualizations']['waveform'], image);
 
-      await guestStore.claimUnownedForUser(7);
-      expect(await guestStore.guestHistory(), isEmpty);
-      final pending = await guestStore.pendingForUser(7);
-      expect(pending, hasLength(1));
-      final localId = pending.single['local_guest_id'].toString();
-      await guestStore.markSynced(localId: localId, assessmentId: 41);
-
-      expect(await guestStore.pendingForUser(7), isEmpty);
-      expect(
-        await guestStore.visualizationBytes(localId, 'waveform'),
-        Uint8List.fromList([1, 2, 3, 4]),
-      );
-    },
-  );
+    await guestStore.clearAll();
+    expect(await guestStore.guestHistory(), isEmpty);
+  });
 }
