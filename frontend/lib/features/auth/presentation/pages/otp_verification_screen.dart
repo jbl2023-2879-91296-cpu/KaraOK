@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:karaok_app/app/app_shell.dart';
+import 'package:karaok_app/core/security/secure_token_store.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/auth/data/auth_api.dart';
 
@@ -43,25 +44,12 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         email: widget.email,
         code: _otpController.text.trim(),
       );
-      UserSession.instance.setUser(
-        id: user['id'],
-        name: user['name'],
-        email: user['email'],
-        userType: user['user_type'],
-        username: user['username'],
-        firstName: user['first_name'],
-        lastName: user['last_name'],
-        address: user['address'],
-        city: user['city'],
-        stateProvince: user['state_province'],
-        areaCode: user['area_code'],
-        country: user['country'],
-        countryCode: user['country_code'],
-        phoneNumber: user['phone_number'],
-        birthday: user['birthday'],
-        profileImageBase64: user['profile_image_base64'],
-        profileImageMime: user['profile_image_mime'],
-      );
+      try {
+        await SecureTokenStore.instance.saveLastIdentifier(widget.email);
+      } catch (_) {
+        // Account creation succeeds even if the convenience value cannot save.
+      }
+      UserSession.instance.setUserFromMap(user);
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,

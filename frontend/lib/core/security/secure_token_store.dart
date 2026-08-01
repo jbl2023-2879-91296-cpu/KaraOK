@@ -8,6 +8,7 @@ class SecureTokenStore {
 
   static const _accessTokenKey = 'karaok_access_token';
   static const _refreshTokenKey = 'karaok_refresh_token';
+  static const _lastIdentifierKey = 'karaok_last_identifier';
   static const _storage = FlutterSecureStorage();
 
   Future<String?> readAccessToken() => _storage.read(key: _accessTokenKey);
@@ -26,4 +27,13 @@ class SecureTokenStore {
     await _storage.delete(key: _accessTokenKey);
     await _storage.delete(key: _refreshTokenKey);
   }
+
+  Future<String?> readLastIdentifier() =>
+      _storage.read(key: _lastIdentifierKey);
+
+  Future<void> saveLastIdentifier(String identifier) =>
+      _storage.write(key: _lastIdentifierKey, value: identifier.trim());
+
+  Future<void> clearLastIdentifier() =>
+      _storage.delete(key: _lastIdentifierKey);
 }

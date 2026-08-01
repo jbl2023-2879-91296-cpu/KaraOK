@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:karaok_app/app/app_shell.dart';
 import 'package:karaok_app/core/security/guest_assessment_service.dart';
+import 'package:karaok_app/core/security/secure_token_store.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/auth/data/auth_api.dart';
 import 'package:karaok_app/features/account/presentation/pages/change_password_screen.dart';
@@ -22,6 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passCtrl = TextEditingController();
   bool _obscure = true;
   bool _loading = false;
+  bool _hasRememberedIdentifier = false;
   String? _error;
 
   static const _accentColor = Color(0xFF4A90D9);
@@ -30,6 +32,23 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     _identifierCtrl = TextEditingController(text: widget.initialIdentifier);
+    _loadRememberedIdentifier();
+  }
+
+  Future<void> _loadRememberedIdentifier() async {
+    final saved = await SecureTokenStore.instance.readLastIdentifier();
+    if (!mounted) return;
+    if (_identifierCtrl.text.trim().isEmpty && saved?.isNotEmpty == true) {
+      _identifierCtrl.text = saved!;
+    }
+    setState(() => _hasRememberedIdentifier = saved?.isNotEmpty == true);
+  }
+
+  Future<void> _forgetRememberedIdentifier() async {
+    await SecureTokenStore.instance.clearLastIdentifier();
+    if (!mounted) return;
+    _identifierCtrl.clear();
+    setState(() => _hasRememberedIdentifier = false);
   }
 
   @override
@@ -50,26 +69,14 @@ class _LoginScreenState extends State<LoginScreen> {
         identifier: _identifierCtrl.text.trim(),
         password: _passCtrl.text,
       );
-      UserSession.instance.setUser(
-        id: res['id'],
-        name: res['name'],
-        email: res['email'],
-        userType: res['user_type'],
-        username: res['username'],
-        firstName: res['first_name'],
-        lastName: res['last_name'],
-        address: res['address'],
-        city: res['city'],
-        stateProvince: res['state_province'],
-        areaCode: res['area_code'],
-        country: res['country'],
-        countryCode: res['country_code'],
-        phoneNumber: res['phone_number'],
-        birthday: res['birthday'],
-        profileImageBase64: res['profile_image_base64'],
-        profileImageMime: res['profile_image_mime'],
-        requiresPasswordChange: res['requires_password_change'] == true,
-      );
+      try {
+        await SecureTokenStore.instance.saveLastIdentifier(
+          res['email'] as String? ?? _identifierCtrl.text.trim(),
+        );
+      } catch (_) {
+        // Remembering the identifier is a convenience and must not block login.
+      }
+      UserSession.instance.setUserFromMap(res);
       if (UserSession.instance.requiresPasswordChange) {
         if (!mounted) return;
         Navigator.pushAndRemoveUntil(
@@ -163,6 +170,19 @@ class _LoginScreenState extends State<LoginScreen> {
                 _AuthField(
                   controller: _identifierCtrl,
                   hint: 'Username or email address',
+                  suffixIcon: _hasRememberedIdentifier
+                      ? IconButton(
+                          tooltip: 'Forget saved account',
+                          onPressed: _loading
+                              ? null
+                              : _forgetRememberedIdentifier,
+                          icon: const Icon(
+                            Icons.close,
+                            color: Color(0xFF666666),
+                            size: 20,
+                          ),
+                        )
+                      : null,
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) {
                       return 'Enter your username or email address';

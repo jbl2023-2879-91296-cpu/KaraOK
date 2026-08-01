@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -136,25 +137,57 @@ class ApiService {
     );
   }
 
-  Future<bool> _refresh() async {
+  Future<Map<String, dynamic>?> _exchangeRefreshToken() async {
     final refreshToken = await _tokenStore.readRefreshToken();
-    if (refreshToken == null) return false;
+    if (refreshToken == null) return null;
+
+    final response = await http
+        .post(
+          _uri('/auth/refresh'),
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({'refresh_token': refreshToken}),
+        )
+        .timeout(const Duration(seconds: 15));
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      await clearTokens();
+      return null;
+    }
+    _checkStatus(response);
+
+    final data = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    await _saveAuth(data);
+    return Map<String, dynamic>.from(data['user'] as Map);
+  }
+
+  Future<bool> _refresh() async {
     try {
-      final response = await http.post(
-        _uri('/auth/refresh'),
-        headers: const {'Content-Type': 'application/json'},
-        body: jsonEncode({'refresh_token': refreshToken}),
-      );
-      if (response.statusCode >= 400) {
-        await clearTokens();
-        return false;
-      }
-      await _saveAuth(
-        Map<String, dynamic>.from(jsonDecode(response.body) as Map),
-      );
-      return true;
+      return await _exchangeRefreshToken() != null;
     } catch (_) {
+      // A failed background refresh should leave the saved refresh token in
+      // place so a temporary outage does not sign the user out.
       return false;
+    }
+  }
+
+  /// Restores a persisted login and returns the authoritative server profile.
+  ///
+  /// A missing or rejected refresh token returns null. Temporary connectivity
+  /// errors are surfaced so startup can offer Retry without deleting tokens.
+  Future<Map<String, dynamic>?> restoreSession() async {
+    try {
+      return await _exchangeRefreshToken();
+    } on SocketException catch (error) {
+      throw ApiException(
+        0,
+        'The backend server is unreachable: ${error.message}',
+      );
+    } on http.ClientException catch (error) {
+      throw ApiException(
+        0,
+        'Could not connect to the server: ${error.message}',
+      );
+    } on TimeoutException {
+      throw ApiException(0, 'The server took too long to respond.');
     }
   }
 
