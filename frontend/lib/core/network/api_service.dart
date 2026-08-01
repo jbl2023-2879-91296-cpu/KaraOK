@@ -384,17 +384,6 @@ class ApiService {
 
   Future<void> deleteAudioTest(int testId) => _delete('/audio-tests/$testId');
 
-  Future<Map<String, dynamic>> importGuestAudioTest({
-    required String receipt,
-    required Map<String, String> visualizations,
-  }) async => Map<String, dynamic>.from(
-    await _post('/audio-tests/import-guest', {
-          'receipt': receipt,
-          'visualizations': visualizations,
-        })
-        as Map,
-  );
-
   Future<Map<String, dynamic>> getGenreSettings(String genre) async =>
       Map<String, dynamic>.from(
         await _get('/genre-settings', {'genre': genre}) as Map,

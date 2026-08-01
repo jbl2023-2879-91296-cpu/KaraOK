@@ -3,6 +3,7 @@ import 'package:karaok_app/app/app_shell.dart';
 import 'package:karaok_app/core/security/guest_assessment_service.dart';
 import 'package:karaok_app/core/security/secure_token_store.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
+import 'package:karaok_app/core/storage/guest_assessment_store.dart';
 import 'package:karaok_app/features/auth/data/auth_api.dart';
 import 'package:karaok_app/features/account/presentation/pages/change_password_screen.dart';
 import 'package:karaok_app/features/auth/presentation/pages/forgot_password_screen.dart';
@@ -77,6 +78,11 @@ class _LoginScreenState extends State<LoginScreen> {
         // Remembering the identifier is a convenience and must not block login.
       }
       UserSession.instance.setUserFromMap(res);
+      try {
+        await GuestAssessmentStore.instance.clearAll();
+      } catch (_) {
+        // Authentication succeeds even if local guest cleanup must retry.
+      }
       if (UserSession.instance.requiresPasswordChange) {
         if (!mounted) return;
         Navigator.pushAndRemoveUntil(

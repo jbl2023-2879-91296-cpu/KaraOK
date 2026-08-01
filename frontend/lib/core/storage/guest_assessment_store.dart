@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -48,8 +47,7 @@ class GuestAssessmentStore {
 
   Future<void> saveCompleted(Map<String, dynamic> record) async {
     final visualizations = record['visualizations'];
-    final receipt = record['guest_import_receipt'];
-    if (visualizations is! Map || receipt is! String || receipt.isEmpty) {
+    if (visualizations is! Map) {
       throw const FormatException('Completed guest report is incomplete.');
     }
     final localId = DateTime.now().microsecondsSinceEpoch.toString();
@@ -68,9 +66,8 @@ class GuestAssessmentStore {
       final stored = Map<String, dynamic>.from(record)
         ..remove('visualizations')
         ..remove('analysis_dump')
+        ..remove('guest_import_receipt')
         ..['local_guest_id'] = localId
-        ..['owner_user_id'] = null
-        ..['server_assessment_id'] = null
         ..['created_at'] =
             (record['created_at'] ?? DateTime.now().toUtc().toIso8601String())
                 .toString();
@@ -102,48 +99,15 @@ class GuestAssessmentStore {
 
   Future<List<dynamic>> guestHistory() async {
     final entries = await _readIndex();
+    // Old builds may have marked a report during an interrupted migration.
+    // Never expose those records to a later guest session.
     final visible = entries.where((entry) => entry['owner_user_id'] == null);
     return Future.wait(visible.map(_withVisualizations));
   }
 
-  Future<void> claimUnownedForUser(int userId) async {
-    final entries = await _readIndex();
-    var changed = false;
-    for (final entry in entries) {
-      if (entry['owner_user_id'] == null) {
-        entry['owner_user_id'] = userId;
-        changed = true;
-      }
-    }
-    if (changed) await _writeIndex(entries);
-  }
-
-  Future<List<Map<String, dynamic>>> pendingForUser(int userId) async {
-    final entries = await _readIndex();
-    final pending = entries.where(
-      (entry) =>
-          entry['owner_user_id'] == userId &&
-          entry['server_assessment_id'] == null,
-    );
-    return Future.wait(pending.map(_withVisualizations));
-  }
-
-  Future<void> markSynced({
-    required String localId,
-    required int assessmentId,
-  }) async {
-    final entries = await _readIndex();
-    for (final entry in entries) {
-      if (entry['local_guest_id'].toString() == localId) {
-        entry['server_assessment_id'] = assessmentId;
-      }
-    }
-    await _writeIndex(entries);
-  }
-
-  Future<Uint8List?> visualizationBytes(String localId, String kind) async {
-    final directory = await _directory();
-    final file = File(path.join(directory.path, '$localId-$kind.png'));
-    return await file.exists() ? file.readAsBytes() : null;
+  Future<void> clearAll() async {
+    final support = await _supportDirectoryProvider();
+    final directory = Directory(path.join(support.path, 'karaok_guest'));
+    if (await directory.exists()) await directory.delete(recursive: true);
   }
 }

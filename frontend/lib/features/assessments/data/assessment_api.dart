@@ -35,14 +35,6 @@ class AssessmentApi {
     await AnalysisCache.instance.removeAssessment(testId);
   }
 
-  Future<Map<String, dynamic>> importGuestAudioTest({
-    required String receipt,
-    required Map<String, String> visualizations,
-  }) => _client.importGuestAudioTest(
-    receipt: receipt,
-    visualizations: visualizations,
-  );
-
   Future<Map<String, dynamic>> submitAudio({
     required String filePath,
     required String fileName,

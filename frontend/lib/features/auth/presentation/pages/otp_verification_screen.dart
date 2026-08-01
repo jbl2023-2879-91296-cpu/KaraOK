@@ -1,12 +1,10 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import 'package:karaok_app/app/app_shell.dart';
 import 'package:karaok_app/core/security/secure_token_store.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
+import 'package:karaok_app/core/storage/guest_assessment_store.dart';
 import 'package:karaok_app/features/auth/data/auth_api.dart';
-import 'package:karaok_app/features/assessments/data/guest_assessment_migration.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
   const OtpVerificationScreen({
@@ -54,11 +52,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       }
       UserSession.instance.setUserFromMap(user);
       try {
-        final migration = GuestAssessmentMigration();
-        await migration.claimForNewAccount();
-        unawaited(migration.syncPending());
+        await GuestAssessmentStore.instance.clearAll();
       } catch (_) {
-        // Account creation is complete; retained reports can retry next launch.
+        // Account creation succeeds even if local guest cleanup must retry.
       }
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(

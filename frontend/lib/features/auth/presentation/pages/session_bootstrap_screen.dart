@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/app/app_shell.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
+import 'package:karaok_app/core/storage/guest_assessment_store.dart';
 import 'package:karaok_app/features/account/presentation/pages/change_password_screen.dart';
 import 'package:karaok_app/features/auth/data/auth_api.dart';
-import 'package:karaok_app/features/assessments/data/guest_assessment_migration.dart';
 
 /// Resolves persisted authentication before any account-dependent UI is built.
 class SessionBootstrapScreen extends StatefulWidget {
@@ -30,6 +30,9 @@ class _SessionBootstrapScreenState extends State<SessionBootstrapScreen> {
   Future<void> _restore() async {
     final session = UserSession.instance;
     if (session.isLoggedIn) {
+      if (!session.isGuest) {
+        unawaited(_clearGuestReports());
+      }
       _finishWithCurrentSession();
       return;
     }
@@ -47,7 +50,7 @@ class _SessionBootstrapScreenState extends State<SessionBootstrapScreen> {
         session.setGuest('user');
       } else {
         session.setUserFromMap(user);
-        unawaited(GuestAssessmentMigration().syncPending());
+        unawaited(_clearGuestReports());
       }
       if (!mounted) return;
       _finishWithCurrentSession();
@@ -57,6 +60,14 @@ class _SessionBootstrapScreenState extends State<SessionBootstrapScreen> {
         _error =
             'KaraOK could not reconnect to restore your account. Your saved session has not been removed.';
       });
+    }
+  }
+
+  Future<void> _clearGuestReports() async {
+    try {
+      await GuestAssessmentStore.instance.clearAll();
+    } catch (_) {
+      // Retry on a later authenticated startup.
     }
   }
 

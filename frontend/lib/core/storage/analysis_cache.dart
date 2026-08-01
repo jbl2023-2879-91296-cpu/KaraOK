@@ -113,27 +113,6 @@ class AnalysisCache {
     return bytes;
   }
 
-  Future<void> saveVisualization({
-    required int assessmentId,
-    required String kind,
-    required Uint8List bytes,
-  }) async {
-    if (bytes.isEmpty) return;
-    try {
-      final directory = await _userDirectory();
-      if (directory == null) return;
-      final visualizationDirectory = Directory(
-        path.join(directory.path, 'visualizations'),
-      );
-      await visualizationDirectory.create(recursive: true);
-      await File(
-        path.join(visualizationDirectory.path, '$assessmentId-$kind.bin'),
-      ).writeAsBytes(bytes, flush: true);
-    } catch (_) {
-      // The imported server copy remains authoritative if local copying fails.
-    }
-  }
-
   Future<void> removeAssessment(int assessmentId) async {
     try {
       final directory = await _userDirectory(create: false);

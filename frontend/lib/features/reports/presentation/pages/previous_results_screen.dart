@@ -331,7 +331,7 @@ class _GuestMigrationPrompt extends StatelessWidget {
         children: [
           const Expanded(
             child: Text(
-              'These reports are saved only on this phone. Create an account to add them to your private server history.',
+              'These guest-only reports stay on this phone while you use guest mode. Signing in or creating an account deletes them; they are not transferred.',
               style: TextStyle(color: Color(0xFFCCCCCC), fontSize: 12),
             ),
           ),
