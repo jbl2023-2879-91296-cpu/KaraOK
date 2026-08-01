@@ -7,3 +7,4 @@ backend/uploads/
 __pycache__/
 *.py[cod]
 /build/
+README.md

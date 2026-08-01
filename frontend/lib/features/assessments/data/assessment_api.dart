@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:karaok_app/core/network/api_service.dart';
+import 'package:karaok_app/core/storage/analysis_cache.dart';
 
 export 'package:karaok_app/core/network/api_exception.dart';
 
@@ -10,15 +11,37 @@ class AssessmentApi {
 
   final ApiService _client;
 
-  Future<List<dynamic>> getAudioTests() => _client.getAudioTests();
+  Future<List<dynamic>?> getCachedAudioTests() =>
+      AnalysisCache.instance.readHistory();
+
+  Future<List<dynamic>> getAudioTests() async {
+    final tests = await _client.getAudioTests();
+    await AnalysisCache.instance.saveHistory(tests);
+    return tests;
+  }
 
   Future<Map<String, dynamic>> getAudioTest(int testId) =>
       _client.getAudioTest(testId);
 
   Future<Uint8List> getAudioVisualization(int testId, String kind) =>
-      _client.getAudioVisualization(testId, kind);
+      AnalysisCache.instance.visualization(
+        assessmentId: testId,
+        kind: kind,
+        fetch: () => _client.getAudioVisualization(testId, kind),
+      );
 
-  Future<void> deleteAudioTest(int testId) => _client.deleteAudioTest(testId);
+  Future<void> deleteAudioTest(int testId) async {
+    await _client.deleteAudioTest(testId);
+    await AnalysisCache.instance.removeAssessment(testId);
+  }
+
+  Future<Map<String, dynamic>> importGuestAudioTest({
+    required String receipt,
+    required Map<String, String> visualizations,
+  }) => _client.importGuestAudioTest(
+    receipt: receipt,
+    visualizations: visualizations,
+  );
 
   Future<Map<String, dynamic>> submitAudio({
     required String filePath,

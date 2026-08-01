@@ -24,6 +24,13 @@ def create_audio_test():
     return application.create_audio_test()
 
 
+@blueprint.post("/audio-tests/import-guest")
+def import_guest_audio_analysis():
+    from ... import application
+
+    return application.import_guest_audio_analysis()
+
+
 @blueprint.delete("/audio-tests/<int:test_id>")
 def delete_audio_test(test_id: int):
     from ... import application

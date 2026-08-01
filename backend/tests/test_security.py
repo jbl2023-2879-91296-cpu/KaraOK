@@ -1,4 +1,5 @@
 import os
+import base64
 from pathlib import Path
 import time
 import unittest
@@ -22,7 +23,7 @@ class SecurityValidationTests(unittest.TestCase):
             "first_name": "Mary Jane",
             "last_name": "Dela Cruz",
             "email": "user@example.com",
-            "password": "Correct-Horse-7",
+            "password": "Good#A1b",
             "address": "123 Sample Street, Manila",
             "city": "Manila",
             "state_province": "Metro Manila",
@@ -58,16 +59,41 @@ class SecurityValidationTests(unittest.TestCase):
         connection.commit.assert_called_once()
 
     def test_password_policy_accepts_strong_password(self):
-        self.assertEqual(api.validate_password("Correct-Horse-7"), "Correct-Horse-7")
+        self.assertEqual(api.validate_password("Good#A1b"), "Good#A1b")
 
     def test_password_policy_rejects_weak_password(self):
         with self.assertRaises(ValueError):
             api.validate_password("short")
+        with self.assertRaises(ValueError):
+            api.validate_password("Good#A1bc")
+
+    def test_profile_images_accept_common_phone_formats(self):
+        samples = {
+            "image/jpeg": b"\xff\xd8\xffsample",
+            "image/png": b"\x89PNG\r\n\x1a\nsample",
+            "image/webp": b"RIFFxxxxWEBPsample",
+            "image/gif": b"GIF89asample",
+            "image/heic": b"xxxxftypheicsample",
+            "image/avif": b"xxxxftypavifsample",
+            "image/bmp": b"BMsample",
+        }
+        for mime_type, image in samples.items():
+            with self.subTest(mime_type=mime_type):
+                encoded = base64.b64encode(image).decode("ascii")
+                self.assertEqual(
+                    api._clean_profile_image(
+                        {
+                            "profile_image_base64": encoded,
+                            "profile_image_mime": mime_type,
+                        }
+                    ),
+                    (image, mime_type),
+                )
 
     def test_temporary_password_meets_password_policy(self):
         temporary_password = api.generate_temporary_password()
         self.assertEqual(api.validate_password(temporary_password), temporary_password)
-        self.assertEqual(len(temporary_password), 20)
+        self.assertEqual(len(temporary_password), 8)
 
     def test_email_is_normalized(self):
         self.assertEqual(api.clean_email("  User@Example.COM "), "user@example.com")
@@ -361,7 +387,7 @@ class SecurityValidationTests(unittest.TestCase):
             "last_name": "User",
             "email": "user@example.com",
             "user_type": "user",
-            "password_hash": api.password_hasher.hash("Correct-Horse-7"),
+            "password_hash": api.password_hasher.hash("Good#A1b"),
             "is_active": True,
             "email_verified_at": None,
             "requires_password_change": False,
@@ -373,7 +399,7 @@ class SecurityValidationTests(unittest.TestCase):
                 "/api/auth/login",
                 json={
                     "identifier": "user@example.com",
-                    "password": "Correct-Horse-7",
+                    "password": "Good#A1b",
                 },
             )
 
@@ -389,7 +415,7 @@ class SecurityValidationTests(unittest.TestCase):
             "last_name": "User",
             "email": "user@example.com",
             "user_type": "user",
-            "password_hash": api.password_hasher.hash("Correct-Horse-7"),
+            "password_hash": api.password_hasher.hash("Good#A1b"),
             "is_active": True,
             "email_verified_at": object(),
             "requires_password_change": False,
@@ -401,7 +427,7 @@ class SecurityValidationTests(unittest.TestCase):
                 "/api/auth/login",
                 json={
                     "identifier": "new-user",
-                    "password": "Correct-Horse-7",
+                    "password": "Good#A1b",
                 },
             )
 
@@ -456,7 +482,7 @@ class SecurityValidationTests(unittest.TestCase):
     def test_reset_token_endpoint_is_removed(self):
         response = api.app.test_client().post(
             "/api/auth/reset-password",
-            json={"token": "unused", "new_password": "Correct-Horse-7"},
+            json={"token": "unused", "new_password": "Good#A1b"},
         )
         self.assertEqual(response.status_code, 404)
 

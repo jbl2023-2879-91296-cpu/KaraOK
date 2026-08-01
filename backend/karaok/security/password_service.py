@@ -22,8 +22,8 @@ def clean_email(value: Any) -> str:
 
 
 def validate_password(password: Any) -> str:
-    if not isinstance(password, str) or not 12 <= len(password) <= 128:
-        raise ValueError("password must be 12-128 characters")
+    if not isinstance(password, str) or len(password) != 8:
+        raise ValueError("password must be exactly 8 characters")
     if not (re.search(r"[A-Z]", password) and re.search(r"[a-z]", password)):
         raise ValueError("password must include uppercase and lowercase letters")
     if not re.search(r"\d", password) or not re.search(r"[^A-Za-z0-9]", password):
@@ -31,8 +31,10 @@ def validate_password(password: Any) -> str:
     return password
 
 
-def generate_temporary_password(length: int = 20) -> str:
+def generate_temporary_password(length: int = 8) -> str:
     """Generate a policy-compliant password intended for one-time login."""
+    if length != 8:
+        raise ValueError("temporary passwords must be exactly 8 characters")
     uppercase = "ABCDEFGHJKLMNPQRSTUVWXYZ"
     lowercase = "abcdefghijkmnopqrstuvwxyz"
     digits = "23456789"

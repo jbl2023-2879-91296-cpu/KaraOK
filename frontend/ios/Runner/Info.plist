@@ -28,6 +28,10 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>KaraOK needs microphone access to record audio for quality analysis.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>KaraOK uses the camera when you choose to take a profile photo.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>KaraOK uses your photo library when you choose a profile image.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

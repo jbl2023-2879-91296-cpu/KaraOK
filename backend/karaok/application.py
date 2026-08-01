@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 import json
@@ -117,20 +118,38 @@ def _clean_profile_image(data: dict[str, Any]) -> tuple[bytes | None, str | None
         return None, None
     if not isinstance(encoded, str) or not isinstance(mime_type, str):
         raise ValueError("profile image is invalid")
-    if mime_type not in {"image/jpeg", "image/png", "image/webp"}:
-        raise ValueError("profile image must be JPEG, PNG, or WebP")
+    supported_mime_types = {
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+        "image/heic",
+        "image/heif",
+        "image/avif",
+        "image/bmp",
+    }
+    if mime_type not in supported_mime_types:
+        raise ValueError("profile image uses an unsupported image format")
+    size_limit = f"{MAX_PROFILE_IMAGE_BYTES / (1024 * 1024):g} MB"
     if len(encoded) > ((MAX_PROFILE_IMAGE_BYTES * 4 // 3) + 16):
-        raise ValueError("profile image must not exceed 2 MB")
+        raise ValueError(f"profile image must not exceed {size_limit}")
     try:
         image = base64.b64decode(encoded, validate=True)
     except (binascii.Error, ValueError) as error:
         raise ValueError("profile image is invalid") from error
     if not image or len(image) > MAX_PROFILE_IMAGE_BYTES:
-        raise ValueError("profile image must not exceed 2 MB")
+        raise ValueError(f"profile image must not exceed {size_limit}")
+    iso_brand = image[8:12] if len(image) >= 12 and image[4:8] == b"ftyp" else b""
     signatures = {
         "image/jpeg": image.startswith(b"\xff\xd8\xff"),
         "image/png": image.startswith(b"\x89PNG\r\n\x1a\n"),
         "image/webp": image.startswith(b"RIFF") and image[8:12] == b"WEBP",
+        "image/gif": image.startswith((b"GIF87a", b"GIF89a")),
+        "image/heic": iso_brand
+        in {b"heic", b"heix", b"hevc", b"hevx", b"heim", b"heis", b"mif1", b"msf1"},
+        "image/heif": iso_brand in {b"mif1", b"msf1"},
+        "image/avif": iso_brand in {b"avif", b"avis"},
+        "image/bmp": image.startswith(b"BM"),
     }
     if not signatures[mime_type]:
         raise ValueError("profile image content does not match its file type")
@@ -273,6 +292,49 @@ def _guest_visualization_images(dump: dict[str, Any]) -> dict[str, str]:
         )
         images[kind] = base64.b64encode(artifact.read_bytes()).decode("ascii")
     return images
+
+
+def _guest_import_receipt(
+    result: dict[str, Any], visualizations: dict[str, str]
+) -> str:
+    """Sign the measured guest result and the exact report-image contents."""
+    if not JWT_SECRET:
+        raise RuntimeError("JWT secret is not configured")
+    image_hashes: dict[str, str] = {}
+    for kind in ("waveform", "spectrogram"):
+        encoded = visualizations.get(kind)
+        if not isinstance(encoded, str):
+            raise RuntimeError("Guest visualization is missing")
+        image_hashes[kind] = hashlib.sha256(
+            base64.b64decode(encoded, validate=True)
+        ).hexdigest()
+    now = utcnow()
+    return jwt.encode(
+        {
+            "type": "guest_assessment_import",
+            "iss": JWT_ISSUER,
+            "iat": now,
+            "jti": secrets.token_hex(16),
+            "result": result,
+            "visualization_sha256": image_hashes,
+        },
+        JWT_SECRET,
+        algorithm="HS256",
+    )
+
+
+def _decode_guest_import_image(value: Any, kind: str) -> bytes:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{kind} visualization is required")
+    if len(value) > (5 * 1024 * 1024 * 4 // 3) + 16:
+        raise ValueError(f"{kind} visualization is too large")
+    try:
+        image = base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise ValueError(f"{kind} visualization is invalid") from error
+    if not image.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise ValueError(f"{kind} visualization must be a PNG image")
+    return image
 
 
 def _process_text(value: str | bytes | None, limit: int = 20_000) -> str:
@@ -1942,9 +2004,7 @@ def create_guest_audio_analysis():
     upload_details = analysis_dump.get("upload")
     if isinstance(upload_details, dict):
         upload_details["assessment_id"] = None
-    return (
-        jsonify(
-            {
+    response_data = {
                 "id": None,
                 "assessment_id": None,
                 "guest": True,
@@ -1985,10 +2045,194 @@ def create_guest_audio_analysis():
                 "analysis_purpose": analysis_purpose,
                 "analysis_dump": analysis_dump,
                 "visualizations": visualization_images,
+                "created_at": utcnow().isoformat(),
             }
-        ),
-        201,
+    if analysis_summary is not None:
+        signed_result = {
+            key: response_data[key]
+            for key in (
+                "file_name",
+                "duration_seconds",
+                "size_bytes",
+                "mime_type",
+                "status",
+                "result_status",
+                "score",
+                "noise_level",
+                "distortion_level",
+                "bass",
+                "treble",
+                "loudness",
+                "sharpness",
+                "flatness",
+                "empirical_quality",
+                "analysis_purpose",
+                "created_at",
+            )
+        }
+        signed_result["processing_time"] = _nested_number(
+            analysis_dump, "analyzer_process", "duration_seconds"
+        )
+        response_data["guest_import_receipt"] = _guest_import_receipt(
+            signed_result, visualization_images
+        )
+    return jsonify(response_data), 201
+
+
+@require_auth("user")
+def import_guest_audio_analysis():
+    """Claim a locally retained, server-signed guest assessment."""
+    data = json_body()
+    receipt = data.get("receipt")
+    visualizations = data.get("visualizations")
+    if not isinstance(receipt, str) or not isinstance(visualizations, dict):
+        raise ValueError("receipt and visualizations are required")
+    try:
+        claims = jwt.decode(
+            receipt,
+            JWT_SECRET,
+            algorithms=["HS256"],
+            issuer=JWT_ISSUER,
+            options={
+                "verify_exp": False,
+                "require": ["type", "iss", "iat", "jti", "result"],
+            },
+        )
+    except jwt.InvalidTokenError as error:
+        raise ValueError("guest assessment receipt is invalid") from error
+    if claims.get("type") != "guest_assessment_import":
+        raise ValueError("guest assessment receipt is invalid")
+    result = claims.get("result")
+    expected_hashes = claims.get("visualization_sha256")
+    if not isinstance(result, dict) or not isinstance(expected_hashes, dict):
+        raise ValueError("guest assessment receipt is incomplete")
+
+    images = {
+        kind: _decode_guest_import_image(visualizations.get(kind), kind)
+        for kind in ("waveform", "spectrogram")
+    }
+    for kind, image in images.items():
+        if not secrets.compare_digest(
+            hashlib.sha256(image).hexdigest(), str(expected_hashes.get(kind, ""))
+        ):
+            raise ValueError(f"{kind} visualization does not match the receipt")
+
+    import_id = str(claims["jti"])
+    empirical = result.get("empirical_quality")
+    if not isinstance(empirical, dict):
+        raise ValueError("guest assessment receipt has no empirical result")
+    result_status = str(result.get("result_status"))
+    if result_status not in VALID_STATUSES:
+        raise ValueError("guest assessment receipt has an invalid status")
+    try:
+        imported_at = datetime.fromisoformat(str(result.get("created_at")))
+        if imported_at.tzinfo is not None:
+            imported_at = imported_at.astimezone(timezone.utc).replace(tzinfo=None)
+    except ValueError as error:
+        raise ValueError("guest assessment receipt has an invalid date") from error
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    assessment_id: int | None = None
+    destination: Path | None = None
+    try:
+        cursor.execute(
+            "SELECT assessment_id, user_id FROM assessment WHERE guest_import_id = %s",
+            (import_id,),
+        )
+        existing = cursor.fetchone()
+        if existing:
+            if int(existing["user_id"]) != int(g.user_id):
+                return jsonify({"error": "Guest assessment was already claimed"}), 409
+            assessment_id = int(existing["assessment_id"])
+            return jsonify({"assessment_id": assessment_id, "imported": False}), 200
+
+        cursor.execute(
+            """INSERT INTO assessment
+               (user_id, assessment_status, test_name, duration_seconds,
+                result_status, analysis_purpose, processing_time,
+                guest_import_id, assessment_date)
+               VALUES (%s, 'Completed', %s, %s, %s, %s, %s, %s, %s)""",
+            (
+                g.user_id,
+                str(result.get("file_name", "Guest audio"))[:120],
+                int(result.get("duration_seconds") or 0),
+                result_status,
+                str(result.get("analysis_purpose", "quality_evaluation")),
+                result.get("processing_time"),
+                import_id,
+                imported_at,
+            ),
+        )
+        assessment_id = int(cursor.lastrowid)
+        destination = _analysis_directory(g.user_id, assessment_id)
+        artifact_paths: dict[str, str] = {}
+        for kind, image in images.items():
+            artifact = destination / f"guest_import_{kind}.png"
+            artifact.write_bytes(image)
+            artifact_paths[kind] = _analysis_artifact_relative_path(artifact)
+
+        cursor.execute(
+            """INSERT INTO audio_upload
+               (assessment_id, file_name, genre_name, score, status,
+                size_bytes, mime_type)
+               VALUES (%s, %s, NULL, %s, %s, %s, %s)""",
+            (
+                assessment_id,
+                str(result.get("file_name", "Guest audio"))[:255],
+                result.get("score"),
+                result_status,
+                result.get("size_bytes"),
+                str(result.get("mime_type", "application/octet-stream"))[:100],
+            ),
+        )
+        cursor.execute(
+            """INSERT INTO audio_analysis_result
+               (assessment_id, threshold_id, preset_id, quality_score,
+                noise_level, distortion_level, bass, treble, loudness,
+                sharpness, flatness, empirical_status, worst_feature_status,
+                worst_features, empirical_details, scoring_algorithm_version,
+                reference_recording_count, waveform_path, spectrogram_path)
+               VALUES (%s, NULL, NULL, %s, %s, %s, %s, %s, %s, %s, %s,
+                       %s, %s, %s, %s, %s, %s, %s, %s)""",
+            (
+                assessment_id,
+                result.get("score"),
+                result.get("noise_level"),
+                result.get("distortion_level"),
+                result.get("bass"),
+                result.get("treble"),
+                result.get("loudness"),
+                result.get("sharpness"),
+                result.get("flatness"),
+                empirical.get("overall_status"),
+                empirical.get("worst_feature_status"),
+                json.dumps(empirical.get("worst_features", []), allow_nan=False),
+                json.dumps(empirical, allow_nan=False),
+                empirical.get("algorithm_version"),
+                empirical.get("reference_recording_count"),
+                artifact_paths["waveform"],
+                artifact_paths["spectrogram"],
+            ),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        if destination is not None and destination.is_dir():
+            shutil.rmtree(destination, ignore_errors=True)
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+    audit(
+        "guest_audio_imported",
+        "success",
+        user_id=g.user_id,
+        resource_type="assessment",
+        resource_id=assessment_id,
     )
+    return jsonify({"assessment_id": assessment_id, "imported": True}), 201
 
 
 @require_auth("user")
