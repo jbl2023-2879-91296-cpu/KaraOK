@@ -52,6 +52,8 @@ class AuthApi {
     required String password,
   }) => _client.login(identifier: identifier, password: password);
 
+  Future<Map<String, dynamic>?> restoreSession() => _client.restoreSession();
+
   Future<void> logout() => _client.logout();
 
   Future<Map<String, dynamic>> requestPasswordReset(String email) =>

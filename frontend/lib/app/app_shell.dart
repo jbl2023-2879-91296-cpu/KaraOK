@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/account/presentation/pages/change_password_screen.dart';
 import 'package:karaok_app/features/home/presentation/pages/user_home_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/previous_results_screen.dart';
@@ -25,9 +24,6 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex.clamp(0, 2);
-    if (!UserSession.instance.isLoggedIn) {
-      UserSession.instance.setGuest('user');
-    }
   }
 
   @override

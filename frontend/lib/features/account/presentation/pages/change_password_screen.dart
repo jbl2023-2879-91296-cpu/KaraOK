@@ -6,6 +6,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import 'package:karaok_app/app/app_shell.dart';
+import 'package:karaok_app/core/security/secure_token_store.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/account/data/account_api.dart';
 import 'package:karaok_app/features/auth/data/auth_api.dart';
@@ -194,26 +195,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         profileImageChanged: _profileImageChanged,
       );
       final session = UserSession.instance;
-      session.setUser(
-        id: user['id'] as int? ?? session.id!,
-        name: user['name'] as String? ?? '',
-        username: user['username'] as String?,
-        firstName: user['first_name'] as String?,
-        lastName: user['last_name'] as String?,
-        email: user['email'] as String? ?? session.email!,
-        address: user['address'] as String?,
-        city: user['city'] as String?,
-        stateProvince: user['state_province'] as String?,
-        areaCode: user['area_code'] as String?,
-        country: user['country'] as String?,
-        countryCode: user['country_code'] as String?,
-        phoneNumber: user['phone_number'] as String?,
-        birthday: user['birthday'] as String?,
-        profileImageBase64: user['profile_image_base64'] as String?,
-        profileImageMime: user['profile_image_mime'] as String?,
-        userType: user['user_type'] as String? ?? session.userType!,
-        requiresPasswordChange: user['requires_password_change'] == true,
-      );
+      session.setUserFromMap(user);
       if (!mounted) return;
       setState(() {
         _editingProfile = false;
@@ -665,12 +647,20 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   }
 
   Future<void> _logOut() async {
+    final lastIdentifier = UserSession.instance.email;
+    if (lastIdentifier != null) {
+      try {
+        await SecureTokenStore.instance.saveLastIdentifier(lastIdentifier);
+      } catch (_) {
+        // Logging out must still complete if the convenience value cannot save.
+      }
+    }
     try {
       await AuthApi().logout();
     } catch (_) {
       // Local logout still completes when the server is unavailable.
     } finally {
-      UserSession.instance.clear();
+      UserSession.instance.setGuest('user');
     }
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
