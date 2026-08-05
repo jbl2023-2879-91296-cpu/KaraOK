@@ -61,6 +61,7 @@ from .config import (
 from .infrastructure.database import get_db
 from .extensions import configure_extensions
 from .modules.assessments.routes import blueprint as assessments_routes
+from .modules.admin_data.routes import blueprint as admin_data_routes
 from .modules.audio_analysis.routes import blueprint as audio_analysis_routes
 from .modules.audit.routes import blueprint as audit_routes
 from .modules.auth.routes import blueprint as auth_routes
@@ -2352,6 +2353,7 @@ def get_request_logs():
 
 for route_group in (
     system_routes,
+    admin_data_routes,
     auth_routes,
     users_routes,
     assessments_routes,

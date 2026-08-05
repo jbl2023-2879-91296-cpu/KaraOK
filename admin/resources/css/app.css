@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { color-scheme: dark; }
+  body { @apply bg-ink text-slate-100 antialiased; }
+  table { @apply min-w-full text-left text-sm; }
+  th { @apply whitespace-nowrap border-b border-line bg-slate-900/80 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-400; }
+  td { @apply max-w-md border-b border-line/60 px-4 py-3 align-top text-slate-200; }
+  code { @apply text-xs text-sky-200; }
+}
+
+@layer components {
+  .panel { @apply rounded-xl border border-line bg-panel shadow-lg shadow-black/10; }
+  .btn { @apply inline-flex items-center justify-center rounded-lg border border-line bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-accent; }
+  .btn-primary { @apply border-accent bg-accent text-white hover:bg-blue-500; }
+  .field { @apply block text-sm font-semibold text-slate-300; }
+  .input { @apply mt-1 w-full rounded-lg border border-line bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-accent focus:ring-1 focus:ring-accent; }
+  .eyebrow { @apply text-xs font-bold uppercase tracking-[0.18em] text-sky-400; }
+  .muted { @apply text-slate-400; }
+  .section-title { @apply text-lg font-semibold text-white; }
+  .nav-link { @apply block rounded-lg px-3 py-2 text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-white; }
+  .nav-active { @apply bg-slate-800 text-white; }
+  .stat { @apply panel p-5; }
+  .stat span { @apply block text-sm text-slate-400; }
+  .stat strong { @apply mt-2 block text-2xl font-semibold; }
+  .badge { @apply inline-flex rounded-full border border-line bg-slate-800 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-slate-300; }
+  .badge-ok { @apply border-emerald-800 bg-emerald-950 text-emerald-300; }
+  .badge-high { @apply border-red-800 bg-red-950 text-red-300; }
+  .badge-medium { @apply border-amber-800 bg-amber-950 text-amber-300; }
+  .badge-low, .badge-info { @apply border-sky-800 bg-sky-950 text-sky-300; }
+  .alert { @apply rounded-lg border border-sky-900 bg-sky-950/60 p-4 text-sm text-sky-100; }
+  .alert-error { @apply border-red-900 bg-red-950/60 text-red-100; }
+  .alert-ok { @apply border-emerald-900 bg-emerald-950/60 text-emerald-100; }
+  .null { @apply font-mono text-xs italic text-fuchsia-300; }
+  .details { @apply mt-5 grid grid-cols-[minmax(130px,220px)_1fr] gap-x-5 gap-y-3 text-sm; }
+  .details dt { @apply text-slate-400; }
+  .details dd { @apply font-medium text-slate-100; }
+  .check { @apply flex items-start gap-3 rounded-lg border border-line bg-slate-900 p-4; }
+  .check input { @apply mt-1 h-4 w-4 accent-blue-500; }
+  .check span { @apply grid; }
+  .check small { @apply mt-1 text-slate-400; }
+}
