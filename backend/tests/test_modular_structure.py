@@ -26,6 +26,8 @@ class ModularStructureTests(unittest.TestCase):
                 "audio_analysis.create_audio_upload",
                 "genre_settings.get_genre_settings",
                 "audit.get_audit_logs",
+                "admin_data.health",
+                "admin_data.records",
             }.issubset(endpoints)
         )
 

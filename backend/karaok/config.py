@@ -24,6 +24,20 @@ DB_CONFIG = {
     "password": os.getenv("DB_PASSWORD", ""),
     "port": int(os.getenv("DB_PORT", "3306")),
 }
+
+# The Data Administration API uses a distinct database identity. Keeping it
+# separate from the public application account makes its CRUD permissions
+# explicit and independently revocable. It never receives schema privileges.
+ADMIN_DB_CONFIG = {
+    "host": os.getenv("ADMIN_DB_HOST", os.getenv("DB_HOST", "localhost")),
+    "database": os.getenv("ADMIN_DB_NAME", os.getenv("DB_NAME", "karaok_db")),
+    "user": os.getenv("ADMIN_DB_USER", ""),
+    "password": os.getenv("ADMIN_DB_PASSWORD", ""),
+    "port": int(os.getenv("ADMIN_DB_PORT", os.getenv("DB_PORT", "3306"))),
+}
+ADMIN_DATA_API_ENABLED = os.getenv("ADMIN_DATA_API_ENABLED", "false").lower() == "true"
+ADMIN_DATA_API_KEY_HASH = os.getenv("ADMIN_DATA_API_KEY_HASH", "").strip().lower()
+ADMIN_DATA_API_QUERY_TIMEOUT_MS = int(os.getenv("ADMIN_DATA_API_QUERY_TIMEOUT_MS", "5000"))
 JWT_SECRET = os.getenv("JWT_SECRET", "")
 JWT_ISSUER = "karaok-api"
 ACCESS_TOKEN_MINUTES = int(os.getenv("ACCESS_TOKEN_MINUTES", "15"))

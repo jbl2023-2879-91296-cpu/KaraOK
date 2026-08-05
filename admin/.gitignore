@@ -1,0 +1,14 @@
+.env
+/vendor/
+/node_modules/
+/public/build/*
+!/public/build/.gitkeep
+/storage/cache/*
+!/storage/cache/.gitkeep
+/storage/logs/*
+!/storage/logs/.gitkeep
+/storage/private/*
+!/storage/private/.gitkeep
+README.md
+*.local.md
+
