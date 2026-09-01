@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "profile_version": "test-v1",
+  "generated_at": "2026-09-02T00:00:00Z",
+  "generator_version": "test-generator-1",
+  "sources": {
+    "name": "Licensed test corpus",
+    "release": "test-release-1",
+    "license": "CC BY 4.0",
+    "citation_url": "https://example.test/genre-profile-source"
+  },
+  "artifact_checksum": "d77d039d0d52a6abe53548511e6d2fcf852e688fa5a7262fdbca0fd57811391a",
+  "genres": {
+    "rock": {
+      "sample_count": 5,
+      "metrics": {
+        "loudness": {"lower": -14.0, "preferred": -12.0, "upper": -10.0, "robust_scale": 2.0, "unit": "LUFS"},
+        "bass": {"lower": 20.0, "preferred": 30.0, "upper": 40.0, "robust_scale": 10.0, "unit": "percent"},
+        "treble": {"lower": 2.0, "preferred": 3.0, "upper": 4.0, "robust_scale": 1.0, "unit": "percent"},
+        "sharpness": {"lower": 0.1, "preferred": 0.2, "upper": 0.3, "robust_scale": 0.1, "unit": "normalized_score"},
+        "flatness": {"lower": 0.01, "preferred": 0.02, "upper": 0.03, "robust_scale": 0.01, "unit": "ratio"}
+      }
+    }
+  }
+}
