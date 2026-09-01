@@ -4,12 +4,22 @@
   "generated_at": "2026-09-02T00:00:00Z",
   "generator_version": "test-generator-1",
   "sources": {
-    "name": "Licensed test corpus",
+    "source": "Licensed test corpus",
     "release": "test-release-1",
     "license": "CC BY 4.0",
-    "citation_url": "https://example.test/genre-profile-source"
+    "citation_url": "https://example.test/genre-profile-source",
+    "selection_filters": {"analysis_status": "completed"},
+    "compatible_feature_notes": "All five KaraOK analyzer features are compatible.",
+    "calculation_method": "linear quartiles with robust scale",
+    "recordings": [
+      {"recording_id": "rock-001", "genre": "rock"},
+      {"recording_id": "rock-002", "genre": "rock"},
+      {"recording_id": "rock-003", "genre": "rock"},
+      {"recording_id": "rock-004", "genre": "rock"},
+      {"recording_id": "rock-005", "genre": "rock"}
+    ]
   },
-  "artifact_checksum": "d77d039d0d52a6abe53548511e6d2fcf852e688fa5a7262fdbca0fd57811391a",
+  "artifact_checksum": "4a2fa8e405f399f80beeb0e89c09828af477ffa157c8d5ea753680c72a36bf08",
   "genres": {
     "rock": {
       "sample_count": 5,

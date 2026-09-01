@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
@@ -119,6 +120,63 @@ def _canonical_checksum(data: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def _source_entries(sources: Any) -> tuple[Mapping[str, Any], ...]:
+    if isinstance(sources, Mapping):
+        return (sources,)
+    if isinstance(sources, list) and sources and all(
+        isinstance(source, Mapping) for source in sources
+    ):
+        return tuple(sources)
+    raise ValueError("Genre profile artifact requires source metadata objects")
+
+
+def _validated_source_recordings(
+    sources: Any,
+    profiles: Mapping[str, GenreProfile],
+) -> None:
+    """Require auditable licensed recordings for every enabled genre profile."""
+
+    counts = {key: 0 for key in profiles}
+    recording_ids: set[str] = set()
+    for source in _source_entries(sources):
+        _required_string(source, "source")
+        if not (
+            isinstance(source.get("release"), str)
+            and source["release"].strip()
+            or isinstance(source.get("checksum"), str)
+            and source["checksum"].strip()
+        ):
+            raise ValueError("Genre profile source requires a release or checksum")
+        _required_string(source, "license")
+        _required_string(source, "citation_url")
+        filters = source.get("selection_filters")
+        if not isinstance(filters, Mapping) or not filters:
+            raise ValueError("Genre profile source requires selection_filters")
+        _required_string(source, "compatible_feature_notes")
+        _required_string(source, "calculation_method")
+        recordings = source.get("recordings")
+        if not isinstance(recordings, list) or not recordings:
+            raise ValueError("Genre profile source requires non-empty recordings")
+        for recording in recordings:
+            if not isinstance(recording, Mapping):
+                raise ValueError("Genre profile source recording must be an object")
+            recording_id = _required_string(recording, "recording_id")
+            if recording_id in recording_ids:
+                raise ValueError(f"Genre profile sources duplicate recording_id {recording_id!r}")
+            recording_ids.add(recording_id)
+            genre = normalize_genre(_required_string(recording, "genre"))
+            if genre not in counts:
+                raise ValueError(f"Licensed recording cohort has no enabled profile for {genre!r}")
+            counts[genre] += 1
+
+    for key, profile in profiles.items():
+        if counts[key] != profile.sample_count:
+            raise ValueError(
+                f"Genre profile {key!r} licensed recording cohort has {counts[key]} recordings; "
+                f"expected {profile.sample_count}"
+            )
+
+
 def parse_genre_profile_artifact(data: Mapping[str, Any]) -> GenreProfileArtifact:
     """Validate and parse a JSON-compatible genre profile artifact."""
 
@@ -131,10 +189,6 @@ def parse_genre_profile_artifact(data: Mapping[str, Any]) -> GenreProfileArtifac
     generated_at = _required_string(data, "generated_at")
     generator_version = _required_string(data, "generator_version")
     sources = data.get("sources")
-    if not isinstance(sources, Mapping):
-        raise ValueError("Genre profile artifact requires a sources object")
-    _required_string(sources, "license")
-    _required_string(sources, "citation_url")
 
     genres_data = data.get("genres")
     if not isinstance(genres_data, Mapping) or not genres_data:
@@ -166,6 +220,8 @@ def parse_genre_profile_artifact(data: Mapping[str, Any]) -> GenreProfileArtifac
                 raise ValueError(f"Genre metric {metric!r} is incomplete") from error
         profiles[key] = GenreProfile(key, sample_count, MappingProxyType(metrics))
 
+    _validated_source_recordings(sources, profiles)
+
     checksum = _required_string(data, "artifact_checksum")
     expected_checksum = _canonical_checksum(data)
     if checksum != expected_checksum:
@@ -182,11 +238,8 @@ def parse_genre_profile_artifact(data: Mapping[str, Any]) -> GenreProfileArtifac
     )
 
 
-def load_genre_profiles(
-    path: str | Path = DEFAULT_GENRE_PROFILE_PATH,
-) -> GenreProfileArtifact:
-    """Load and validate a genre profile artifact from JSON."""
-
+@lru_cache(maxsize=None)
+def _load_genre_profiles_cached(path: str) -> GenreProfileArtifact:
     profile_path = Path(path)
     try:
         data = json.loads(profile_path.read_text(encoding="utf-8"))
@@ -195,3 +248,17 @@ def load_genre_profiles(
     except json.JSONDecodeError as error:
         raise ValueError(f"Genre profile file is not valid JSON: {error}") from error
     return parse_genre_profile_artifact(data)
+
+
+def clear_genre_profile_cache() -> None:
+    """Clear cached artifacts for isolated tests or explicit runtime reloads."""
+
+    _load_genre_profiles_cached.cache_clear()
+
+
+def load_genre_profiles(
+    path: str | Path = DEFAULT_GENRE_PROFILE_PATH,
+) -> GenreProfileArtifact:
+    """Load and validate a genre profile artifact from JSON."""
+
+    return _load_genre_profiles_cached(str(Path(path).resolve()))
