@@ -7,4 +7,5 @@ backend/uploads/
 __pycache__/
 *.py[cod]
 /build/
+.worktrees/
 README.md
