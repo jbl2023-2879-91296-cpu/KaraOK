@@ -1,7 +1,12 @@
 """Empirical good-audio thresholds and scoring helpers."""
 
 from .metric_definitions import METRIC_DEFINITIONS, MetricDefinition
-from .genre_profiles import GenreProfileArtifact, load_genre_profiles, normalize_genre
+from .genre_profiles import (
+    GenreProfileArtifact,
+    clear_genre_profile_cache,
+    load_genre_profiles,
+    normalize_genre,
+)
 from .scoring import (
     BAD,
     GOOD,
@@ -21,6 +26,7 @@ __all__ = [
     "NOT_EVALUATED",
     "MetricDefinition",
     "GenreProfileArtifact",
+    "clear_genre_profile_cache",
     "classify_feature",
     "evaluate_features",
     "load_thresholds",
