@@ -12,6 +12,8 @@ commands in order and stop immediately if a verification step fails.
 - Service: `karaok-api`
 - Internal API: `http://127.0.0.1:8000/api`
 - Public API: `https://139.99.89.112/api`
+- Data Administration API: `https://139.99.89.112/api/admin/data`
+- Local Admin Console: `http://127.0.0.1:8080` on the development computer
 - Database: `karaok_db`
 - Application service account: `karaok`
 - Persistent uploads and reports: `/var/lib/karaok/uploads`
@@ -110,7 +112,9 @@ test -x backend/.venv/bin/python || python3 -m venv backend/.venv
 
 backend/.venv/bin/python -m pip install --upgrade pip
 backend/.venv/bin/python -m pip install -r backend/requirements.txt
-backend/.venv/bin/python -m compileall backend/karaok
+KARAOK_COMPILE_CACHE="$(sudo -u karaok mktemp -d /tmp/karaok-compile.XXXXXX)"
+sudo -u karaok env PYTHONPYCACHEPREFIX="$KARAOK_COMPILE_CACHE" \
+  backend/.venv/bin/python -m compileall backend/karaok backend/scripts
 ```
 
 Do not expose `.env` to the `ubuntu` account. The service user must be able to read it:
@@ -139,10 +143,12 @@ sudo install -d \
   -g karaok \
   -m 0750 \
   "$CACHE_ROOT/numba" \
-  "$CACHE_ROOT/matplotlib"
+  "$CACHE_ROOT/matplotlib" \
+  "$CACHE_ROOT/xdg"
 
 sudo -u karaok test -w "$CACHE_ROOT/numba"
 sudo -u karaok test -w "$CACHE_ROOT/matplotlib"
+sudo -u karaok test -w "$CACHE_ROOT/xdg"
 ```
 
 Confirm that Librosa can initialize Numba with this cache:
@@ -163,8 +169,8 @@ Librosa and Numba cache: OK
 ## 7. Run the correct live-server test suite
 
 The live server intentionally does not contain the private
-`results/results.csv` threshold-derivation dataset. Run the 48 deployment tests
-below. The complete 56-test suite, including the eight dataset derivation
+`results/results.csv` threshold-derivation dataset. Run the 58 deployment tests
+below. The complete 66-test suite, including the eight dataset derivation
 tests, is run on the development computer.
 
 ```bash
@@ -173,9 +179,12 @@ cd /opt/karaok/app/backend
 CACHE_ROOT=/var/lib/karaok/uploads/_analysis/_runtime_cache
 
 sudo -u karaok env \
+  PYTHONDONTWRITEBYTECODE=1 \
   NUMBA_CACHE_DIR="$CACHE_ROOT/numba" \
   MPLCONFIGDIR="$CACHE_ROOT/matplotlib" \
+  XDG_CACHE_HOME="$CACHE_ROOT/xdg" \
   ./.venv/bin/python -m unittest \
+  tests.test_admin_data_api \
   tests.test_audio_analyzer_safety \
   tests.test_audio_pipeline \
   tests.test_audio_validation \
@@ -187,14 +196,53 @@ sudo -u karaok env \
 Expected final result:
 
 ```text
-Ran 48 tests
+Ran 58 tests
 
 OK
 ```
 
 Do not rebuild the database or restart the API if any test fails.
 
-## 8. Rebuild the MySQL schema
+## 8. Configure the Data Administration API
+
+The administration system uses three independent credentials:
+
+- Password A signs in to the local Admin Console.
+- Password B belongs to the server-only MySQL identity `karaok_admin_api`.
+- Raw API Key C stays in local `admin/.env`; only its SHA-256 hash belongs in
+  live `backend/.env`.
+
+Create `karaok_admin_api` for the actual loopback host used by MySQL. Grant
+`SELECT` and `SHOW VIEW` on `karaok_db`, then grant only the table/column writes
+implemented in `backend/karaok/modules/admin_data/policy.py`. Never grant
+`CREATE`, `ALTER`, `DROP`, `FILE`, `GRANT OPTION`, or global privileges.
+
+The protected live environment must contain:
+
+```dotenv
+ADMIN_DATA_API_ENABLED=true
+ADMIN_DATA_API_KEY_HASH=<SHA256_HASH_OF_API_KEY_C>
+ADMIN_DATA_API_QUERY_TIMEOUT_MS=5000
+ADMIN_DB_HOST=localhost
+ADMIN_DB_PORT=3306
+ADMIN_DB_NAME=karaok_db
+ADMIN_DB_USER=karaok_admin_api
+ADMIN_DB_PASSWORD=<PASSWORD_B>
+```
+
+Verify the configuration without printing secrets:
+
+```bash
+cd /opt/karaok/app/backend
+
+sudo -u karaok ./.venv/bin/python -c "from karaok.config import ADMIN_DATA_API_ENABLED, ADMIN_DATA_API_KEY_HASH, ADMIN_DB_CONFIG; assert ADMIN_DATA_API_ENABLED; assert len(ADMIN_DATA_API_KEY_HASH) == 64; assert ADMIN_DB_CONFIG['user'] == 'karaok_admin_api'; assert ADMIN_DB_CONFIG['password']; print('Administration configuration: OK')"
+
+sudo -u karaok ./.venv/bin/python -c "from karaok.infrastructure.database import get_admin_db; c=get_admin_db(); q=c.cursor(); q.execute('SELECT CURRENT_USER(), DATABASE()'); print(q.fetchone()); q.close(); c.close()"
+```
+
+The administration feature requires no MySQL schema rebuild.
+
+## 9. Rebuild the MySQL schema
 
 > **Destructive operation:** This section permanently deletes all live users,
 > sessions, assessments, settings, and database logs. Run it only when a full
@@ -263,7 +311,7 @@ sudo mysql -e "SHOW GRANTS FOR 'karaok_app'@'localhost';"
 
 If `.env` shows a different `DB_USER`, replace `karaok_app` with that username. If the discovery query returns no rows, stop and inspect the API's existing database configuration before creating or changing any MySQL account.
 
-## 9. Restart and verify the API
+## 10. Restart and verify the API
 
 ```bash
 sudo systemctl restart karaok-api
@@ -287,6 +335,17 @@ Expected response from each endpoint:
 { "db": "connected", "status": "ok" }
 ```
 
+Confirm that the administration route exists and rejects unauthenticated
+requests:
+
+```bash
+curl -sS -o /dev/null -w "HTTP %{http_code}\n" \
+  https://139.99.89.112/api/admin/data/health
+```
+
+Expected output is `HTTP 401`. The authenticated check is performed from the
+local Admin Console using raw API Key C.
+
 Inspect recent service logs:
 
 ```bash
@@ -301,7 +360,24 @@ sudo journalctl -u karaok-api -f -o cat
 
 Press `Ctrl+C` to stop following the log.
 
-## 10. Build the updated Android APK
+## 11. Run the local Admin Console
+
+No SSH tunnel is required. On the development computer, put the public API URL
+and raw API Key C in ignored `admin/.env`, then run:
+
+```powershell
+cd "C:\Programming\Mobile Applications\Flutter\KaraOK\admin"
+composer install
+npm install
+npm run css:build
+composer test
+composer serve
+```
+
+Open `http://127.0.0.1:8080/login`, sign in with local username `admin` and
+Password A, then verify **API status**. Password B must never be stored locally.
+
+## 12. Build the updated Android APK
 
 Exit the SSH connection:
 
@@ -350,7 +426,7 @@ Resolution: run backend imports and tests through `sudo -u karaok`. Do not make
 Cause: the private threshold-derivation dataset is intentionally absent from
 the live Git checkout.
 
-Resolution: run the 49-test deployment suite in section 7. Do not upload the
+Resolution: run the 58-test deployment suite in section 7. Do not upload the
 private dataset merely to run production deployment tests.
 
 ### `cannot cache function ... no locator available`

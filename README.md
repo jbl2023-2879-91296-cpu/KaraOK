@@ -20,8 +20,12 @@ spectrogram reports.
   to 5 MB in common phone-image formats.
 - Signed-in analysis history and visual-report images are cached per user in
   app-private storage, then refreshed from the server when appropriate.
+- Guest assessments and visual reports remain device-local. Signing in or
+  creating an account does not transfer or assign guest records to that account.
 - Completed results include a score, feature grading, noise and distortion
   measurements, and generated waveform and spectrogram reports.
+- A local-only KaraOK Admin Console provides analytics, schema visibility, and
+  policy-controlled record management through the live Data Administration API.
 
 ## Technology
 
@@ -31,6 +35,7 @@ spectrogram reports.
 | API            | Python, Flask, JWT, Argon2id              |
 | Audio analysis | Librosa, NumPy, SciPy, Matplotlib, Pandas |
 | Database       | MySQL                                     |
+| Administration | Local PHP 8.2, Tailwind CSS, Flask HTTPS API |
 | Production     | Gunicorn, Nginx, systemd                  |
 
 ## Repository layout
@@ -38,6 +43,7 @@ spectrogram reports.
 ```text
 KaraOK/
 |-- backend/          Flask API, analyzer, thresholds, and tests
+|-- admin/            Local Admin Console and its ignored operating guide
 |-- frontend/         Flutter application and widget tests
 |-- database/         Fresh-install MySQL schema
 |-- deploy/ovh/       Production service and web-server configuration
@@ -80,7 +86,25 @@ Never commit that file. Then start the API:
 
 The default health endpoint is `http://127.0.0.1:5000/api/health`.
 
-### 3. Run Flutter
+### 3. Run the local Admin Console
+
+The Admin Console calls the backend Data Administration API over HTTPS and
+does not connect directly to MySQL or require an SSH tunnel. Its one-time
+backend account, API-key, deployment, and local startup instructions are in
+the ignored `admin/README.md`.
+
+```powershell
+cd admin
+composer install
+npm install
+npm run css:build
+composer test
+composer serve
+```
+
+Open `http://127.0.0.1:8080/login`.
+
+### 4. Run Flutter
 
 ```powershell
 cd frontend
@@ -107,6 +131,13 @@ cd backend
 .\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py" -v
 ```
 
+Run the local Admin Console suite:
+
+```powershell
+cd admin
+composer test
+```
+
 ## Security and publication
 
 - Passwords use Argon2id hashes.
@@ -122,9 +153,11 @@ cd backend
 - Completed guest reports and their two plots remain in app-private device
   storage across restarts. Android backup/transfer is disabled, so uninstalling
   the app permanently removes those files instead of restoring them later.
-- A newly verified account claims pending guest reports with server-signed,
-  image-hash-verified receipts; successful imports become owned MySQL records
-  while the original local files remain on the phone.
+- Guest reports remain separate from authenticated account history. Creating an
+  account or signing in does not upload, claim, or reassign those local reports.
+- Data Administration API requests require a high-entropy machine key, use an
+  independently revocable MySQL identity, and enforce explicit per-table CRUD
+  capabilities without accepting arbitrary SQL or schema changes.
 - API errors are returned as JSON.
 - Secrets belong only in ignored environment files or a production secret
   manager. No real credentials should appear in this public README.
