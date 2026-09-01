@@ -295,7 +295,11 @@ new suggestions.
 
 Guests receive the same response shape but no server database row. Their
 recommendation and plots are saved through the existing device-local guest
-report lifecycle.
+report lifecycle. An initial guest recommendation also receives a short-lived,
+signed verification token containing only the genre, scale, recommended
+positions, before score, and algorithm/profile versions required for the one
+optional follow-up. The token expires after 24 hours, is never persisted or
+logged by the server, and cannot be used for authenticated resources.
 
 ## API contract
 
@@ -315,14 +319,17 @@ fields:
     "sharpness": 5.0,
     "flatness": 5.0
   },
-  "verification_of": null
+  "verification_of": null,
+  "verification_token": null
 }
 ```
 
 `current_settings` and `amplifier_scale` are serialized JSON multipart fields.
 Authenticated clients normally reference a stored amplifier profile; guest
-clients send the complete scale. The server validates all values regardless of
-client-side validation.
+clients send the complete scale. Authenticated verification sends
+`verification_of`; guest verification sends the signed `verification_token`.
+The fields are mutually exclusive, and the server validates all values
+regardless of client-side validation.
 
 The successful response retains the normal analysis fields and adds:
 
@@ -349,22 +356,38 @@ The successful response retains the normal analysis fields and adds:
       "sharpness": 5.0,
       "flatness": 4.5
     },
-    "adjustments": []
+    "adjustments": {
+      "volume": {"delta": 0.5, "reason_code": "below_genre_range"},
+      "bass": {"delta": 1.5, "reason_code": "below_genre_range"},
+      "treble": {"delta": -0.5, "reason_code": "above_genre_range"},
+      "sharpness": {"delta": 0.0, "reason_code": "within_genre_range"},
+      "flatness": {"delta": -0.5, "reason_code": "above_genre_range"}
+    },
+    "verification_token": null
   }
 }
 ```
 
 The supporting routes are:
 
+- `GET /api/settings-profile-metadata`
 - `GET/POST /api/amplifier-profiles`
 - `GET/PATCH/DELETE /api/amplifier-profiles/<id>`
 - `GET /api/settings-recommendations/<id>`
 - `POST /api/settings-recommendations/<id>/apply`
 
-The existing authenticated and guest audio-analysis routes generate the
-recommendation. Verification uses the same upload route with
-`verification_of`. It must reference an owned, applied recommendation and is
-limited to one refinement in v1.
+The public metadata route returns the artifact version and enabled genre keys,
+so Flutter never carries a second, potentially stale enabled-genre list. The
+existing authenticated and guest audio-analysis routes generate the
+recommendation. Authenticated verification uses `verification_of`, which must
+reference an owned, applied recommendation. Guest verification uses the signed
+token from the initial response. Both paths are limited to one refinement in
+v1.
+
+All new settings-recommendation routes and settings-purpose upload behavior are
+guarded by `SETTINGS_RECOMMENDATIONS_ENABLED`, whose safe default is `false`.
+They return 404 while disabled; ordinary quality-evaluation uploads remain
+unchanged.
 
 ## Flutter design
 
