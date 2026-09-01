@@ -2,6 +2,70 @@
 
 All notable changes to KaraOK are documented here.
 
+## 2026-08-05 - Data Administration API and local Admin Console
+
+### Added
+
+- Added the authenticated Flask Data Administration API under
+  `/api/admin/data`. It exposes health diagnostics, a policy-filtered table
+  catalog, schema/index metadata, foreign-key relationships, paginated records,
+  aggregate analytics, and controlled create/update/delete operations.
+- Added explicit per-table capabilities. Genre presets and quality thresholds
+  support full CRUD; users support active-state changes; assessments support
+  status updates and confirmed deletion; user genre settings support update and
+  deletion; analysis results, uploads, and logs remain read only.
+- Added a separately configurable `karaok_admin_api` MySQL connection and an
+  administration API enable switch, query timeout, and SHA-256 machine-key
+  authentication. Raw API keys are generated locally while only their hash is
+  stored by the backend.
+- Added the local PHP 8.2 KaraOK Admin Console with local hashed-password login,
+  CSRF protection, throttling, expiring sessions, analytics, record management,
+  schema health, recommendations, privacy masking, and local activity history.
+- Added administration regression coverage for missing/incorrect API keys,
+  protected credential tables, identifier rejection, exact delete
+  confirmation, numeric bounds, CRUD auditing, capability policy, and
+  assessment-artifact cleanup.
+
+### Changed
+
+- Replaced the Admin Console's direct PDO/MySQL connection and manually active
+  SSH tunnel with verified HTTPS calls to the live backend. Password B now
+  stays server-side; the local console stores only raw API Key C in its ignored
+  environment file.
+- Renamed the database inspection interface to **KaraOK Admin Console** and its
+  backend component to **KaraOK Data Administration API** to reflect its
+  analytics and controlled CRUD responsibilities.
+- Kept guest assessments and visual reports exclusively in app-private device
+  storage. Account creation and sign-in no longer upload, claim, or assign guest
+  reports to an authenticated user.
+- Updated production testing to use writable Matplotlib, Numba, and XDG caches
+  without forcing `PYTHONPYCACHEPREFIX` during runtime tests. The production
+  suite excludes only the private CSV-dependent calibration module.
+
+### Security
+
+- Rejected arbitrary SQL, unknown tables, unsupported mutation fields, remote
+  non-HTTPS API URLs, API keys shorter than 32 characters, unbounded page sizes,
+  and unconfirmed large-table searches.
+- Prevented password hashes, refresh-token hashes, OTP hashes, profile-image
+  bytes, and binary contents from being serialized through administration
+  record endpoints.
+- Required exact server-side confirmation for deletions and retained existing
+  contained filesystem cleanup when an assessment is removed administratively.
+- Kept schema privileges outside the administration database account; no
+  schema rebuild or migration was needed.
+
+### Validation and deployment
+
+- Passed all 66 development backend tests and all 6 PHP Admin Console tests.
+- Passed the 58-test production-safe backend suite on the VPS.
+- Verified the restarted Gunicorn service, internal/public health endpoints,
+  unauthenticated `401` protection for the administration API, and a successful
+  authenticated Admin Console connection without an SSH tunnel.
+- Compiled the Tailwind interface, validated Composer configuration, linted all
+  PHP sources, and confirmed the renamed login page and security headers over a
+  local HTTP smoke test.
+
 ## 2026-08-01 - Persistent sessions, mobile profile photos, and local reports
 
 ### Added
