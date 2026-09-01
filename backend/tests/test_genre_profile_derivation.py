@@ -1,11 +1,15 @@
 import csv
+import json
 import math
+import os
 import shutil
 import unittest
 import uuid
+from collections import Counter
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 from audio_thresholds.derive_genre_profiles import (
     MANIFEST_COLUMNS,
@@ -15,6 +19,7 @@ from audio_thresholds.derive_genre_profiles import (
     extract_measurement,
     generate_profiles,
     load_measurements,
+    main,
 )
 from audio_thresholds.genre_profiles import parse_genre_profile_artifact
 
@@ -157,6 +162,10 @@ class GenreProfileDerivationTests(unittest.TestCase):
                 "Attribution-NonCommercial 4.0",
                 "Attribution-NoDerivatives 4.0",
                 "Unknown custom license",
+                "Attribution 99.0 Proprietary",
+                "Attribution 4.0 International",
+                "Attribution 3.0 Mars",
+                "Attribution-ShareAlike 3.0 Proprietary",
             ):
                 with self.subTest(license=license_name):
                     rows = self._manifest_rows(root)
@@ -165,6 +174,32 @@ class GenreProfileDerivationTests(unittest.TestCase):
                     self._write_manifest(manifest, MANIFEST_COLUMNS, rows)
                     with self.assertRaisesRegex(ValueError, "incompatible individual license"):
                         analyze_manifest(manifest, analyzer=analyzer_result)
+
+    def test_manifest_accepts_only_the_declared_compatible_license_variants(self):
+        compatible = (
+            "Attribution",
+            "CC Attribution",
+            "Creative Commons Attribution",
+            "Public Domain",
+            "Attribution 2.0 UK: England",
+            "Attribution 2.5 Canada",
+            "Attribution 3.0 US",
+            "Attribution 3.0 United States",
+            "Attribution 3.0 International",
+            "Attribution-ShareAlike 3.0 International",
+            "Attribution-Share Alike 3.0 Germany",
+        )
+        with workspace_temporary_directory() as root:
+            for index, license_name in enumerate(compatible):
+                with self.subTest(license=license_name):
+                    rows = self._manifest_rows(root)
+                    rows[0]["license"] = license_name
+                    manifest = root / f"compatible-{index}.csv"
+                    self._write_manifest(manifest, MANIFEST_COLUMNS, rows)
+                    self.assertEqual(
+                        len(analyze_manifest(manifest, analyzer=lambda path: analyzer_result(1.0))),
+                        5,
+                    )
 
     def test_manifest_analysis_binds_each_recording_to_full_provenance(self):
         with workspace_temporary_directory() as root:
@@ -228,8 +263,113 @@ class GenreProfileDerivationTests(unittest.TestCase):
             self.assertIn("genre 'rock'", report.read_text(encoding="utf-8"))
             self.assertIn("metric 'bass'", report.read_text(encoding="utf-8"))
 
+    def test_report_publication_failure_preserves_existing_artifact_and_cleans_staging(self):
+        with workspace_temporary_directory() as root:
+            manifest = root / "manifest.csv"
+            output = root / "profiles.json"
+            report = root / "report.md"
+            sentinel = b"existing-artifact-must-survive\n"
+            output.write_bytes(sentinel)
+            self._write_manifest(manifest, MANIFEST_COLUMNS, self._manifest_rows(root))
+
+            real_replace = os.replace
+
+            def fail_report_publication(source, destination):
+                if Path(destination) == report:
+                    raise OSError("report publication failed")
+                real_replace(source, destination)
+
+            with patch(
+                "audio_thresholds.derive_genre_profiles.os.replace",
+                side_effect=fail_report_publication,
+            ):
+                with self.assertRaisesRegex(OSError, "report publication failed"):
+                    generate_profiles(
+                        manifest,
+                        output,
+                        report,
+                        analyzer=lambda path: analyzer_result(
+                            float(path.stem.split("-")[-1]) + 1
+                        ),
+                    )
+
+            self.assertEqual(output.read_bytes(), sentinel)
+            self.assertEqual(list(root.glob(".*.tmp")), [])
+
+    def test_cli_is_byte_deterministic_and_analyzes_each_manifest_path_once_per_run(self):
+        with workspace_temporary_directory() as root:
+            manifest = root / "manifest.csv"
+            output = root / "profiles.json"
+            report = root / "report.md"
+            rows = self._manifest_rows(root)
+            self._write_manifest(manifest, MANIFEST_COLUMNS, rows)
+            calls: list[Path] = []
+
+            def fake_analyzer(path: Path):
+                calls.append(path)
+                return analyzer_result(float(path.stem.split("-")[-1]) + 1)
+
+            arguments = (
+                "--manifest",
+                str(manifest),
+                "--output",
+                str(output),
+                "--report",
+                str(report),
+                "--minimum-samples",
+                "5",
+            )
+            self.assertEqual(main(arguments, analyzer=fake_analyzer), 0)
+            first_artifact = output.read_bytes()
+            first_report = report.read_bytes()
+            self.assertEqual(main(arguments, analyzer=fake_analyzer), 0)
+
+            expected_paths = Counter((root / row["path"]).resolve() for row in rows)
+            self.assertEqual(Counter(calls[:5]), expected_paths)
+            self.assertEqual(Counter(calls[5:]), expected_paths)
+            self.assertTrue(all(count == 1 for count in expected_paths.values()))
+            self.assertEqual(output.read_bytes(), first_artifact)
+            self.assertEqual(report.read_bytes(), first_report)
+
+    def test_report_exclusion_narrative_tracks_actual_disabled_genres(self):
+        with workspace_temporary_directory() as root:
+            manifest = root / "manifest.csv"
+            output = root / "profiles.json"
+            report = root / "report.md"
+            rows = self._manifest_rows(root, genre="pop")
+            self._write_manifest(manifest, MANIFEST_COLUMNS, rows)
+
+            generate_profiles(
+                manifest,
+                output,
+                report,
+                analyzer=lambda path: analyzer_result(
+                    float(path.stem.split("-")[-1]) + 1
+                ),
+            )
+
+            report_text = report.read_text(encoding="utf-8")
+            self.assertIn(
+                "Rock, Ballad, Hip-Hop, Classical, R&B, and General remain disabled",
+                report_text,
+            )
+            self.assertNotIn(
+                "Ballad, Classical, R&B, and General remain disabled",
+                report_text,
+            )
+
+    def test_committed_production_artifact_enables_only_real_five_track_cohorts(self):
+        artifact_path = Path(__file__).resolve().parents[1] / "audio_thresholds" / "genre_audio_profiles.json"
+        artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(set(artifact["genres"]), {"rock", "pop", "hip-hop"})
+        self.assertEqual(
+            {genre: profile["sample_count"] for genre, profile in artifact["genres"].items()},
+            {"rock": 5, "pop": 5, "hip-hop": 5},
+        )
+
     @staticmethod
-    def _manifest_rows(root: Path) -> list[dict[str, str]]:
+    def _manifest_rows(root: Path, *, genre: str = "rock") -> list[dict[str, str]]:
         audio = root / "audio"
         audio.mkdir(exist_ok=True)
         rows = []
@@ -239,7 +379,7 @@ class GenreProfileDerivationTests(unittest.TestCase):
             rows.append(
                 {
                     "path": str(path.relative_to(root)),
-                    "genre": "rock",
+                    "genre": genre,
                     "source": "Licensed source",
                     "source_version": "release-v1",
                     "license": "CC Attribution",

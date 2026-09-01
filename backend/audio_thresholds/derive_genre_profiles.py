@@ -78,6 +78,32 @@ COMPATIBLE_FEATURE_NOTES = (
     "All five values were re-extracted from source audio by KaraOK's analyzer; "
     "no external precomputed features were mixed into the profiles."
 )
+COMPATIBLE_LICENSES = frozenset(
+    {
+        "attribution",
+        "cc attribution",
+        "creative commons attribution",
+        "public domain",
+        "attribution 2 0 uk england",
+        "attribution 2 5 canada",
+        "attribution 3 0 us",
+        "attribution 3 0 united states",
+        "attribution 3 0 international",
+        "attribution sharealike 3 0 international",
+        "attribution share alike 3 0 international",
+        "attribution sharealike 3 0 germany",
+        "attribution share alike 3 0 germany",
+    }
+)
+GENRE_DISPLAY_NAMES = {
+    "rock": "Rock",
+    "pop": "Pop",
+    "ballad": "Ballad",
+    "hip-hop": "Hip-Hop",
+    "classical": "Classical",
+    "r&b": "R&B",
+    "general": "General",
+}
 
 
 @dataclass(frozen=True)
@@ -121,16 +147,8 @@ def _required(row: Mapping[str, Any], field: str) -> str:
 
 
 def _is_compatible_license(value: str) -> bool:
-    normalized = " ".join(value.strip().lower().split())
-    if re.search(r"\b(?:nc|nd)\b|non[- ]?commercial|no[- ]?deriv", normalized):
-        return False
-    if normalized == "public domain":
-        return True
-    version = r"(?: \d+(?:\.\d+)?(?: [a-z][a-z :.-]*)?)?"
-    return bool(
-        re.fullmatch(rf"attribution(?:-share ?alike)?{version}", normalized)
-        or re.fullmatch(rf"(?:cc|creative commons) attribution{version}", normalized)
-    )
+    normalized = re.sub(r"[^a-z0-9]+", " ", value.strip().lower()).strip()
+    return normalized in COMPATIBLE_LICENSES
 
 
 def _validate_provenance(
@@ -387,6 +405,7 @@ def _report(artifact: Mapping[str, Any], manifest_checksum: str) -> str:
     genres = artifact["genres"]
     enabled = [genre for genre in SUPPORTED_GENRES if genre in genres]
     disabled = [genre for genre in SUPPORTED_GENRES if genre not in genres]
+    disabled_display = _english_list([GENRE_DISPLAY_NAMES[genre] for genre in disabled])
     lines = [
         "# Genre audio profile sources",
         "",
@@ -440,7 +459,7 @@ def _report(artifact: Mapping[str, Any], manifest_checksum: str) -> str:
             "- Accepted individual licenses are Public Domain, Attribution/CC Attribution, and Attribution-ShareAlike variants.",
             "- NonCommercial (NC), NoDerivatives (ND), and unknown/unapproved licenses cause generation to fail; they are never silently included.",
             "- Every selected source file was analyzed by `audio_engine.analyze_audio`; external precomputed features were not used as targets.",
-            "- Ballad, Classical, R&B, and General remain disabled because the manifest contains no compatible cohort for them.",
+            f"- {disabled_display} remain disabled because the manifest contains no compatible cohort for them.",
             "",
             "## Derived quartiles",
             "",
@@ -473,25 +492,41 @@ def _failure_report(error: ValueError, manifest_checksum: str) -> str:
     )
 
 
-def _write_text_atomic(path: Path, content: str) -> None:
+def _english_list(items: Sequence[str]) -> str:
+    if not items:
+        return "No genres"
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return f"{', '.join(items[:-1])}, and {items[-1]}"
+
+
+def _stage_text(path: Path, content: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_name: str | None = None
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        newline="\n",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        handle.write(content)
+        return Path(handle.name)
+
+
+def _publish_staged_file(staged: Path, destination: Path) -> None:
+    os.replace(staged, destination)
+
+
+def _write_text_atomic(path: Path, content: str) -> None:
+    staged = _stage_text(path, content)
     try:
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            newline="\n",
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as handle:
-            handle.write(content)
-            temporary_name = handle.name
-        os.replace(temporary_name, path)
+        _publish_staged_file(staged, path)
     finally:
-        if temporary_name is not None:
-            Path(temporary_name).unlink(missing_ok=True)
+        staged.unlink(missing_ok=True)
 
 
 def generate_profiles(
@@ -525,8 +560,20 @@ def generate_profiles(
         ensure_ascii=False,
         allow_nan=False,
     ) + "\n"
-    _write_text_atomic(output_path, artifact_text)
-    _write_text_atomic(report_path, report_text)
+    staged_artifact: Path | None = None
+    staged_report: Path | None = None
+    try:
+        staged_artifact = _stage_text(output_path, artifact_text)
+        staged_report = _stage_text(report_path, report_text)
+        _publish_staged_file(staged_report, report_path)
+        staged_report = None
+        _publish_staged_file(staged_artifact, output_path)
+        staged_artifact = None
+    finally:
+        if staged_artifact is not None:
+            staged_artifact.unlink(missing_ok=True)
+        if staged_report is not None:
+            staged_report.unlink(missing_ok=True)
     return artifact
 
 
@@ -539,7 +586,11 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    analyzer: Callable[[Path], Mapping[str, Any]] | None = None,
+) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
     try:
@@ -548,6 +599,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.output,
             args.report,
             minimum_samples=args.minimum_samples,
+            analyzer=analyzer,
         )
     except (OSError, ValueError) as error:
         parser.error(str(error))
