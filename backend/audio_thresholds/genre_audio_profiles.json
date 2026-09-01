@@ -1,0 +1,317 @@
+{
+  "artifact_checksum": "125800de3f963adf02e20a8edb2a4a492f750ae7814a1ac3272ecfdf222e6ec2",
+  "generated_at": "2026-09-02T00:00:00Z",
+  "generator_version": "1.0.0",
+  "genres": {
+    "hip-hop": {
+      "metrics": {
+        "bass": {
+          "lower": 46.79280479264193,
+          "preferred": 66.33088004809743,
+          "robust_scale": 31.52612874128792,
+          "unit": "percent",
+          "upper": 78.31893353392985
+        },
+        "flatness": {
+          "lower": 0.0005821558879688382,
+          "preferred": 0.0009054166730493307,
+          "robust_scale": 0.0008545535383746028,
+          "unit": "ratio",
+          "upper": 0.001436709426343441
+        },
+        "loudness": {
+          "lower": -19.800129836132584,
+          "preferred": -16.724406775148275,
+          "robust_scale": 4.310068735263064,
+          "unit": "LUFS",
+          "upper": -15.49006110086952
+        },
+        "sharpness": {
+          "lower": 0.007717178831216268,
+          "preferred": 0.008140305158715787,
+          "robust_scale": 0.0015562853648255163,
+          "unit": "normalized_score",
+          "upper": 0.009273464196041784
+        },
+        "treble": {
+          "lower": 2.0648587330140655,
+          "preferred": 3.419924512059012,
+          "robust_scale": 2.9847824941794663,
+          "unit": "percent",
+          "upper": 5.049641227193532
+        }
+      },
+      "sample_count": 5
+    },
+    "pop": {
+      "metrics": {
+        "bass": {
+          "lower": 46.460287482802485,
+          "preferred": 85.7336141911991,
+          "robust_scale": 41.29737095716901,
+          "unit": "percent",
+          "upper": 87.7576584399715
+        },
+        "flatness": {
+          "lower": 5.905466605327092e-05,
+          "preferred": 0.000249164120759815,
+          "robust_scale": 0.0007108325698936824,
+          "unit": "ratio",
+          "upper": 0.0007698872359469533
+        },
+        "loudness": {
+          "lower": -23.46070680218081,
+          "preferred": -16.547750479271734,
+          "robust_scale": 8.93561513049913,
+          "unit": "LUFS",
+          "upper": -14.525091671681679
+        },
+        "sharpness": {
+          "lower": 0.0016377587422618854,
+          "preferred": 0.0025366941964055905,
+          "robust_scale": 0.00267640184934273,
+          "unit": "normalized_score",
+          "upper": 0.004314160591604615
+        },
+        "treble": {
+          "lower": 0.30515004163734216,
+          "preferred": 0.7183480160297048,
+          "robust_scale": 0.6690706486332927,
+          "unit": "percent",
+          "upper": 0.9742206902706348
+        }
+      },
+      "sample_count": 5
+    },
+    "rock": {
+      "metrics": {
+        "bass": {
+          "lower": 51.19678641799934,
+          "preferred": 59.84529984320525,
+          "robust_scale": 12.649779031204247,
+          "unit": "percent",
+          "upper": 63.84656544920359
+        },
+        "flatness": {
+          "lower": 0.0007429551333189011,
+          "preferred": 0.0008430358138866723,
+          "robust_scale": 0.00027030601631850004,
+          "unit": "ratio",
+          "upper": 0.001013261149637401
+        },
+        "loudness": {
+          "lower": -23.003370042041308,
+          "preferred": -20.503566941716983,
+          "robust_scale": 4.126243120122545,
+          "unit": "LUFS",
+          "upper": -18.877126921918762
+        },
+        "sharpness": {
+          "lower": 0.004248705787209505,
+          "preferred": 0.005395643651748831,
+          "robust_scale": 0.002140540722512254,
+          "unit": "normalized_score",
+          "upper": 0.006389246509721759
+        },
+        "treble": {
+          "lower": 1.9887074750599878,
+          "preferred": 2.4007683540428153,
+          "robust_scale": 1.2670877555753421,
+          "unit": "percent",
+          "upper": 3.25579523063533
+        }
+      },
+      "sample_count": 5
+    }
+  },
+  "profile_version": "2026.09.1",
+  "schema_version": 1,
+  "sources": [
+    {
+      "calculation_method": "NumPy linear p25/median/p75; robust_scale=max(p75-p25, abs(median)*0.05, 1e-9)",
+      "citation_url": "https://github.com/mdeff/fma",
+      "compatible_feature_notes": "All five values were re-extracted from source audio by KaraOK's analyzer; no external precomputed features were mixed into the profiles.",
+      "license": "Attribution",
+      "recordings": [
+        {
+          "genre": "rock",
+          "recording_id": "fma:3833"
+        },
+        {
+          "genre": "rock",
+          "recording_id": "fma:3950"
+        },
+        {
+          "genre": "rock",
+          "recording_id": "fma:6776"
+        }
+      ],
+      "release": "2017-05-09; fma_small SHA1 ade154f733639d52e35e32f5593efe5be76c6d70",
+      "selection_filters": {
+        "individual_license": "Attribution",
+        "measurement_source": "KaraOK audio_engine.analyze_audio"
+      },
+      "source": "Free Music Archive (FMA) small"
+    },
+    {
+      "calculation_method": "NumPy linear p25/median/p75; robust_scale=max(p75-p25, abs(median)*0.05, 1e-9)",
+      "citation_url": "https://github.com/mdeff/fma",
+      "compatible_feature_notes": "All five values were re-extracted from source audio by KaraOK's analyzer; no external precomputed features were mixed into the profiles.",
+      "license": "Attribution 2.0 UK: England",
+      "recordings": [
+        {
+          "genre": "rock",
+          "recording_id": "fma:11933"
+        }
+      ],
+      "release": "2017-05-09; fma_small SHA1 ade154f733639d52e35e32f5593efe5be76c6d70",
+      "selection_filters": {
+        "individual_license": "Attribution 2.0 UK: England",
+        "measurement_source": "KaraOK audio_engine.analyze_audio"
+      },
+      "source": "Free Music Archive (FMA) small"
+    },
+    {
+      "calculation_method": "NumPy linear p25/median/p75; robust_scale=max(p75-p25, abs(median)*0.05, 1e-9)",
+      "citation_url": "https://github.com/mdeff/fma",
+      "compatible_feature_notes": "All five values were re-extracted from source audio by KaraOK's analyzer; no external precomputed features were mixed into the profiles.",
+      "license": "Attribution 2.5 Canada",
+      "recordings": [
+        {
+          "genre": "hip-hop",
+          "recording_id": "fma:11204"
+        }
+      ],
+      "release": "2017-05-09; fma_small SHA1 ade154f733639d52e35e32f5593efe5be76c6d70",
+      "selection_filters": {
+        "individual_license": "Attribution 2.5 Canada",
+        "measurement_source": "KaraOK audio_engine.analyze_audio"
+      },
+      "source": "Free Music Archive (FMA) small"
+    },
+    {
+      "calculation_method": "NumPy linear p25/median/p75; robust_scale=max(p75-p25, abs(median)*0.05, 1e-9)",
+      "citation_url": "https://github.com/mdeff/fma",
+      "compatible_feature_notes": "All five values were re-extracted from source audio by KaraOK's analyzer; no external precomputed features were mixed into the profiles.",
+      "license": "Attribution 3.0 International",
+      "recordings": [
+        {
+          "genre": "hip-hop",
+          "recording_id": "fma:11916"
+        }
+      ],
+      "release": "2017-05-09; fma_small SHA1 ade154f733639d52e35e32f5593efe5be76c6d70",
+      "selection_filters": {
+        "individual_license": "Attribution 3.0 International",
+        "measurement_source": "KaraOK audio_engine.analyze_audio"
+      },
+      "source": "Free Music Archive (FMA) small"
+    },
+    {
+      "calculation_method": "NumPy linear p25/median/p75; robust_scale=max(p75-p25, abs(median)*0.05, 1e-9)",
+      "citation_url": "https://github.com/mdeff/fma",
+      "compatible_feature_notes": "All five values were re-extracted from source audio by KaraOK's analyzer; no external precomputed features were mixed into the profiles.",
+      "license": "Attribution 3.0 United States",
+      "recordings": [
+        {
+          "genre": "hip-hop",
+          "recording_id": "fma:7481"
+        },
+        {
+          "genre": "pop",
+          "recording_id": "fma:22472"
+        }
+      ],
+      "release": "2017-05-09; fma_small SHA1 ade154f733639d52e35e32f5593efe5be76c6d70",
+      "selection_filters": {
+        "individual_license": "Attribution 3.0 United States",
+        "measurement_source": "KaraOK audio_engine.analyze_audio"
+      },
+      "source": "Free Music Archive (FMA) small"
+    },
+    {
+      "calculation_method": "NumPy linear p25/median/p75; robust_scale=max(p75-p25, abs(median)*0.05, 1e-9)",
+      "citation_url": "https://github.com/mdeff/fma",
+      "compatible_feature_notes": "All five values were re-extracted from source audio by KaraOK's analyzer; no external precomputed features were mixed into the profiles.",
+      "license": "Attribution-Share Alike 3.0 Germany",
+      "recordings": [
+        {
+          "genre": "hip-hop",
+          "recording_id": "fma:12173"
+        }
+      ],
+      "release": "2017-05-09; fma_small SHA1 ade154f733639d52e35e32f5593efe5be76c6d70",
+      "selection_filters": {
+        "individual_license": "Attribution-Share Alike 3.0 Germany",
+        "measurement_source": "KaraOK audio_engine.analyze_audio"
+      },
+      "source": "Free Music Archive (FMA) small"
+    },
+    {
+      "calculation_method": "NumPy linear p25/median/p75; robust_scale=max(p75-p25, abs(median)*0.05, 1e-9)",
+      "citation_url": "https://github.com/mdeff/fma",
+      "compatible_feature_notes": "All five values were re-extracted from source audio by KaraOK's analyzer; no external precomputed features were mixed into the profiles.",
+      "license": "Attribution-ShareAlike 3.0 International",
+      "recordings": [
+        {
+          "genre": "pop",
+          "recording_id": "fma:12179"
+        },
+        {
+          "genre": "pop",
+          "recording_id": "fma:62436"
+        },
+        {
+          "genre": "pop",
+          "recording_id": "fma:74945"
+        },
+        {
+          "genre": "rock",
+          "recording_id": "fma:13556"
+        }
+      ],
+      "release": "2017-05-09; fma_small SHA1 ade154f733639d52e35e32f5593efe5be76c6d70",
+      "selection_filters": {
+        "individual_license": "Attribution-ShareAlike 3.0 International",
+        "measurement_source": "KaraOK audio_engine.analyze_audio"
+      },
+      "source": "Free Music Archive (FMA) small"
+    },
+    {
+      "calculation_method": "NumPy linear p25/median/p75; robust_scale=max(p75-p25, abs(median)*0.05, 1e-9)",
+      "citation_url": "https://github.com/mdeff/fma",
+      "compatible_feature_notes": "All five values were re-extracted from source audio by KaraOK's analyzer; no external precomputed features were mixed into the profiles.",
+      "license": "Creative Commons Attribution",
+      "recordings": [
+        {
+          "genre": "hip-hop",
+          "recording_id": "fma:10693"
+        }
+      ],
+      "release": "2017-05-09; fma_small SHA1 ade154f733639d52e35e32f5593efe5be76c6d70",
+      "selection_filters": {
+        "individual_license": "Creative Commons Attribution",
+        "measurement_source": "KaraOK audio_engine.analyze_audio"
+      },
+      "source": "Free Music Archive (FMA) small"
+    },
+    {
+      "calculation_method": "NumPy linear p25/median/p75; robust_scale=max(p75-p25, abs(median)*0.05, 1e-9)",
+      "citation_url": "https://github.com/mdeff/fma",
+      "compatible_feature_notes": "All five values were re-extracted from source audio by KaraOK's analyzer; no external precomputed features were mixed into the profiles.",
+      "license": "Public Domain",
+      "recordings": [
+        {
+          "genre": "pop",
+          "recording_id": "fma:21995"
+        }
+      ],
+      "release": "2017-05-09; fma_small SHA1 ade154f733639d52e35e32f5593efe5be76c6d70",
+      "selection_filters": {
+        "individual_license": "Public Domain",
+        "measurement_source": "KaraOK audio_engine.analyze_audio"
+      },
+      "source": "Free Music Archive (FMA) small"
+    }
+  ]
+}
