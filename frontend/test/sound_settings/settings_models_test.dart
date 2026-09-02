@@ -204,6 +204,19 @@ void main() {
       throwsFormatException,
     );
   });
+
+  test('recommendation parses terminal verification record statuses', () {
+    for (final status in const ['verified', 'reverted']) {
+      final payload = _recommendationJson()
+        ..['status'] = status
+        ..['id'] = 41
+        ..['persisted'] = true
+        ..['amplifier_profile_id'] = 12
+        ..['verification_token'] = null;
+
+      expect(SettingsRecommendation.fromJson(payload).status, status);
+    }
+  });
 }
 
 Map<String, dynamic> _recommendationJson() {

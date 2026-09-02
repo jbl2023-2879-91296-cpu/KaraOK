@@ -272,7 +272,9 @@ class SettingsRecommendation {
     final status = _requiredString(json['status'], 'status');
     if (status != 'generated' &&
         status != 'unavailable' &&
-        status != 'applied') {
+        status != 'applied' &&
+        status != 'verified' &&
+        status != 'reverted') {
       throw FormatException('Unsupported recommendation status: $status.');
     }
     final confidence = _requiredString(
