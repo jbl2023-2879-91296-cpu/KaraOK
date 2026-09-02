@@ -99,9 +99,15 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Generate Audio Settings Suggestion'));
     await tester.pumpAndSettle();
-    expect(find.text('Generate Settings Suggestion'), findsOneWidget);
-    expect(find.text('Record Audio'), findsOneWidget);
-    expect(find.text('Select Audio File'), findsOneWidget);
+    expect(find.text('Set Up Your Amplifier'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Continue to Recording'),
+      300,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('Continue to Recording'), findsOneWidget);
+    expect(find.text('Record Audio'), findsNothing);
+    expect(find.text('Select Audio File'), findsNothing);
   });
 
   testWidgets('guest navigation uses bottom buttons on one app shell', (
