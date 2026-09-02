@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 from typing import Any, Mapping
 
+from .artifact_integrity import canonical_artifact_checksum
 from .metric_definitions import METRIC_DEFINITIONS, validate_weights
 
 GOOD = "good"
@@ -31,6 +32,12 @@ def load_thresholds(path: str | Path = DEFAULT_THRESHOLD_PATH) -> dict[str, Any]
 
     if artifact.get("schema_version") != 1:
         raise ValueError("Unsupported or missing empirical-threshold schema_version.")
+    for field in ("quality_profile_version", "algorithm_version", "artifact_checksum"):
+        if not isinstance(artifact.get(field), str) or not artifact[field].strip():
+            raise ValueError(f"Threshold file is missing {field}.")
+    expected = canonical_artifact_checksum(artifact)
+    if artifact["artifact_checksum"] != expected:
+        raise ValueError("Threshold artifact checksum does not match canonical content.")
     metrics = artifact.get("metrics")
     if not isinstance(metrics, dict):
         raise ValueError("Threshold file is missing its metrics object.")

@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "quality_profile_version": "2026.09.1",
   "algorithm_version": "1.0.0",
   "purpose": "Provisional empirical reference for recordings labeled good.",
   "source": {
@@ -399,5 +400,6 @@
     "The default weights are transparent engineering defaults, not learned perceptual importance weights.",
     "Treble, sharpness, and flatness are correlated and remain dependent on program content.",
     "The cohort is limited to the current phone-recording and analyzer conditions."
-  ]
+  ],
+  "artifact_checksum": "e86040c27a2d346c7fda3001ca0fd6cfeabed579ea1f63ed70f8e029dfbb20be"
 }

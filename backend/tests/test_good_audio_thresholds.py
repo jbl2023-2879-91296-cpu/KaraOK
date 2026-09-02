@@ -1,3 +1,4 @@
+import hashlib
 import json
 import tempfile
 import unittest
@@ -167,6 +168,33 @@ class GoodAudioThresholdTests(unittest.TestCase):
             output = write_threshold_artifact(first, Path(directory) / "thresholds.json")
             parsed = json.loads(output.read_text(encoding="utf-8"))
         self.assertEqual(parsed, first)
+
+    def test_empirical_artifact_has_version_and_canonical_checksum(self):
+        artifact = derive_threshold_artifact(
+            RESULTS_CSV,
+            source_label="results/results.csv",
+            bootstrap_iterations=200,
+        )
+        self.assertEqual(artifact["quality_profile_version"], "2026.09.1")
+        checksum = artifact["artifact_checksum"]
+        unsigned = dict(artifact)
+        unsigned.pop("artifact_checksum")
+        canonical = json.dumps(
+            unsigned, sort_keys=True, separators=(",", ":"), allow_nan=False
+        )
+        self.assertEqual(
+            checksum,
+            hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+        )
+
+    def test_loader_rejects_tampered_empirical_artifact(self):
+        payload = json.loads(THRESHOLD_JSON.read_text(encoding="utf-8"))
+        payload["metrics"]["bass"]["median"] += 1
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "tampered.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "checksum"):
+                load_thresholds(path)
 
 
 if __name__ == "__main__":
