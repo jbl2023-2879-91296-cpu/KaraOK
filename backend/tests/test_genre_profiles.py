@@ -93,6 +93,21 @@ class GenreProfileTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "sample_count must be at least 5"):
             parse_genre_profile_artifact(with_valid_checksum(payload))
 
+    def test_requires_recording_level_instrumental_status(self):
+        payload = valid_payload()
+        del payload["sources"]["recordings"][0]["instrumental_status"]
+
+        with self.assertRaisesRegex(ValueError, "instrumental_status"):
+            parse_genre_profile_artifact(with_valid_checksum(payload))
+
+    def test_profile_corpus_status_matches_recording_evidence(self):
+        payload = valid_payload()
+        payload["genres"]["rock"]["corpus_status"] = "confirmed_instrumental"
+        payload["sources"]["recordings"][0]["instrumental_status"] = "unverified"
+
+        with self.assertRaisesRegex(ValueError, "corpus_status"):
+            parse_genre_profile_artifact(with_valid_checksum(payload))
+
     def test_rejects_missing_or_malformed_metrics(self):
         payload = valid_payload()
         del payload["genres"]["rock"]["metrics"]["bass"]

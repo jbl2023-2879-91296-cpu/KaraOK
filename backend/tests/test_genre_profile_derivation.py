@@ -91,12 +91,32 @@ class GenreProfileDerivationTests(unittest.TestCase):
                 "unit": "percent",
             },
         )
+        self.assertEqual(
+            artifact["genres"]["rock"]["corpus_status"],
+            "confirmed_instrumental",
+        )
+        self.assertEqual(
+            {
+                recording["instrumental_status"]
+                for source in artifact["sources"]
+                for recording in source["recordings"]
+            },
+            {"confirmed_instrumental"},
+        )
         parse_genre_profile_artifact(artifact)
 
     def test_generation_is_deterministic_regardless_of_row_order(self):
         rows = load_measurements(FIXTURES / "genre_measurements.csv")
 
         self.assertEqual(derive_artifact(rows), derive_artifact(reversed(rows)))
+
+    def test_any_unverified_recording_makes_the_genre_corpus_unverified(self):
+        rows = load_measurements(FIXTURES / "genre_measurements.csv")
+        rows[0] = replace(rows[0], instrumental_status="unverified")
+
+        artifact = derive_artifact(rows)
+
+        self.assertEqual(artifact["genres"]["rock"]["corpus_status"], "unverified")
 
     def test_rejects_cohort_below_minimum(self):
         rows = load_measurements(FIXTURES / "genre_measurements.csv")[:4]
@@ -385,6 +405,7 @@ class GenreProfileDerivationTests(unittest.TestCase):
                     "license": "CC Attribution",
                     "citation_url": "https://example.test/source",
                     "recording_id": f"rock-{index}",
+                    "instrumental_status": "confirmed_instrumental",
                 }
             )
         return rows

@@ -18,9 +18,11 @@ from typing import Any
 
 import numpy as np
 
+from .artifact_integrity import canonical_artifact_checksum
 from .genre_profiles import (
+    INSTRUMENTAL_STATUSES,
+    InstrumentalStatus,
     SUPPORTED_METRICS,
-    _canonical_checksum,
     normalize_genre,
     parse_genre_profile_artifact,
 )
@@ -34,6 +36,7 @@ MANIFEST_COLUMNS = (
     "license",
     "citation_url",
     "recording_id",
+    "instrumental_status",
 )
 MEASUREMENT_COLUMNS = (
     "genre",
@@ -42,6 +45,7 @@ MEASUREMENT_COLUMNS = (
     "license",
     "citation_url",
     "recording_id",
+    "instrumental_status",
     *SUPPORTED_METRICS,
 )
 FEATURE_PATHS = {
@@ -114,6 +118,7 @@ class MeasurementRow:
     license: str
     citation_url: str
     recording_id: str
+    instrumental_status: InstrumentalStatus
     loudness: float
     bass: float
     treble: float
@@ -159,6 +164,7 @@ def _validate_provenance(
     license_name: str,
     citation_url: str,
     recording_id: str,
+    instrumental_status: str,
 ) -> str:
     normalized_genre = normalize_genre(genre)
     if normalized_genre not in SUPPORTED_GENRES:
@@ -169,11 +175,17 @@ def _validate_provenance(
         ("license", license_name),
         ("citation_url", citation_url),
         ("recording_id", recording_id),
+        ("instrumental_status", instrumental_status),
     ):
         if not value.strip():
             raise ValueError(f"Manifest row requires non-empty {field}")
     if not _is_compatible_license(license_name):
         raise ValueError(f"Recording {recording_id!r} has incompatible individual license {license_name!r}")
+    if instrumental_status not in INSTRUMENTAL_STATUSES:
+        raise ValueError(
+            f"Recording {recording_id!r} has unsupported instrumental_status "
+            f"{instrumental_status!r}"
+        )
     return normalized_genre
 
 
@@ -188,6 +200,7 @@ def _measurement_row(
         license_name=str(row["license"]),
         citation_url=str(row["citation_url"]),
         recording_id=str(row["recording_id"]),
+        instrumental_status=str(row["instrumental_status"]),
     )
     numeric: dict[str, float] = {}
     for metric in SUPPORTED_METRICS:
@@ -205,6 +218,7 @@ def _measurement_row(
         license=str(row["license"]).strip(),
         citation_url=str(row["citation_url"]).strip(),
         recording_id=str(row["recording_id"]).strip(),
+        instrumental_status=str(row["instrumental_status"]).strip(),
         **numeric,
     )
 
@@ -236,6 +250,7 @@ def _validated_measurement_rows(rows: Iterable[MeasurementRow]) -> list[Measurem
             license_name=row.license,
             citation_url=row.citation_url,
             recording_id=row.recording_id,
+            instrumental_status=row.instrumental_status,
         )
         if row.recording_id in recording_ids:
             raise ValueError(f"Manifest has duplicate recording_id {row.recording_id!r}")
@@ -254,6 +269,7 @@ def _validated_measurement_rows(rows: Iterable[MeasurementRow]) -> list[Measurem
                 license=row.license.strip(),
                 citation_url=row.citation_url.strip(),
                 recording_id=row.recording_id.strip(),
+                instrumental_status=row.instrumental_status.strip(),
                 **values,
             )
         )
@@ -330,7 +346,11 @@ def _source_metadata(rows: Sequence[MeasurementRow]) -> list[dict[str, Any]]:
                 "compatible_feature_notes": COMPATIBLE_FEATURE_NOTES,
                 "calculation_method": CALCULATION_METHOD,
                 "recordings": [
-                    {"recording_id": row.recording_id, "genre": row.genre}
+                    {
+                        "recording_id": row.recording_id,
+                        "genre": row.genre,
+                        "instrumental_status": row.instrumental_status,
+                    }
                     for row in sorted(recordings, key=lambda item: (item.genre, item.recording_id))
                 ],
             }
@@ -382,7 +402,18 @@ def derive_artifact(
                 "robust_scale": robust_scale,
                 "unit": METRIC_UNITS[metric],
             }
-        genres[genre] = {"sample_count": len(cohort), "metrics": metrics}
+        genres[genre] = {
+            "sample_count": len(cohort),
+            "corpus_status": (
+                "confirmed_instrumental"
+                if all(
+                    row.instrumental_status == "confirmed_instrumental"
+                    for row in cohort
+                )
+                else "unverified"
+            ),
+            "metrics": metrics,
+        }
 
     artifact: dict[str, Any] = {
         "schema_version": 1,
@@ -392,7 +423,7 @@ def derive_artifact(
         "sources": _source_metadata(ordered_rows),
         "genres": genres,
     }
-    artifact["artifact_checksum"] = _canonical_checksum(artifact)
+    artifact["artifact_checksum"] = canonical_artifact_checksum(artifact)
     parse_genre_profile_artifact(artifact)
     return artifact
 
@@ -423,14 +454,22 @@ def _report(artifact: Mapping[str, Any], manifest_checksum: str) -> str:
         "",
         "## Genre availability",
         "",
-        "| Genre | Status | Compatible recordings |",
-        "| --- | --- | ---: |",
+        "| Genre | Status | Instrumental evidence | Compatible recordings |",
+        "| --- | --- | --- | ---: |",
     ]
     for genre in SUPPORTED_GENRES:
         if genre in genres:
-            lines.append(f"| {genre} | Enabled | {genres[genre]['sample_count']} |")
+            evidence = (
+                "Confirmed instrumental"
+                if genres[genre]["corpus_status"] == "confirmed_instrumental"
+                else "Unverified instrumental status"
+            )
+            lines.append(
+                f"| {genre} | Enabled | {evidence} | "
+                f"{genres[genre]['sample_count']} |"
+            )
         else:
-            lines.append(f"| {genre} | Disabled | 0 |")
+            lines.append(f"| {genre} | Disabled | N/A | 0 |")
 
     lines.extend(
         [

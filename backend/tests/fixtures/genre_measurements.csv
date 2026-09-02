@@ -1,6 +1,6 @@
-genre,source,source_version,license,citation_url,recording_id,loudness,bass,treble,sharpness,flatness
-rock,Licensed fixture corpus,fixture-v1,CC Attribution,https://example.test/source,rock-001,-20,10,1,0.1,0.01
-rock,Licensed fixture corpus,fixture-v1,CC Attribution,https://example.test/source,rock-002,-18,20,2,0.2,0.02
-rock,Licensed fixture corpus,fixture-v1,CC Attribution,https://example.test/source,rock-003,-16,30,3,0.3,0.03
-rock,Licensed fixture corpus,fixture-v1,CC Attribution,https://example.test/source,rock-004,-14,40,4,0.4,0.04
-rock,Licensed fixture corpus,fixture-v1,CC Attribution,https://example.test/source,rock-005,-12,50,5,0.5,0.05
+genre,source,source_version,license,citation_url,recording_id,instrumental_status,loudness,bass,treble,sharpness,flatness
+rock,Licensed fixture corpus,fixture-v1,CC Attribution,https://example.test/source,rock-001,confirmed_instrumental,-20,10,1,0.1,0.01
+rock,Licensed fixture corpus,fixture-v1,CC Attribution,https://example.test/source,rock-002,confirmed_instrumental,-18,20,2,0.2,0.02
+rock,Licensed fixture corpus,fixture-v1,CC Attribution,https://example.test/source,rock-003,confirmed_instrumental,-16,30,3,0.3,0.03
+rock,Licensed fixture corpus,fixture-v1,CC Attribution,https://example.test/source,rock-004,confirmed_instrumental,-14,40,4,0.4,0.04
+rock,Licensed fixture corpus,fixture-v1,CC Attribution,https://example.test/source,rock-005,confirmed_instrumental,-12,50,5,0.5,0.05

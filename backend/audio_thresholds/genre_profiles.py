@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
+
+from .artifact_integrity import canonical_artifact_checksum
 
 
 SUPPORTED_METRICS = ("loudness", "bass", "treble", "sharpness", "flatness")
+INSTRUMENTAL_STATUSES = frozenset({"confirmed_instrumental", "unverified"})
+InstrumentalStatus = Literal["confirmed_instrumental", "unverified"]
 GENRE_ALIASES = {
     "rock": "rock",
     "pop": "pop",
@@ -45,6 +48,7 @@ class MetricTarget:
 class GenreProfile:
     key: str
     sample_count: int
+    corpus_status: InstrumentalStatus
     metrics: Mapping[str, MetricTarget]
 
 
@@ -113,13 +117,6 @@ def _required_string(data: Mapping[str, Any], name: str) -> str:
     return value
 
 
-def _canonical_checksum(data: Mapping[str, Any]) -> str:
-    canonical = dict(data)
-    canonical.pop("artifact_checksum", None)
-    encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":"), allow_nan=False)
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-
-
 def _source_entries(sources: Any) -> tuple[Mapping[str, Any], ...]:
     if isinstance(sources, Mapping):
         return (sources,)
@@ -136,7 +133,7 @@ def _validated_source_recordings(
 ) -> None:
     """Require auditable licensed recordings for every enabled genre profile."""
 
-    counts = {key: 0 for key in profiles}
+    statuses: dict[str, list[str]] = {key: [] for key in profiles}
     recording_ids: set[str] = set()
     for source in _source_entries(sources):
         _required_string(source, "source")
@@ -165,15 +162,31 @@ def _validated_source_recordings(
                 raise ValueError(f"Genre profile sources duplicate recording_id {recording_id!r}")
             recording_ids.add(recording_id)
             genre = normalize_genre(_required_string(recording, "genre"))
-            if genre not in counts:
+            if genre not in statuses:
                 raise ValueError(f"Licensed recording cohort has no enabled profile for {genre!r}")
-            counts[genre] += 1
+            instrumental_status = _required_string(recording, "instrumental_status")
+            if instrumental_status not in INSTRUMENTAL_STATUSES:
+                raise ValueError(
+                    "Genre profile source recording instrumental_status must be "
+                    "'confirmed_instrumental' or 'unverified'"
+                )
+            statuses[genre].append(instrumental_status)
 
     for key, profile in profiles.items():
-        if counts[key] != profile.sample_count:
+        recording_statuses = statuses[key]
+        if len(recording_statuses) != profile.sample_count:
             raise ValueError(
-                f"Genre profile {key!r} licensed recording cohort has {counts[key]} recordings; "
+                f"Genre profile {key!r} licensed recording cohort has {len(recording_statuses)} recordings; "
                 f"expected {profile.sample_count}"
+            )
+        expected_status = (
+            "confirmed_instrumental"
+            if all(status == "confirmed_instrumental" for status in recording_statuses)
+            else "unverified"
+        )
+        if profile.corpus_status != expected_status:
+            raise ValueError(
+                f"Genre profile {key!r} corpus_status does not match recording evidence"
             )
 
 
@@ -204,6 +217,12 @@ def parse_genre_profile_artifact(data: Mapping[str, Any]) -> GenreProfileArtifac
         sample_count = raw_profile.get("sample_count")
         if isinstance(sample_count, bool) or not isinstance(sample_count, int) or sample_count < 5:
             raise ValueError(f"Genre profile {key!r} sample_count must be at least 5")
+        corpus_status = raw_profile.get("corpus_status")
+        if corpus_status not in INSTRUMENTAL_STATUSES:
+            raise ValueError(
+                f"Genre profile {key!r} corpus_status must be "
+                "'confirmed_instrumental' or 'unverified'"
+            )
         raw_metrics = raw_profile.get("metrics")
         if not isinstance(raw_metrics, Mapping) or set(raw_metrics) != set(SUPPORTED_METRICS):
             raise ValueError(f"Genre profile {key!r} must contain exactly the supported metrics")
@@ -218,12 +237,17 @@ def parse_genre_profile_artifact(data: Mapping[str, Any]) -> GenreProfileArtifac
                 if isinstance(error, ValueError):
                     raise
                 raise ValueError(f"Genre metric {metric!r} is incomplete") from error
-        profiles[key] = GenreProfile(key, sample_count, MappingProxyType(metrics))
+        profiles[key] = GenreProfile(
+            key,
+            sample_count,
+            corpus_status,
+            MappingProxyType(metrics),
+        )
 
     _validated_source_recordings(sources, profiles)
 
     checksum = _required_string(data, "artifact_checksum")
-    expected_checksum = _canonical_checksum(data)
+    expected_checksum = canonical_artifact_checksum(data)
     if checksum != expected_checksum:
         raise ValueError("Genre profile artifact checksum does not match canonical content")
 

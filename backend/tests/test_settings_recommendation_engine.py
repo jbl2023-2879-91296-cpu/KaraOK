@@ -22,7 +22,12 @@ KNOBS = ("volume", "bass", "treble", "sharpness", "flatness")
 METRICS = ("loudness", "bass", "treble", "sharpness", "flatness")
 
 
-def profile(*, sample_count=20, missing_metric=None):
+def profile(
+    *,
+    sample_count=20,
+    missing_metric=None,
+    corpus_status="confirmed_instrumental",
+):
     metrics = {
         metric: MetricTarget(
             lower=30.0,
@@ -37,6 +42,7 @@ def profile(*, sample_count=20, missing_metric=None):
     return GenreProfile(
         key="rock",
         sample_count=sample_count,
+        corpus_status=corpus_status,
         metrics=MappingProxyType(metrics),
     )
 
@@ -48,6 +54,8 @@ def request(
     measurements=None,
     safety=None,
     verification=False,
+    profile_checksum="a" * 64,
+    hardware_response_characterized=True,
 ):
     return RecommendationRequest(
         scale=scale or AmplifierScale(0.0, 100.0, 0.5),
@@ -63,6 +71,8 @@ def request(
         safety=safety or SafetySignals(),
         verification=verification,
         profile_version="test-profile-1",
+        profile_checksum=profile_checksum,
+        hardware_response_characterized=hardware_response_characterized,
     )
 
 
@@ -299,7 +309,12 @@ class SettingsRecommendationEngineTests(unittest.TestCase):
     def test_malformed_profile_metric_makes_the_whole_result_unavailable(self):
         metrics = dict(profile().metrics)
         metrics["bass"] = MetricTarget(30.0, 40.0, 50.0, 0.0, "test-unit")
-        malformed = GenreProfile("rock", 20, MappingProxyType(metrics))
+        malformed = GenreProfile(
+            "rock",
+            20,
+            "confirmed_instrumental",
+            MappingProxyType(metrics),
+        )
 
         result = generate_recommendation(request(), malformed)
 
@@ -325,6 +340,21 @@ class SettingsRecommendationEngineTests(unittest.TestCase):
         self.assertEqual(noisy.adjustments["bass"].confidence, "low")
         self.assertEqual(noisy.overall_confidence, "low")
 
+    def test_unverified_or_small_genre_corpus_never_claims_high_confidence(self):
+        unverified = profile(sample_count=5, corpus_status="unverified")
+
+        result = generate_recommendation(
+            request(
+                profile_checksum="a" * 64,
+                hardware_response_characterized=False,
+            ),
+            unverified,
+        )
+
+        self.assertEqual(result.adjustments["volume"].confidence, "low")
+        self.assertEqual(result.overall_confidence, "low")
+        self.assertEqual(result.profile_checksum, "a" * 64)
+
     def test_request_and_result_mappings_are_immutable(self):
         recommendation_request = request()
         result = generate_recommendation(recommendation_request, profile())
@@ -335,6 +365,11 @@ class SettingsRecommendationEngineTests(unittest.TestCase):
             result.adjustments["bass"] = result.adjustments["bass"]
 
     def test_serialization_is_structured_complete_and_deterministic(self):
+        for invalid_checksum in ("a" * 63, "A" * 64, "g" * 64):
+            with self.subTest(invalid_checksum=invalid_checksum):
+                with self.assertRaisesRegex(ValueError, "profile_checksum"):
+                    request(profile_checksum=invalid_checksum)
+
         recommendation_request = request()
         first = generate_recommendation(recommendation_request, profile())
         second = generate_recommendation(recommendation_request, profile())
@@ -343,6 +378,7 @@ class SettingsRecommendationEngineTests(unittest.TestCase):
         payload = first.to_dict()
         self.assertEqual(payload["algorithm_version"], ALGORITHM_VERSION)
         self.assertEqual(payload["profile_version"], "test-profile-1")
+        self.assertEqual(payload["profile_checksum"], "a" * 64)
         self.assertEqual(payload["genre"], "rock")
         self.assertEqual(set(payload["current"]), set(KNOBS))
         self.assertEqual(set(payload["recommended"]), set(KNOBS))
@@ -366,6 +402,8 @@ class SettingsRecommendationEngineTests(unittest.TestCase):
                     current=KnobSettings(5.0, 5.0, 5.0, 5.0, 5.0),
                     measurements=measurements,
                     profile_version=artifact.profile_version,
+                    profile_checksum=artifact.artifact_checksum,
+                    hardware_response_characterized=True,
                 )
 
                 result = generate_recommendation(

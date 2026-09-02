@@ -9,20 +9,20 @@ Every enabled target comes from the exact five KaraOK analyzer measurements.
 - Generator version: `1.0.0`
 - Generated at: `2026-09-02T00:00:00Z`
 - Source manifest SHA-256: `642c6d23d4e2388f80ad5f324a31223054900f2a4d7c6639edb76d6b5e5be74d`
-- Artifact checksum: `125800de3f963adf02e20a8edb2a4a492f750ae7814a1ac3272ecfdf222e6ec2`
+- Artifact checksum: `8b87b9f1106bab8dab4978e4590e84c9bb294400a0d60ce5263e196f44701b61`
 - Calculation: NumPy linear p25/median/p75; robust_scale=max(p75-p25, abs(median)*0.05, 1e-9)
 
 ## Genre availability
 
-| Genre | Status | Compatible recordings |
-| --- | --- | ---: |
-| rock | Enabled | 5 |
-| pop | Enabled | 5 |
-| ballad | Disabled | 0 |
-| hip-hop | Enabled | 5 |
-| classical | Disabled | 0 |
-| r&b | Disabled | 0 |
-| general | Disabled | 0 |
+| Genre | Status | Instrumental evidence | Compatible recordings |
+| --- | --- | --- | ---: |
+| rock | Enabled | Unverified instrumental status | 5 |
+| pop | Enabled | Unverified instrumental status | 5 |
+| ballad | Disabled | N/A | 0 |
+| hip-hop | Enabled | Unverified instrumental status | 5 |
+| classical | Disabled | N/A | 0 |
+| r&b | Disabled | N/A | 0 |
+| general | Disabled | N/A | 0 |
 
 Enabled genres: rock, pop, hip-hop.
 Disabled genres: ballad, classical, r&b, general.
@@ -47,6 +47,7 @@ Disabled genres: ballad, classical, r&b, general.
 - Accepted individual licenses are Public Domain, Attribution/CC Attribution, and Attribution-ShareAlike variants.
 - NonCommercial (NC), NoDerivatives (ND), and unknown/unapproved licenses cause generation to fail; they are never silently included.
 - Every selected source file was analyzed by `audio_engine.analyze_audio`; external precomputed features were not used as targets.
+- The current FMA-derived Rock, Pop, and Hip-Hop cohorts have unverified instrumental status. Their numeric targets are provisional until regenerated from licensed, genre-representative instrumental or rendered-MIDI audio.
 - Ballad, Classical, R&B, and General remain disabled because the manifest contains no compatible cohort for them.
 
 ## Derived quartiles

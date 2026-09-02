@@ -44,6 +44,7 @@ GUEST_TOKEN_CLAIMS = {
     "recommended_positions",
     "before_score",
     "profile_version",
+    "profile_checksum",
     "algorithm_version",
     "initial_pass",
     "aud",
@@ -63,6 +64,7 @@ class GuestVerificationContext:
     recommended_positions: KnobSettings
     before_score: float
     profile_version: str
+    profile_checksum: str
     algorithm_version: str
 
 
@@ -190,6 +192,8 @@ def parse_guest_verification_token(token: str) -> GuestVerificationContext:
     genre = normalize_genre(claims.get("genre"))
     if claims.get("profile_version") != artifact.profile_version:
         raise ValueError("verification_token profile version is unsupported")
+    if claims.get("profile_checksum") != artifact.artifact_checksum:
+        raise ValueError("verification_token profile checksum is unsupported")
     if claims.get("algorithm_version") != ALGORITHM_VERSION:
         raise ValueError("verification_token algorithm version is unsupported")
     scale_data = claims.get("scale")
@@ -214,6 +218,7 @@ def parse_guest_verification_token(token: str) -> GuestVerificationContext:
         recommended_positions=positions,
         before_score=before_score,
         profile_version=str(claims["profile_version"]),
+        profile_checksum=str(claims["profile_checksum"]),
         algorithm_version=str(claims["algorithm_version"]),
     )
 
@@ -244,6 +249,7 @@ def issue_guest_verification_token(
         "recommended_positions": recommended,
         "before_score": score,
         "profile_version": recommendation.profile_version,
+        "profile_checksum": recommendation.profile_checksum,
         "algorithm_version": recommendation.algorithm_version,
         "initial_pass": True,
         "aud": GUEST_VERIFICATION_AUDIENCE,
@@ -383,6 +389,7 @@ def parse_suggestion_form(
 def _unavailable_recommendation(
     context: SuggestionContext,
     profile_version: str,
+    profile_checksum: str,
 ) -> SettingsRecommendation:
     adjustments = {
         name: KnobAdjustment(
@@ -399,6 +406,7 @@ def _unavailable_recommendation(
         status="unavailable",
         genre=context.genre,
         profile_version=profile_version,
+        profile_checksum=profile_checksum,
         algorithm_version=ALGORITHM_VERSION,
         scale=context.scale,
         current=context.current,
@@ -421,7 +429,11 @@ def build_recommendation(
     try:
         profile = artifact.profile_for(context.genre)
     except ValueError:
-        return _unavailable_recommendation(context, artifact.profile_version)
+        return _unavailable_recommendation(
+            context,
+            artifact.profile_version,
+            artifact.artifact_checksum,
+        )
     safety_data = summary.get("safety_signals", {})
     if not isinstance(safety_data, Mapping):
         safety_data = {}
@@ -447,8 +459,10 @@ def build_recommendation(
         current=context.current,
         measurements=measurements,
         profile_version=artifact.profile_version,
+        profile_checksum=artifact.artifact_checksum,
         safety=safety,
         verification=verification,
+        hardware_response_characterized=False,
     )
     return generate_recommendation(request, profile)
 

@@ -6,7 +6,11 @@ import math
 from collections.abc import Mapping
 from types import MappingProxyType
 
-from audio_thresholds.genre_profiles import GenreProfile, MetricTarget
+from audio_thresholds.genre_profiles import (
+    INSTRUMENTAL_STATUSES,
+    GenreProfile,
+    MetricTarget,
+)
 
 from .models import (
     KNOB_NAMES,
@@ -87,6 +91,7 @@ def _unavailable(
         status="unavailable",
         genre=profile.key,
         profile_version=request.profile_version,
+        profile_checksum=request.profile_checksum,
         algorithm_version=ALGORITHM_VERSION,
         scale=request.scale,
         current=request.current,
@@ -127,6 +132,8 @@ def _preflight_reason(
         or profile.sample_count < 5
     ):
         return "invalid_genre_profile"
+    if profile.corpus_status not in INSTRUMENTAL_STATUSES:
+        return "invalid_genre_profile"
     if any(not _valid_target(profile.metrics[name]) for name in MEASUREMENT_NAMES):
         return "invalid_genre_profile"
     return None
@@ -149,6 +156,10 @@ def _confidence(
 ) -> str:
     score = _CONFIDENCE_SCORE["high"]
     if profile.sample_count < 20:
+        score -= 1
+    if profile.corpus_status != "confirmed_instrumental":
+        score -= 1
+    if not request.hardware_response_characterized:
         score -= 1
     if knob in CROSS_COUPLED_KNOBS:
         score -= 1
@@ -309,6 +320,7 @@ def generate_recommendation(
         status="generated",
         genre=profile.key,
         profile_version=request.profile_version,
+        profile_checksum=request.profile_checksum,
         algorithm_version=ALGORITHM_VERSION,
         scale=request.scale,
         current=request.current,
