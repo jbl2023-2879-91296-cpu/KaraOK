@@ -384,14 +384,54 @@ class ApiService {
 
   Future<void> deleteAudioTest(int testId) => _delete('/audio-tests/$testId');
 
+  Future<Map<String, dynamic>> getSettingsProfileMetadata() async =>
+      Map<String, dynamic>.from(
+        await _get('/settings-profile-metadata') as Map,
+      );
+
+  Future<List<dynamic>> listAmplifierProfiles() async =>
+      List<dynamic>.from(await _get('/amplifier-profiles') as List);
+
+  Future<Map<String, dynamic>> createAmplifierProfile(
+    Map<String, dynamic> profile,
+  ) async => Map<String, dynamic>.from(
+    await _post('/amplifier-profiles', profile) as Map,
+  );
+
+  Future<Map<String, dynamic>> updateAmplifierProfile(
+    int profileId,
+    Map<String, dynamic> profile,
+  ) async => Map<String, dynamic>.from(
+    await _patch('/amplifier-profiles/$profileId', profile) as Map,
+  );
+
+  Future<void> deleteAmplifierProfile(int profileId) =>
+      _delete('/amplifier-profiles/$profileId');
+
+  Future<Map<String, dynamic>> getSettingsRecommendation(
+    int recommendationId,
+  ) async => Map<String, dynamic>.from(
+    await _get('/settings-recommendations/$recommendationId') as Map,
+  );
+
+  Future<Map<String, dynamic>> applySettingsRecommendation(
+    int recommendationId,
+  ) async => Map<String, dynamic>.from(
+    await _post('/settings-recommendations/$recommendationId/apply', {}) as Map,
+  );
+
+  // TODO(task-10): Remove these compatibility methods with the legacy screens.
+  @Deprecated('Use amplifier profiles and generated recommendations.')
   Future<Map<String, dynamic>> getGenreSettings(String genre) async =>
       Map<String, dynamic>.from(
         await _get('/genre-settings', {'genre': genre}) as Map,
       );
 
+  @Deprecated('Use amplifier profiles and generated recommendations.')
   Future<List<dynamic>> getAllGenreSettings() async =>
       List<dynamic>.from(await _get('/genre-settings') as List);
 
+  @Deprecated('Use amplifier profiles and generated recommendations.')
   Future<Map<String, dynamic>> saveGenreSettings({
     required String genre,
     required int volume,
@@ -442,7 +482,14 @@ class ApiService {
     String? genre,
     String analysisPurpose = 'quality_evaluation',
     bool guest = false,
+    Map<String, String>? settingsSuggestionFields,
   }) async {
+    if (analysisPurpose == 'settings_suggestion' &&
+        settingsSuggestionFields == null) {
+      throw ArgumentError(
+        'settingsSuggestionFields are required for settings_suggestion.',
+      );
+    }
     final endpoint = guest ? '/guest/audio-analysis' : '/audio-uploads';
     final request = http.MultipartRequest('POST', _uri(endpoint));
     final headers = await _headers(authenticated: !guest);
@@ -451,7 +498,9 @@ class ApiService {
     request.fields['duration_seconds'] =
         (durationSeconds < 1 ? 1 : durationSeconds).toString();
     request.fields['analysis_purpose'] = analysisPurpose;
-    if (genre != null && genre.trim().isNotEmpty) {
+    if (analysisPurpose == 'settings_suggestion') {
+      request.fields.addAll(settingsSuggestionFields!);
+    } else if (genre != null && genre.trim().isNotEmpty) {
       request.fields['genre'] = genre.trim();
     }
     request.files.add(
