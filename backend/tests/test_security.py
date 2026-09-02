@@ -317,6 +317,145 @@ class SecurityValidationTests(unittest.TestCase):
         self.assertIn("ON DELETE CASCADE", upload_table)
         self.assertNotIn("CREATE TABLE IF NOT EXISTS password_reset_token", schema)
 
+    def test_schema_persists_owned_amplifier_recommendations(self):
+        root = Path(__file__).resolve().parents[2]
+        schema_path = root / "database" / "schema.sql"
+        migration_path = (
+            root
+            / "database"
+            / "migrations"
+            / "20260902_01_settings_recommendations.sql"
+        )
+        self.assertTrue(migration_path.is_file(), "Task 4 migration must exist")
+
+        schema = schema_path.read_text(encoding="utf-8")
+        migration = migration_path.read_text(encoding="utf-8")
+        normalized_schema = " ".join(schema.split())
+        normalized_migration = " ".join(migration.split())
+
+        for source, sql, normalized in (
+            ("schema", schema, normalized_schema),
+            ("migration", migration, normalized_migration),
+        ):
+            with self.subTest(source=source):
+                self.assertIn("CREATE TABLE IF NOT EXISTS amplifier_profile", sql)
+                self.assertIn(
+                    "CREATE TABLE IF NOT EXISTS settings_recommendation", sql
+                )
+                self.assertLess(
+                    sql.index("CREATE TABLE IF NOT EXISTS amplifier_profile"),
+                    sql.index("CREATE TABLE IF NOT EXISTS settings_recommendation"),
+                )
+                self.assertIn(
+                    "UNIQUE KEY uq_amplifier_profile_user_name (user_id, name)",
+                    normalized,
+                )
+                self.assertIn(
+                    "KEY idx_amplifier_profile_user (user_id)", normalized
+                )
+                for column in (
+                    "amplifier_profile_id BIGINT AUTO_INCREMENT PRIMARY KEY",
+                    "user_id INT NOT NULL",
+                    "name VARCHAR(80) NOT NULL",
+                    "scale_min DECIMAL(10,3) NOT NULL",
+                    "scale_max DECIMAL(10,3) NOT NULL",
+                    "scale_step DECIMAL(10,3) NOT NULL",
+                    "last_positions JSON NULL",
+                    "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP "
+                    "ON UPDATE CURRENT_TIMESTAMP",
+                    "recommendation_id BIGINT AUTO_INCREMENT PRIMARY KEY",
+                    "assessment_id INT NOT NULL",
+                    "amplifier_profile_id BIGINT NOT NULL",
+                    "parent_recommendation_id BIGINT NULL",
+                    "current_positions JSON NOT NULL",
+                    "recommended_positions JSON NOT NULL",
+                    "adjustments JSON NOT NULL",
+                    "original_score FLOAT NOT NULL",
+                    "verification_score FLOAT NULL",
+                    "overall_confidence VARCHAR(20) NOT NULL",
+                    "algorithm_version VARCHAR(30) NOT NULL",
+                    "genre_profile_version VARCHAR(30) NOT NULL",
+                    "applied_at TIMESTAMP NULL",
+                ):
+                    self.assertIn(column, normalized)
+                self.assertIn(
+                    "CONSTRAINT chk_amplifier_profile_scale CHECK "
+                    "(scale_min < scale_max AND scale_step > 0)",
+                    normalized,
+                )
+                self.assertIn(
+                    "UNIQUE KEY uq_settings_recommendation_assessment "
+                    "(assessment_id)",
+                    normalized,
+                )
+                self.assertIn(
+                    "UNIQUE KEY uq_settings_recommendation_parent "
+                    "(parent_recommendation_id)",
+                    normalized,
+                )
+                self.assertIn(
+                    "KEY idx_settings_recommendation_user_created "
+                    "(user_id, created_at)",
+                    normalized,
+                )
+                for constraint in (
+                    "fk_amplifier_profile_user",
+                    "fk_settings_recommendation_user",
+                    "fk_settings_recommendation_assessment",
+                    "fk_settings_recommendation_amplifier",
+                    "fk_settings_recommendation_parent",
+                ):
+                    self.assertIn(f"CONSTRAINT {constraint}", normalized)
+                self.assertIn(
+                    "FOREIGN KEY (user_id) REFERENCES user(user_id) "
+                    "ON DELETE CASCADE",
+                    normalized,
+                )
+                self.assertIn(
+                    "FOREIGN KEY (assessment_id) REFERENCES assessment(assessment_id) "
+                    "ON DELETE CASCADE",
+                    normalized,
+                )
+                self.assertIn(
+                    "FOREIGN KEY (amplifier_profile_id) REFERENCES "
+                    "amplifier_profile(amplifier_profile_id) ON DELETE CASCADE",
+                    normalized,
+                )
+                self.assertIn(
+                    "FOREIGN KEY (parent_recommendation_id) REFERENCES "
+                    "settings_recommendation(recommendation_id) ON DELETE SET NULL",
+                    normalized,
+                )
+                self.assertIn(
+                    "recommendation_status "
+                    "ENUM('generated','applied','verified','reverted','unavailable') "
+                    "NOT NULL DEFAULT 'generated'",
+                    normalized,
+                )
+
+        self.assertLess(
+            schema.index("CREATE TABLE IF NOT EXISTS user"),
+            schema.index("CREATE TABLE IF NOT EXISTS amplifier_profile"),
+        )
+        self.assertLess(
+            schema.index("CREATE TABLE IF NOT EXISTS assessment"),
+            schema.index("CREATE TABLE IF NOT EXISTS settings_recommendation"),
+        )
+        for destructive in ("DROP TABLE", "TRUNCATE TABLE", "DELETE FROM"):
+            self.assertNotIn(destructive, migration.upper())
+
+        def table_definition(sql, table):
+            start = sql.index(f"CREATE TABLE IF NOT EXISTS {table}")
+            end = sql.index("\n);", start) + len("\n);")
+            return " ".join(sql[start:end].split())
+
+        for table in ("amplifier_profile", "settings_recommendation"):
+            with self.subTest(matching_definition=table):
+                self.assertEqual(
+                    table_definition(schema, table),
+                    table_definition(migration, table),
+                )
+
     def test_upload_history_derives_ownership_from_assessment(self):
         connection = unittest.mock.MagicMock()
         cursor = connection.cursor.return_value
