@@ -1,5 +1,7 @@
 [CmdletBinding()]
-param()
+param(
+    [string]$DeviceId = 'windows'
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -11,10 +13,13 @@ $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $backendRoot = Join-Path $repositoryRoot 'backend'
 $frontendRoot = Join-Path $repositoryRoot 'frontend'
 $schemaPath = Join-Path $repositoryRoot 'database\schema.sql'
-$pythonPath = Join-Path $backendRoot '.venv\Scripts\python.exe'
+$commandResolutionPath = Join-Path $PSScriptRoot 'dev-command-resolution.ps1'
 $backendProcess = $null
 $settingsE2eTemp = $null
 $mysqlExecutable = $null
+$pythonPath = $null
+$adbExecutable = $null
+$androidReverseConfigured = $false
 $mysqlReady = $false
 $runFailure = $null
 $cleanupFailures = New-Object 'System.Collections.Generic.List[string]'
@@ -35,6 +40,7 @@ $environmentNames = @(
     'DEV_MODE',
     'EXPOSE_REGISTRATION_OTP',
     'SETTINGS_RECOMMENDATIONS_ENABLED',
+    'KARAOK_ENV_FILE',
     'JWT_SECRET',
     'RATELIMIT_STORAGE_URI',
     'SMTP_HOST',
@@ -90,31 +96,15 @@ try {
         throw 'Refusing to run: the fixed integration database name failed validation.'
     }
 
-    $mysqlCommand = Get-Command mysql -CommandType Application -ErrorAction Stop
-    $mysqlExecutable = $mysqlCommand.Source
-    if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
-        throw "Backend virtual-environment Python was not found at $pythonPath."
+    if (-not (Test-Path -LiteralPath $commandResolutionPath -PathType Leaf)) {
+        throw "Required command resolver was not found: $commandResolutionPath"
     }
+    . $commandResolutionPath
+    $mysqlExecutable = Resolve-MySqlPath
+    $pythonPath = Resolve-BackendPythonPath -BackendDirectory $backendRoot
     $flutterCommand = Get-Command flutter -ErrorAction Stop
     if (-not (Test-Path -LiteralPath $schemaPath -PathType Leaf)) {
         throw "Required database script was not found: $schemaPath"
-    }
-    $dotenvSearchDirectory = Join-Path $backendRoot 'karaok'
-    while ($null -ne $dotenvSearchDirectory) {
-        $dotenvPath = Join-Path $dotenvSearchDirectory '.env'
-        if (Test-Path -LiteralPath $dotenvPath -PathType Leaf) {
-            $dotenvContents = Get-Content -LiteralPath $dotenvPath -Raw
-            if ($dotenvContents -match '(?im)^\s*SMTP_(HOST|USERNAME|PASSWORD|FROM)\s*=') {
-                throw "Refusing to run while $dotenvPath contains SMTP settings; the E2E registration must never send email."
-            }
-        }
-        $dotenvParent = [IO.Directory]::GetParent($dotenvSearchDirectory)
-        $dotenvSearchDirectory = if ($null -eq $dotenvParent) {
-            $null
-        }
-        else {
-            $dotenvParent.FullName
-        }
     }
     if ([string]::IsNullOrWhiteSpace($env:KARAOK_E2E_DB_USER) -or
         [string]::IsNullOrWhiteSpace($env:KARAOK_E2E_DB_PASSWORD)) {
@@ -131,21 +121,44 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "Flutter could not enumerate devices (exit code $LASTEXITCODE)."
     }
-    $windowsDevice = @($devicesJson | ConvertFrom-Json) |
-        Where-Object { $_.id -eq 'windows' -or $_.platformType -eq 'windows' } |
+    $availableDevices = $devicesJson | ConvertFrom-Json
+    $selectedDevice = $availableDevices |
+        Where-Object { $_.id -eq $DeviceId } |
         Select-Object -First 1
-    if ($null -eq $windowsDevice) {
-        throw 'Flutter Windows desktop support is required, but no Windows device is available.'
+    if ($null -eq $selectedDevice) {
+        throw "Flutter device '$DeviceId' is not available."
     }
-    $doctorOutput = (& $flutterCommand.Source doctor -v 2>&1 | Out-String)
-    if ($LASTEXITCODE -ne 0) {
-        throw "Flutter doctor failed while checking the Windows toolchain (exit code $LASTEXITCODE)."
+    if ($selectedDevice.targetPlatform -eq 'windows-x64') {
+        $doctorOutput = (& $flutterCommand.Source doctor -v 2>&1 | Out-String)
+        if ($LASTEXITCODE -ne 0) {
+            throw "Flutter doctor failed while checking the Windows toolchain (exit code $LASTEXITCODE)."
+        }
+        $visualStudioLine = ($doctorOutput -split "`r?`n") |
+            Where-Object { $_ -match 'Visual Studio - develop Windows apps' } |
+            Select-Object -First 1
+        if ($null -eq $visualStudioLine -or $visualStudioLine -notmatch '^\[(√|✓)\]') {
+            throw 'A complete Visual Studio Windows desktop toolchain is required. Run flutter doctor for details.'
+        }
     }
-    $visualStudioLine = ($doctorOutput -split "`r?`n") |
-        Where-Object { $_ -match 'Visual Studio - develop Windows apps' } |
-        Select-Object -First 1
-    if ($null -eq $visualStudioLine -or $visualStudioLine -notmatch '^\[(√|✓)\]') {
-        throw 'A complete Visual Studio Windows desktop toolchain is required. Run flutter doctor for details.'
+    elseif ($selectedDevice.targetPlatform -like 'android-*') {
+        $adbExecutable = Resolve-AdbPath
+        if ($null -eq $adbExecutable) {
+            throw 'ADB is required to connect the Android integration test to Flask.'
+        }
+        $authorizedDeviceIds = @(Get-AuthorizedAndroidDeviceIds `
+                -AdbDevicesOutput (& $adbExecutable devices -l))
+        if ($authorizedDeviceIds -notcontains $DeviceId) {
+            throw "Android device '$DeviceId' is not authorized in ADB."
+        }
+        & $adbExecutable -s $DeviceId reverse `
+            "tcp:$settingsE2ePort" "tcp:$settingsE2ePort"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not configure Android port forwarding for TCP $settingsE2ePort."
+        }
+        $androidReverseConfigured = $true
+    }
+    else {
+        throw "Flutter device '$DeviceId' must target Windows or Android."
     }
 
     $portProbe = [Net.Sockets.TcpListener]::new(
@@ -179,6 +192,9 @@ try {
     }
     $uploadDirectory = (New-Item -ItemType Directory -Path (Join-Path $settingsE2eTemp 'uploads')).FullName
     $analysisDirectory = (New-Item -ItemType Directory -Path (Join-Path $settingsE2eTemp 'analysis')).FullName
+    $isolatedEnvironmentFile = (New-Item -ItemType File -Path (
+            Join-Path $settingsE2eTemp 'backend.env'
+        )).FullName
 
     Invoke-MySqlQuery -Executable $mysqlExecutable -Query "DROP DATABASE IF EXISTS $settingsE2eDb;" -FailureMessage 'Could not remove a stale integration database'
     Invoke-MySqlQuery -Executable $mysqlExecutable -Query "CREATE DATABASE $settingsE2eDb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" -FailureMessage 'Could not create the integration database'
@@ -220,6 +236,7 @@ try {
     Set-BackendEnvironment 'DEV_MODE' 'true'
     Set-BackendEnvironment 'EXPOSE_REGISTRATION_OTP' 'true'
     Set-BackendEnvironment 'SETTINGS_RECOMMENDATIONS_ENABLED' 'true'
+    Set-BackendEnvironment 'KARAOK_ENV_FILE' $isolatedEnvironmentFile
     Set-BackendEnvironment 'JWT_SECRET' '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     Set-BackendEnvironment 'RATELIMIT_STORAGE_URI' 'memory://'
     Set-BackendEnvironment 'SMTP_HOST' ''
@@ -274,7 +291,7 @@ try {
 
     Push-Location $frontendRoot
     try {
-        & $flutterCommand.Source test 'integration_test/settings_generation_flow_test.dart' -d windows '--dart-define=API_BASE_URL=http://127.0.0.1:5100/api'
+        & $flutterCommand.Source test 'integration_test/settings_generation_flow_test.dart' -d $DeviceId '--dart-define=API_BASE_URL=http://127.0.0.1:5100/api'
         if ($LASTEXITCODE -ne 0) {
             throw "Flutter settings integration test failed (exit code $LASTEXITCODE)."
         }
@@ -289,6 +306,19 @@ catch {
     $runFailure = $_
 }
 finally {
+    if ($androidReverseConfigured -and $null -ne $adbExecutable) {
+        try {
+            & $adbExecutable -s $DeviceId reverse --remove `
+                "tcp:$settingsE2ePort"
+            if ($LASTEXITCODE -ne 0) {
+                throw "ADB exited with code $LASTEXITCODE."
+            }
+        }
+        catch {
+            $cleanupFailures.Add("Android port-forward cleanup failed: $($_.Exception.Message)")
+        }
+    }
+
     if ($null -ne $backendProcess) {
         try {
             $backendProcess.Refresh()

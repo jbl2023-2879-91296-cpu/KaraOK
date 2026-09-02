@@ -6,7 +6,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-load_dotenv()
+_environment_file = os.getenv("KARAOK_ENV_FILE")
+if _environment_file:
+    load_dotenv(dotenv_path=_environment_file)
+else:
+    load_dotenv()
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 TRUST_PROXY = os.getenv("TRUST_PROXY", "false").lower() == "true"

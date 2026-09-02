@@ -168,6 +168,33 @@ void main() {
     expect(button.onPressed, isNull);
   });
 
+  _tallTestWidgets('retry reloads genres after a temporary metadata failure', (
+    tester,
+  ) async {
+    settingsApi.metadataError = const ApiException(503, 'Service unavailable.');
+    await tester.pumpWidget(
+      _testApp(
+        SettingsSetupScreen(
+          settingsApi: settingsApi,
+          guestStore: guestStore,
+          onContinue: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Could not load settings profiles.'), findsOneWidget);
+    settingsApi.metadataError = null;
+    await tester.tap(find.byKey(const Key('settings-load-retry')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('genre-dropdown')));
+    await tester.pumpAndSettle();
+    expect(find.text('Hip-Hop'), findsOneWidget);
+    expect(find.text('Pop'), findsOneWidget);
+    expect(find.text('Rock'), findsOneWidget);
+  });
+
   _tallTestWidgets(
     'authenticated setup creates My Amplifier before continuing',
     (tester) async {

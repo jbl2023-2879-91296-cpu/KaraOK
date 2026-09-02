@@ -57,6 +57,68 @@ function Resolve-ComposerPath {
     throw "Composer was not found in PATH or its standard Windows installation locations. Install Composer from https://getcomposer.org/download/."
 }
 
+function Resolve-MySqlPath {
+    [CmdletBinding()]
+    param(
+        [string[]]$FallbackPaths,
+        [string[]]$RegisteredPaths
+    )
+
+    $command = Get-Command mysql -CommandType Application `
+        -ErrorAction SilentlyContinue
+    if ($null -ne $command) {
+        return $command.Source
+    }
+
+    if (-not $PSBoundParameters.ContainsKey("RegisteredPaths")) {
+        $RegisteredPaths = @(
+            [Environment]::GetEnvironmentVariable("Path", "Machine") -split ";"
+            [Environment]::GetEnvironmentVariable("Path", "User") -split ";"
+        )
+    }
+
+    $processPaths = @($env:Path -split ";")
+    foreach ($registeredPath in $RegisteredPaths) {
+        $expandedPath = [Environment]::ExpandEnvironmentVariables(
+            $registeredPath.Trim().Trim('"')
+        )
+        if (
+            $expandedPath -and
+            (Test-Path -LiteralPath $expandedPath -PathType Container) -and
+            $processPaths -notcontains $expandedPath
+        ) {
+            $env:Path = "$env:Path;$expandedPath"
+            $processPaths += $expandedPath
+        }
+    }
+
+    $command = Get-Command mysql -CommandType Application `
+        -ErrorAction SilentlyContinue
+    if ($null -ne $command) {
+        return $command.Source
+    }
+
+    if ($null -eq $FallbackPaths -or $FallbackPaths.Count -eq 0) {
+        $mysqlRoot = Join-Path `
+            ([Environment]::GetFolderPath("ProgramFiles")) `
+            "MySQL"
+        if (Test-Path -LiteralPath $mysqlRoot -PathType Container) {
+            $FallbackPaths = @(Get-ChildItem -LiteralPath $mysqlRoot `
+                -Directory -Filter "MySQL Server *" |
+                Sort-Object Name -Descending |
+                ForEach-Object { Join-Path $_.FullName "bin\mysql.exe" })
+        }
+    }
+
+    foreach ($candidate in $FallbackPaths) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+
+    throw "MySQL was not found in PATH or its standard Windows installation locations. Install MySQL Server or add its bin directory to PATH."
+}
+
 function Resolve-BackendPythonPath {
     [CmdletBinding()]
     param(
