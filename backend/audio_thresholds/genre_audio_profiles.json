@@ -1,9 +1,10 @@
 {
-  "artifact_checksum": "125800de3f963adf02e20a8edb2a4a492f750ae7814a1ac3272ecfdf222e6ec2",
+  "artifact_checksum": "8b87b9f1106bab8dab4978e4590e84c9bb294400a0d60ce5263e196f44701b61",
   "generated_at": "2026-09-02T00:00:00Z",
   "generator_version": "1.0.0",
   "genres": {
     "hip-hop": {
+      "corpus_status": "unverified",
       "metrics": {
         "bass": {
           "lower": 46.79280479264193,
@@ -44,6 +45,7 @@
       "sample_count": 5
     },
     "pop": {
+      "corpus_status": "unverified",
       "metrics": {
         "bass": {
           "lower": 46.460287482802485,
@@ -84,6 +86,7 @@
       "sample_count": 5
     },
     "rock": {
+      "corpus_status": "unverified",
       "metrics": {
         "bass": {
           "lower": 51.19678641799934,
@@ -135,14 +138,17 @@
       "recordings": [
         {
           "genre": "rock",
+          "instrumental_status": "unverified",
           "recording_id": "fma:3833"
         },
         {
           "genre": "rock",
+          "instrumental_status": "unverified",
           "recording_id": "fma:3950"
         },
         {
           "genre": "rock",
+          "instrumental_status": "unverified",
           "recording_id": "fma:6776"
         }
       ],
@@ -161,6 +167,7 @@
       "recordings": [
         {
           "genre": "rock",
+          "instrumental_status": "unverified",
           "recording_id": "fma:11933"
         }
       ],
@@ -179,6 +186,7 @@
       "recordings": [
         {
           "genre": "hip-hop",
+          "instrumental_status": "unverified",
           "recording_id": "fma:11204"
         }
       ],
@@ -197,6 +205,7 @@
       "recordings": [
         {
           "genre": "hip-hop",
+          "instrumental_status": "unverified",
           "recording_id": "fma:11916"
         }
       ],
@@ -215,10 +224,12 @@
       "recordings": [
         {
           "genre": "hip-hop",
+          "instrumental_status": "unverified",
           "recording_id": "fma:7481"
         },
         {
           "genre": "pop",
+          "instrumental_status": "unverified",
           "recording_id": "fma:22472"
         }
       ],
@@ -237,6 +248,7 @@
       "recordings": [
         {
           "genre": "hip-hop",
+          "instrumental_status": "unverified",
           "recording_id": "fma:12173"
         }
       ],
@@ -255,18 +267,22 @@
       "recordings": [
         {
           "genre": "pop",
+          "instrumental_status": "unverified",
           "recording_id": "fma:12179"
         },
         {
           "genre": "pop",
+          "instrumental_status": "unverified",
           "recording_id": "fma:62436"
         },
         {
           "genre": "pop",
+          "instrumental_status": "unverified",
           "recording_id": "fma:74945"
         },
         {
           "genre": "rock",
+          "instrumental_status": "unverified",
           "recording_id": "fma:13556"
         }
       ],
@@ -285,6 +301,7 @@
       "recordings": [
         {
           "genre": "hip-hop",
+          "instrumental_status": "unverified",
           "recording_id": "fma:10693"
         }
       ],
@@ -303,6 +320,7 @@
       "recordings": [
         {
           "genre": "pop",
+          "instrumental_status": "unverified",
           "recording_id": "fma:21995"
         }
       ],

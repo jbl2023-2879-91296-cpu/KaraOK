@@ -1,6 +1,7 @@
 import json
 import os
 import unittest
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -13,6 +14,7 @@ os.environ.setdefault(
 
 import app as api
 from karaok.modules.settings_recommendations import service as recommendation_service
+from settings_recommendations import AmplifierScale, KnobSettings
 
 
 api.app.config["TESTING"] = True
@@ -308,6 +310,53 @@ class SettingsRecommendationApiTests(unittest.TestCase):
                 guest=True,
                 user_id=None,
             )
+
+    def test_profile_checksum_survives_authenticated_and_guest_responses_and_token(self):
+        artifact = recommendation_service.load_genre_profiles()
+        scale = AmplifierScale(0.0, 10.0, 0.5)
+        summary = {
+            "loudness": artifact.genres["rock"].metrics["loudness"].preferred,
+            "bass": artifact.genres["rock"].metrics["bass"].preferred,
+            "treble": artifact.genres["rock"].metrics["treble"].preferred,
+            "sharpness": artifact.genres["rock"].metrics["sharpness"].preferred,
+            "flatness": artifact.genres["rock"].metrics["flatness"].preferred,
+        }
+        recommendations = []
+        for guest, user_id in ((False, 7), (True, None)):
+            with self.subTest(guest=guest):
+                context = recommendation_service.SuggestionContext(
+                    guest=guest,
+                    user_id=user_id,
+                    genre="rock",
+                    scale=scale,
+                    current=KnobSettings(5.0, 5.0, 5.0, 5.0, 5.0),
+                )
+                recommendation = recommendation_service.build_recommendation(
+                    summary,
+                    context,
+                    verification=False,
+                )
+                self.assertEqual(
+                    recommendation.to_dict()["profile_checksum"],
+                    artifact.artifact_checksum,
+                )
+                recommendations.append(recommendation)
+
+        token = recommendation_service.issue_guest_verification_token(
+            recommendations[-1],
+            scale,
+            before_score=80.0,
+        )
+        verification = recommendation_service.parse_guest_verification_token(token)
+
+        self.assertEqual(verification.profile_checksum, artifact.artifact_checksum)
+        changed_artifact = replace(artifact, artifact_checksum="b" * 64)
+        with patch.object(
+            recommendation_service,
+            "load_genre_profiles",
+            return_value=changed_artifact,
+        ), self.assertRaisesRegex(ValueError, "profile checksum"):
+            recommendation_service.parse_guest_verification_token(token)
 
     def test_lists_only_the_authenticated_users_profiles(self):
         response, connection, cursor = self.request_with_database(

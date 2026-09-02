@@ -11,6 +11,7 @@ from typing import Any, Mapping
 KNOB_NAMES = ("volume", "bass", "treble", "sharpness", "flatness")
 MEASUREMENT_NAMES = ("loudness", "bass", "treble", "sharpness", "flatness")
 CONFIDENCE_LEVELS = ("high", "medium", "low", "unavailable")
+_LOWERCASE_HEXADECIMAL = frozenset("0123456789abcdef")
 
 
 def _finite_number(value: Any, name: str) -> float:
@@ -20,6 +21,19 @@ def _finite_number(value: Any, name: str) -> float:
     if not math.isfinite(number):
         raise ValueError(f"{name} must be a finite number")
     return number
+
+
+def _profile_checksum(value: Any) -> str:
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(character not in _LOWERCASE_HEXADECIMAL for character in value)
+    ):
+        raise ValueError(
+            "Recommendation profile_checksum must be exactly 64 lowercase "
+            "hexadecimal characters"
+        )
+    return value
 
 
 @dataclass(frozen=True)
@@ -123,8 +137,10 @@ class RecommendationRequest:
     current: KnobSettings
     measurements: Mapping[str, float]
     profile_version: str
+    profile_checksum: str
     safety: SafetySignals = field(default_factory=SafetySignals)
     verification: bool = False
+    hardware_response_characterized: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.scale, AmplifierScale):
@@ -135,6 +151,10 @@ class RecommendationRequest:
             raise ValueError("Recommendation safety signals must be SafetySignals")
         if not isinstance(self.verification, bool):
             raise ValueError("Recommendation verification flag must be boolean")
+        if not isinstance(self.hardware_response_characterized, bool):
+            raise ValueError(
+                "Recommendation hardware_response_characterized flag must be boolean"
+            )
         if not isinstance(self.profile_version, str) or not self.profile_version.strip():
             raise ValueError("Recommendation profile_version must be non-empty")
         if not isinstance(self.measurements, Mapping):
@@ -145,6 +165,7 @@ class RecommendationRequest:
             except ValueError as error:
                 raise ValueError(f"Current {name} position is invalid: {error}") from error
         object.__setattr__(self, "profile_version", self.profile_version.strip())
+        object.__setattr__(self, "profile_checksum", _profile_checksum(self.profile_checksum))
         object.__setattr__(
             self,
             "measurements",
@@ -183,6 +204,7 @@ class SettingsRecommendation:
     status: str
     genre: str
     profile_version: str
+    profile_checksum: str
     algorithm_version: str
     scale: AmplifierScale
     current: KnobSettings
@@ -192,6 +214,7 @@ class SettingsRecommendation:
     def __post_init__(self) -> None:
         if self.status not in {"generated", "unavailable"}:
             raise ValueError(f"Unsupported recommendation status: {self.status!r}")
+        object.__setattr__(self, "profile_checksum", _profile_checksum(self.profile_checksum))
         if self.overall_confidence not in CONFIDENCE_LEVELS:
             raise ValueError(
                 f"Unsupported overall confidence: {self.overall_confidence!r}"
@@ -212,6 +235,7 @@ class SettingsRecommendation:
             "status": self.status,
             "genre": self.genre,
             "profile_version": self.profile_version,
+            "profile_checksum": self.profile_checksum,
             "algorithm_version": self.algorithm_version,
             "overall_confidence": self.overall_confidence,
             "scale": self.scale.to_dict(),

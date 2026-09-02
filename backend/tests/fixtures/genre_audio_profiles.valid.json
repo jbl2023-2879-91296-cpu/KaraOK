@@ -12,17 +12,18 @@
     "compatible_feature_notes": "All five KaraOK analyzer features are compatible.",
     "calculation_method": "linear quartiles with robust scale",
     "recordings": [
-      {"recording_id": "rock-001", "genre": "rock"},
-      {"recording_id": "rock-002", "genre": "rock"},
-      {"recording_id": "rock-003", "genre": "rock"},
-      {"recording_id": "rock-004", "genre": "rock"},
-      {"recording_id": "rock-005", "genre": "rock"}
+      {"recording_id": "rock-001", "genre": "rock", "instrumental_status": "confirmed_instrumental"},
+      {"recording_id": "rock-002", "genre": "rock", "instrumental_status": "confirmed_instrumental"},
+      {"recording_id": "rock-003", "genre": "rock", "instrumental_status": "confirmed_instrumental"},
+      {"recording_id": "rock-004", "genre": "rock", "instrumental_status": "confirmed_instrumental"},
+      {"recording_id": "rock-005", "genre": "rock", "instrumental_status": "confirmed_instrumental"}
     ]
   },
-  "artifact_checksum": "4a2fa8e405f399f80beeb0e89c09828af477ffa157c8d5ea753680c72a36bf08",
+  "artifact_checksum": "39b2a99a8ceb2af8412b14157651903e764309c965b2b376b06e6c01c9b21764",
   "genres": {
     "rock": {
       "sample_count": 5,
+      "corpus_status": "confirmed_instrumental",
       "metrics": {
         "loudness": {"lower": -14.0, "preferred": -12.0, "upper": -10.0, "robust_scale": 2.0, "unit": "LUFS"},
         "bass": {"lower": 20.0, "preferred": 30.0, "upper": 40.0, "robust_scale": 10.0, "unit": "percent"},
