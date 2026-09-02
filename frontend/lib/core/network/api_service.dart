@@ -420,37 +420,6 @@ class ApiService {
     await _post('/settings-recommendations/$recommendationId/apply', {}) as Map,
   );
 
-  // TODO(task-10): Remove these compatibility methods with the legacy screens.
-  @Deprecated('Use amplifier profiles and generated recommendations.')
-  Future<Map<String, dynamic>> getGenreSettings(String genre) async =>
-      Map<String, dynamic>.from(
-        await _get('/genre-settings', {'genre': genre}) as Map,
-      );
-
-  @Deprecated('Use amplifier profiles and generated recommendations.')
-  Future<List<dynamic>> getAllGenreSettings() async =>
-      List<dynamic>.from(await _get('/genre-settings') as List);
-
-  @Deprecated('Use amplifier profiles and generated recommendations.')
-  Future<Map<String, dynamic>> saveGenreSettings({
-    required String genre,
-    required int volume,
-    required int bass,
-    required int treble,
-    required int flatness,
-    required int sharpness,
-  }) async => Map<String, dynamic>.from(
-    await _post('/genre-settings', {
-          'genre': genre,
-          'volume': volume,
-          'bass': bass,
-          'treble': treble,
-          'flatness': flatness,
-          'sharpness': sharpness,
-        })
-        as Map,
-  );
-
   Future<List<dynamic>> getAudioUploads() async =>
       List<dynamic>.from(await _get('/audio-uploads') as List);
 

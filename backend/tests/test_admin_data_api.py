@@ -57,6 +57,29 @@ class AdminDataApiTests(unittest.TestCase):
         self.assertFalse(policy.deletable)
         self.assertIn("password", policy.hidden_fields)
 
+    def test_legacy_genre_tables_are_read_only(self):
+        expected_labels = {
+            "genre_preset": "Legacy genre presets",
+            "user_genre_setting": "Legacy user genre settings",
+        }
+        for table, label in expected_labels.items():
+            with self.subTest(table=table):
+                policy = service.table_policy(table)
+                self.assertTrue(policy.readable)
+                self.assertFalse(policy.creatable)
+                self.assertFalse(policy.updatable)
+                self.assertFalse(policy.deletable)
+                self.assertEqual(policy.label, label)
+
+    def test_new_settings_tables_are_read_only_in_admin_api(self):
+        for table in ("amplifier_profile", "settings_recommendation"):
+            with self.subTest(table=table):
+                policy = service.table_policy(table)
+                self.assertTrue(policy.readable)
+                self.assertFalse(policy.creatable)
+                self.assertFalse(policy.updatable)
+                self.assertFalse(policy.deletable)
+
     def test_numeric_admin_values_are_bounded(self):
         column = {
             "name": "bass",
@@ -74,9 +97,9 @@ class AdminDataApiTests(unittest.TestCase):
             api, "audit"
         ) as audit:
             response = self.client.post(
-                "/api/admin/data/tables/genre_preset/records",
+                "/api/admin/data/tables/audio_quality_threshold/records",
                 headers=self.headers,
-                json={"genre_name": "Jazz"},
+                json={"threshold_name": "Studio"},
             )
         self.assertEqual(response.status_code, 201)
         audit.assert_called_once()
