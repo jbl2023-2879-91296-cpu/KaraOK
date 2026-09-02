@@ -73,11 +73,27 @@ void main() {
     expect(fetchCount, 1);
   });
 
-  test('password policy requires exactly eight mixed characters', () {
+  test('password policy accepts mixed passwords from 8 to 128 characters', () {
     expect(PasswordPolicy.validate('Good#A1b'), isNull);
-    expect(PasswordPolicy.validate('Good#A1'), isNotNull);
-    expect(PasswordPolicy.validate('Good#A1bc'), isNotNull);
-    expect(PasswordPolicy.validate('abcdefgh'), isNotNull);
+    expect(PasswordPolicy.validate('Good#A1bc'), isNull);
+    expect(
+      PasswordPolicy.validate('Aa1!${List.filled(124, 'x').join()}'),
+      isNull,
+    );
+  });
+
+  test('password policy rejects values outside the length limits', () {
+    expect(PasswordPolicy.validate('Go#1abc'), isNotNull);
+    expect(
+      PasswordPolicy.validate('Aa1!${List.filled(125, 'x').join()}'),
+      isNotNull,
+    );
+  });
+
+  test('password policy requires every character type', () {
+    for (final password in ['good#a1b', 'GOOD#A1B', 'Good#abc', 'Good1abc']) {
+      expect(PasswordPolicy.validate(password), isNotNull);
+    }
   });
 
   test('guest reports persist locally until authentication cleanup', () async {

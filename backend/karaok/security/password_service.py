@@ -22,8 +22,8 @@ def clean_email(value: Any) -> str:
 
 
 def validate_password(password: Any) -> str:
-    if not isinstance(password, str) or len(password) != 8:
-        raise ValueError("password must be exactly 8 characters")
+    if not isinstance(password, str) or not 8 <= len(password) <= 128:
+        raise ValueError("password must be between 8 and 128 characters")
     if not (re.search(r"[A-Z]", password) and re.search(r"[a-z]", password)):
         raise ValueError("password must include uppercase and lowercase letters")
     if not re.search(r"\d", password) or not re.search(r"[^A-Za-z0-9]", password):

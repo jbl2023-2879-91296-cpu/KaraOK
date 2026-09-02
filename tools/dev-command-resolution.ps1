@@ -97,3 +97,45 @@ function Resolve-BackendPythonPath {
 
     throw "No working backend Python environment was found. Checked '$primaryPath' and '$fallbackPath'."
 }
+
+function Resolve-AdbPath {
+    [CmdletBinding()]
+    param([string[]]$FallbackPaths)
+
+    $command = Get-Command adb -CommandType Application `
+        -ErrorAction SilentlyContinue
+    if ($null -ne $command) {
+        return $command.Source
+    }
+
+    if ($null -eq $FallbackPaths -or $FallbackPaths.Count -eq 0) {
+        $FallbackPaths = @(
+            (Join-Path `
+                ([Environment]::GetFolderPath("LocalApplicationData")) `
+                "Android\Sdk\platform-tools\adb.exe")
+        )
+    }
+
+    foreach ($candidate in $FallbackPaths) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+
+    return $null
+}
+
+function Get-AuthorizedAndroidDeviceIds {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string[]]$AdbDevicesOutput
+    )
+
+    foreach ($line in $AdbDevicesOutput) {
+        if ($line -match '^([^\s]+)\s+device(?:\s|$)') {
+            $Matches[1]
+        }
+    }
+}

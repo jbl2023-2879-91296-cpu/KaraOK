@@ -251,6 +251,43 @@ void main() {
     expect(find.textContaining('Profile image'), findsOneWidget);
   });
 
+  testWidgets(
+    'account creation accepts passwords longer than eight characters',
+    (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: SignUpScreen()));
+      await tester.ensureVisible(find.text('Password'));
+
+      final passwordFields = find.byWidgetPredicate(
+        (widget) => widget is EditableText && widget.obscureText,
+      );
+      expect(passwordFields, findsNWidgets(2));
+
+      await tester.enterText(passwordFields.first, 'Good#A1bc');
+
+      final passwordField = tester.widget<EditableText>(passwordFields.first);
+      expect(passwordField.controller.text, 'Good#A1bc');
+    },
+  );
+
+  testWidgets(
+    'password change accepts passwords longer than eight characters',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: ChangePasswordScreen(forceChange: true)),
+      );
+
+      final passwordFields = find.byWidgetPredicate(
+        (widget) => widget is EditableText && widget.obscureText,
+      );
+      expect(passwordFields, findsNWidgets(2));
+
+      await tester.enterText(passwordFields.first, 'Good#A1bc');
+
+      final passwordField = tester.widget<EditableText>(passwordFields.first);
+      expect(passwordField.controller.text, 'Good#A1bc');
+    },
+  );
+
   testWidgets('empirical result shows a real score and five feature grades', (
     tester,
   ) async {

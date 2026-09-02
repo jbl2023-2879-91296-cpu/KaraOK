@@ -62,3 +62,22 @@ finally {
 }
 
 Write-Output "PASS: Composer and PHP resolve from registered paths"
+
+$expectedAdbPath = (Resolve-Path -LiteralPath $PSCommandPath).Path
+$actualAdbPath = Resolve-AdbPath -FallbackPaths @($expectedAdbPath)
+if ($actualAdbPath -ne $expectedAdbPath) {
+    throw "FAIL: expected ADB fallback '$expectedAdbPath', got '$actualAdbPath'"
+}
+Write-Output "PASS: ADB resolves from a fallback when PATH is stale"
+
+$deviceIds = @(Get-AuthorizedAndroidDeviceIds -AdbDevicesOutput @(
+        "List of devices attached"
+        "PHONE-123`tdevice product:test model:Phone device:test transport_id:1"
+        "OFFLINE-456`toffline transport_id:2"
+        "UNAUTHORIZED-789`tunauthorized transport_id:3"
+        ""
+    ))
+if ($deviceIds.Count -ne 1 -or $deviceIds[0] -ne "PHONE-123") {
+    throw "FAIL: expected only the authorized Android device, got '$($deviceIds -join ', ')'"
+}
+Write-Output "PASS: only authorized Android devices are selected for USB forwarding"

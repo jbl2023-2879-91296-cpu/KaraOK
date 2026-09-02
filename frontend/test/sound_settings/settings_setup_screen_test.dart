@@ -102,6 +102,50 @@ void main() {
     expect(find.text('Pop'), findsNothing);
   });
 
+  _tallTestWidgets(
+    'keeps genre selection available when saved profiles fail to load',
+    (tester) async {
+      UserSession.instance.setUser(
+        id: 7,
+        name: 'Singer',
+        email: 'singer@example.com',
+        userType: 'user',
+      );
+      settingsApi.profilesError = const ApiException(
+        500,
+        'Could not load profiles.',
+      );
+
+      await tester.pumpWidget(
+        _testApp(
+          SettingsSetupScreen(
+            settingsApi: settingsApi,
+            guestStore: guestStore,
+            onContinue: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.byKey(const Key('genre-dropdown')));
+      await tester.tap(find.byKey(const Key('genre-dropdown')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Rock'), findsOneWidget);
+      expect(
+        find.text(
+          'Saved amplifier profiles could not be loaded. '
+          'You can still create a new amplifier.',
+        ),
+        findsOneWidget,
+      );
+      final continueButton = tester.widget<FilledButton>(
+        find.byKey(const Key('settings-continue')),
+      );
+      expect(continueButton.onPressed, isNotNull);
+    },
+  );
+
   _tallTestWidgets('disabled metadata endpoint disables setup continuation', (
     tester,
   ) async {
@@ -381,6 +425,7 @@ Future<void> _enterPositions(
 class _FakeSettingsApi extends SettingsApi {
   List<String> enabledGenres = const ['hip-hop', 'pop', 'rock'];
   ApiException? metadataError;
+  ApiException? profilesError;
   List<AmplifierProfile> profiles = const [];
   AmplifierProfile? created;
 
@@ -391,7 +436,10 @@ class _FakeSettingsApi extends SettingsApi {
   }
 
   @override
-  Future<List<AmplifierProfile>> listProfiles() async => profiles;
+  Future<List<AmplifierProfile>> listProfiles() async {
+    if (profilesError case final error?) throw error;
+    return profiles;
+  }
 
   @override
   Future<AmplifierProfile> createProfile(AmplifierProfile profile) async {
