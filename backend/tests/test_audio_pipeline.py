@@ -1,15 +1,19 @@
 import json
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 import os
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 os.environ.setdefault("JWT_SECRET", "test-only-secret-that-is-at-least-32-characters")
 
 import app as api
+from audio_thresholds import load_genre_profiles
+from karaok.modules.settings_recommendations import service as recommendation_service
+from settings_recommendations import ALGORITHM_VERSION, AmplifierScale, KnobSettings
 
 
 def _analyzer_result(status: str = "passed") -> dict:
@@ -30,7 +34,137 @@ def _analyzer_result(status: str = "passed") -> dict:
     }
 
 
+def _stored_settings_columns() -> dict:
+    current = {
+        "volume": 5.0,
+        "bass": 4.0,
+        "treble": 6.0,
+        "sharpness": 5.0,
+        "flatness": 5.0,
+    }
+    recommended = {
+        "volume": 5.5,
+        "bass": 5.5,
+        "treble": 5.5,
+        "sharpness": 5.0,
+        "flatness": 4.5,
+    }
+    adjustments = {
+        name: {
+            "current": current[name],
+            "recommended": recommended[name],
+            "delta": recommended[name] - current[name],
+            "delta_normalized": 0.0,
+            "reason_code": "within_genre_range",
+            "confidence": "medium",
+        }
+        for name in current
+    }
+    return {
+        "settings_recommendation_id": 41,
+        "settings_assessment_id": 11,
+        "settings_amplifier_profile_id": 12,
+        "settings_parent_recommendation_id": None,
+        "settings_genre": "rock",
+        "settings_current_positions": json.dumps(current),
+        "settings_recommended_positions": json.dumps(recommended),
+        "settings_adjustments": json.dumps(adjustments),
+        "settings_original_score": 72.0,
+        "settings_verification_score": None,
+        "settings_overall_confidence": "medium",
+        "settings_algorithm_version": "1.0.0",
+        "settings_genre_profile_version": "2026.09.1",
+        "settings_recommendation_status": "generated",
+        "settings_created_at": datetime(2026, 9, 2, tzinfo=timezone.utc),
+        "settings_applied_at": None,
+        "settings_scale_min": 0.0,
+        "settings_scale_max": 10.0,
+        "settings_scale_step": 0.5,
+    }
+
+
 class AudioPipelineTests(unittest.TestCase):
+    def _post_guest_audio(
+        self,
+        *,
+        analysis_purpose: str,
+        genre: str = "rock",
+        current_settings: dict | None = None,
+        verification_token: str | None = None,
+        feature_enabled: bool = True,
+    ):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        upload_root = root / "uploads"
+        analysis_root = root / "analysis"
+        dump = {
+            "analysis_status": "completed",
+            "analysis_purpose": analysis_purpose,
+            "upload": {
+                "assessment_id": 99,
+                "original_file_name": "guest.wav",
+            },
+            "analyzer_process": {"duration_seconds": 0.5},
+            "analysis": _analyzer_result("passed"),
+            "visualizations": {
+                "waveform": "0/99/guest_waveform.png",
+                "spectrogram": "0/99/guest_spectrogram.png",
+            },
+        }
+        report_directory = analysis_root / "0" / "99"
+        report_directory.mkdir(parents=True)
+        png = b"\x89PNG\r\n\x1a\nserver-generated-report"
+        (report_directory / "guest_waveform.png").write_bytes(png)
+        (report_directory / "guest_spectrogram.png").write_bytes(png)
+        data = {
+            "audio": (BytesIO(b"RIFF-test"), "guest.wav"),
+            "duration_seconds": "2",
+            "analysis_purpose": analysis_purpose,
+        }
+        if analysis_purpose == "settings_suggestion":
+            data.update(
+                {
+                    "genre": genre,
+                    "amplifier_scale": json.dumps(
+                        {"minimum": 0, "maximum": 10, "step": 0.5}
+                    ),
+                    "current_settings": json.dumps(
+                        current_settings
+                        or {
+                            "volume": 5,
+                            "bass": 4,
+                            "treble": 6,
+                            "sharpness": 5,
+                            "flatness": 5,
+                        }
+                    ),
+                }
+            )
+            if verification_token is not None:
+                data["verification_token"] = verification_token
+
+        with api.app.test_request_context(
+            "/api/guest/audio-analysis",
+            method="POST",
+            data=data,
+            content_type="multipart/form-data",
+        ), patch.object(
+            api, "SETTINGS_RECOMMENDATIONS_ENABLED", feature_enabled
+        ), patch.object(
+            api, "AUDIO_UPLOAD_DIR", str(upload_root)
+        ), patch.object(
+            api, "ANALYSIS_OUTPUT_DIR", str(analysis_root)
+        ), patch.object(
+            api, "audio_duration_seconds", return_value=2
+        ), patch.object(
+            api, "run_audio_analyzer", return_value=dump
+        ), patch.object(
+            api, "get_db", side_effect=AssertionError("guest history must not persist")
+        ):
+            result = api.create_guest_audio_analysis.__wrapped__()
+        return result, upload_root
+
     def _run_with_fake_process(self, return_code: int, result_status: str = "passed"):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -214,6 +348,259 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertIn("UPDATE audio_upload SET score", statements)
         connection.commit.assert_called_once()
 
+    def test_analysis_and_recommendation_share_one_commit(self):
+        summary_dump = {
+            "analyzer_process": {"duration_seconds": 1.25},
+            "analysis": _analyzer_result("passed"),
+            "visualizations": {
+                "waveform": "7/11/test_waveform.png",
+                "spectrogram": "7/11/test_spectrogram.png",
+            },
+        }
+        context = recommendation_service.SuggestionContext(
+            guest=False,
+            user_id=7,
+            genre="rock",
+            scale=AmplifierScale(0, 10, 0.5),
+            current=KnobSettings(5, 4, 6, 5, 5),
+            amplifier_profile_id=12,
+        )
+        summary = api.summarize_audio_analysis(summary_dump)
+        recommendation = recommendation_service.build_recommendation(
+            summary,
+            context,
+            verification=False,
+        )
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.lastrowid = 41
+
+        with patch.object(api, "get_db", return_value=connection):
+            result = api.persist_audio_analysis(
+                11,
+                13,
+                summary_dump,
+                recommendation=recommendation,
+                recommendation_context=context,
+            )
+
+        statements = [call.args[0] for call in cursor.execute.call_args_list]
+        analysis_index = next(
+            index
+            for index, statement in enumerate(statements)
+            if "INSERT INTO audio_analysis_result" in statement
+        )
+        recommendation_index = next(
+            index
+            for index, statement in enumerate(statements)
+            if "INSERT INTO settings_recommendation" in statement
+        )
+        assessment_index = next(
+            index
+            for index, statement in enumerate(statements)
+            if "UPDATE assessment" in statement
+        )
+        self.assertLess(analysis_index, recommendation_index)
+        self.assertLess(recommendation_index, assessment_index)
+        self.assertFalse(any("genre_preset" in statement for statement in statements))
+        self.assertEqual(result["settings_recommendation"]["id"], 41)
+        connection.commit.assert_called_once()
+
+    def test_summary_maps_analyzer_clipping_noise_and_distortion_safety(self):
+        analysis = _analyzer_result("failed")
+        analysis["distortion"].update(
+            {
+                "clipped_sample_percentage": 0.75,
+                "estimated_score": 55.0,
+            }
+        )
+        analysis["quality_assessment"].update(
+            {
+                "measured": {"estimated_snr_db": 8.0},
+                "thresholds": {
+                    "clipped_samples_failure_above_percentage": 0.5,
+                    "distortion_warning_above": 40.0,
+                    "snr_warning_below_db": 12.0,
+                },
+            }
+        )
+
+        summary = api.summarize_audio_analysis({"analysis": analysis})
+
+        self.assertTrue(summary["safety_signals"]["clipping"])
+        self.assertTrue(summary["safety_signals"]["excessive_noise"])
+        self.assertTrue(summary["safety_signals"]["excessive_distortion"])
+
+    def test_authenticated_settings_upload_uses_two_transaction_commits(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        context = recommendation_service.SuggestionContext(
+            guest=False,
+            user_id=7,
+            genre="rock",
+            scale=AmplifierScale(0, 10, 0.5),
+            current=KnobSettings(5, 4, 6, 5, 5),
+            amplifier_profile_id=12,
+        )
+        dump = {
+            "analysis_status": "completed",
+            "analysis_purpose": "settings_suggestion",
+            "upload": {
+                "assessment_id": 11,
+                "original_file_name": "recording.wav",
+            },
+            "analyzer_process": {"duration_seconds": 0.5},
+            "analysis": _analyzer_result("passed"),
+            "visualizations": {
+                "waveform": "7/11/recording_waveform.png",
+                "spectrogram": "7/11/recording_spectrogram.png",
+            },
+        }
+        pending_connection = MagicMock()
+        pending_cursor = pending_connection.cursor.return_value
+        type(pending_cursor).lastrowid = PropertyMock(side_effect=[11, 13])
+        result_connection = MagicMock()
+        result_cursor = result_connection.cursor.return_value
+        result_cursor.lastrowid = 41
+
+        with api.app.test_request_context(
+            "/api/audio-uploads",
+            method="POST",
+            data={
+                "audio": (BytesIO(b"RIFF-test"), "recording.wav"),
+                "duration_seconds": "2",
+                "analysis_purpose": "settings_suggestion",
+                "genre": "rock",
+                "amplifier_profile_id": "12",
+                "current_settings": json.dumps(context.current.to_dict()),
+            },
+            content_type="multipart/form-data",
+        ), patch.object(
+            api, "AUDIO_UPLOAD_DIR", str(root / "uploads")
+        ), patch.object(
+            api, "SETTINGS_RECOMMENDATIONS_ENABLED", True
+        ), patch.object(
+            api.settings_recommendation_service,
+            "parse_suggestion_form",
+            return_value=context,
+        ), patch.object(
+            api, "audio_duration_seconds", return_value=2
+        ), patch.object(
+            api, "run_audio_analyzer", return_value=dump
+        ), patch.object(
+            api,
+            "get_db",
+            side_effect=[pending_connection, result_connection],
+        ), patch.object(api, "audit"):
+            api.g.user_id = 7
+            response, status_code = api.create_audio_upload.__wrapped__()
+
+        payload = response.get_json()
+        self.assertEqual(status_code, 201)
+        self.assertEqual(payload["settings_recommendation"]["id"], 41)
+        self.assertTrue(payload["settings_recommendation"]["persisted"])
+        pending_connection.commit.assert_called_once()
+        result_connection.commit.assert_called_once()
+
+    def test_recommendation_insert_failure_rolls_back_analysis_transaction(self):
+        context = recommendation_service.SuggestionContext(
+            guest=False,
+            user_id=7,
+            genre="rock",
+            scale=AmplifierScale(0, 10, 0.5),
+            current=KnobSettings(5, 4, 6, 5, 5),
+            amplifier_profile_id=12,
+        )
+        dump = {
+            "analyzer_process": {"duration_seconds": 1.25},
+            "analysis": _analyzer_result("passed"),
+            "visualizations": {
+                "waveform": "7/11/test_waveform.png",
+                "spectrogram": "7/11/test_spectrogram.png",
+            },
+        }
+        recommendation = recommendation_service.build_recommendation(
+            api.summarize_audio_analysis(dump),
+            context,
+            verification=False,
+        )
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+
+        def execute(statement, parameters=None):
+            if "INSERT INTO settings_recommendation" in statement:
+                raise RuntimeError("database unavailable")
+
+        cursor.execute.side_effect = execute
+        with patch.object(api, "get_db", return_value=connection):
+            with self.assertRaisesRegex(RuntimeError, "database unavailable"):
+                api.persist_audio_analysis(
+                    11,
+                    13,
+                    dump,
+                    recommendation=recommendation,
+                    recommendation_context=context,
+                )
+
+        connection.commit.assert_not_called()
+        connection.rollback.assert_called_once()
+
+    def test_authenticated_verification_persists_score_comparison_and_rollback(self):
+        context = recommendation_service.SuggestionContext(
+            guest=False,
+            user_id=7,
+            genre="rock",
+            scale=AmplifierScale(0, 10, 0.5),
+            current=KnobSettings(5.5, 5.5, 5.5, 5, 4.5),
+            amplifier_profile_id=12,
+            verification_of=41,
+            before_score=80.0,
+        )
+        dump = {
+            "analyzer_process": {"duration_seconds": 1.25},
+            "analysis": _analyzer_result("passed"),
+            "visualizations": {
+                "waveform": "7/11/test_waveform.png",
+                "spectrogram": "7/11/test_spectrogram.png",
+            },
+        }
+        recommendation = recommendation_service.build_recommendation(
+            api.summarize_audio_analysis(dump),
+            context,
+            verification=True,
+        )
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.return_value = {"recommendation_id": 41}
+        cursor.lastrowid = 42
+        cursor.rowcount = 1
+
+        with patch.object(api, "get_db", return_value=connection):
+            result = api.persist_audio_analysis(
+                11,
+                13,
+                dump,
+                recommendation=recommendation,
+                recommendation_context=context,
+            )
+
+        payload = result["settings_recommendation"]
+        self.assertEqual(payload["before_score"], 80.0)
+        self.assertLess(payload["after_score"], payload["before_score"])
+        self.assertEqual(payload["verification_status"], "worsened")
+        self.assertTrue(payload["rollback_recommended"])
+        parent_update = next(
+            call
+            for call in cursor.execute.call_args_list
+            if "UPDATE settings_recommendation" in call.args[0]
+        )
+        self.assertEqual(
+            parent_update.args[1],
+            (payload["after_score"], "reverted", 41, 7),
+        )
+        connection.commit.assert_called_once()
+
     def test_legacy_null_score_is_computed_from_stored_features(self):
         row = {
             "score": None,
@@ -290,6 +677,44 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertEqual(payload["analysis"]["bass"]["energy_percentage"], 40.0)
         self.assertEqual(payload["empirical_quality"]["overall_score"], 91.5)
         self.assertIn("JOIN assessment", cursor.execute.call_args.args[0])
+
+    def test_settings_assessment_detail_rebuilds_persisted_recommendation(self):
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.return_value = {
+            "id": 11,
+            "test_name": "recording.wav",
+            "score": 72.0,
+            "noise_level": -42.0,
+            "distortion_level": 8.0,
+            "bass": 40.0,
+            "treble": 12.0,
+            "loudness": -14.0,
+            "sharpness": 0.2,
+            "flatness": 0.03,
+            "status": "Problematic",
+            "assessment_status": "Completed",
+            "analysis_purpose": "settings_suggestion",
+            "duration_seconds": 2,
+            "created_at": datetime(2026, 9, 2, tzinfo=timezone.utc),
+            **_stored_settings_columns(),
+        }
+
+        with api.app.test_request_context("/api/audio-tests/11"), patch.object(
+            api, "get_db", return_value=connection
+        ):
+            api.g.user_id = 7
+            response, status_code = api.get_audio_test.__wrapped__(11)
+
+        recommendation = response.get_json()["settings_recommendation"]
+        self.assertEqual(status_code, 200)
+        self.assertEqual(recommendation["id"], 41)
+        self.assertTrue(recommendation["persisted"])
+        self.assertEqual(recommendation["recommended"]["bass"], 5.5)
+        self.assertNotIn("settings_current_positions", response.get_json())
+        statement = cursor.execute.call_args.args[0]
+        self.assertIn("LEFT JOIN settings_recommendation", statement)
+        self.assertIn("sr.user_id = a.user_id", statement)
 
     def test_visualization_is_served_from_owned_assessment_path(self):
         temporary = tempfile.TemporaryDirectory()
@@ -376,8 +801,145 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertIsNone(payload["analysis_dump"]["upload"]["assessment_id"])
         self.assertGreater(payload["score"], 0)
         self.assertNotIn("guest_import_receipt", payload)
+        self.assertNotIn("settings_recommendation", payload)
         self.assertFalse(any(upload_root.rglob("*.wav")))
         self.assertFalse(any(analysis_root.rglob("*_analysis.json")))
+
+    def test_guest_settings_upload_returns_five_non_persisted_targets(self):
+        (response, status_code), upload_root = self._post_guest_audio(
+            analysis_purpose="settings_suggestion"
+        )
+
+        payload = response.get_json()["settings_recommendation"]
+        self.assertEqual(status_code, 201)
+        self.assertIsNone(payload["id"])
+        self.assertFalse(payload["persisted"])
+        self.assertEqual(
+            set(payload["recommended"]),
+            {"volume", "bass", "treble", "sharpness", "flatness"},
+        )
+        self.assertIsInstance(payload["verification_token"], str)
+        claims = api.jwt.decode(
+            payload["verification_token"],
+            api.JWT_SECRET,
+            algorithms=["HS256"],
+            audience=recommendation_service.GUEST_VERIFICATION_AUDIENCE,
+        )
+        self.assertEqual(set(claims), recommendation_service.GUEST_TOKEN_CLAIMS)
+        self.assertNotIn("current_settings", claims)
+        self.assertFalse(any(upload_root.rglob("*.wav")))
+
+    def test_quality_evaluation_does_not_require_settings_fields(self):
+        (response, status_code), _ = self._post_guest_audio(
+            analysis_purpose="quality_evaluation"
+        )
+
+        self.assertEqual(status_code, 201)
+        self.assertNotIn("settings_recommendation", response.get_json())
+
+    def test_guest_verification_accepts_only_a_valid_initial_token(self):
+        (initial_response, _), _ = self._post_guest_audio(
+            analysis_purpose="settings_suggestion"
+        )
+        initial = initial_response.get_json()["settings_recommendation"]
+
+        (verified_response, status_code), _ = self._post_guest_audio(
+            analysis_purpose="settings_suggestion",
+            current_settings=initial["recommended"],
+            verification_token=initial["verification_token"],
+        )
+
+        verified = verified_response.get_json()["settings_recommendation"]
+        self.assertEqual(status_code, 201)
+        self.assertIsNone(verified["verification_token"])
+        self.assertEqual(verified["before_score"], initial["original_score"])
+        self.assertIn("score_change", verified)
+        self.assertIn("verification_status", verified)
+
+    def test_guest_verification_requires_the_initial_recommended_positions(self):
+        (initial_response, _), _ = self._post_guest_audio(
+            analysis_purpose="settings_suggestion"
+        )
+        initial = initial_response.get_json()["settings_recommendation"]
+        changed = dict(initial["recommended"])
+        changed["volume"] = 0.0 if changed["volume"] != 0.0 else 0.5
+
+        (response, status_code), upload_root = self._post_guest_audio(
+            analysis_purpose="settings_suggestion",
+            current_settings=changed,
+            verification_token=initial["verification_token"],
+        )
+
+        self.assertEqual(status_code, 400)
+        self.assertIn("initial recommended positions", response.get_json()["error"])
+        self.assertFalse(any(upload_root.rglob("*.wav")))
+
+    def test_missing_genre_profile_retains_quality_and_marks_settings_unavailable(self):
+        (response, status_code), _ = self._post_guest_audio(
+            analysis_purpose="settings_suggestion",
+            genre="classical",
+        )
+
+        payload = response.get_json()
+        recommendation = payload["settings_recommendation"]
+        self.assertEqual(status_code, 201)
+        self.assertIsNotNone(payload["score"])
+        self.assertEqual(recommendation["status"], "unavailable")
+        self.assertIsNone(recommendation["verification_token"])
+        self.assertTrue(
+            all(value is None for value in recommendation["recommended"].values())
+        )
+
+    def test_expired_or_tampered_guest_verification_token_is_rejected(self):
+        artifact = load_genre_profiles()
+        expired = api.jwt.encode(
+            {
+                "kind": "guest_settings_verification",
+                "genre": "rock",
+                "scale": {"minimum": 0, "maximum": 10, "step": 0.5},
+                "recommended_positions": {
+                    "volume": 5,
+                    "bass": 4,
+                    "treble": 6,
+                    "sharpness": 5,
+                    "flatness": 5,
+                },
+                "before_score": 72.0,
+                "profile_version": artifact.profile_version,
+                "algorithm_version": ALGORITHM_VERSION,
+                "initial_pass": True,
+                "aud": "karaok-guest-settings-verification",
+                "iat": datetime.now(timezone.utc) - timedelta(days=2),
+                "exp": datetime.now(timezone.utc) - timedelta(days=1),
+            },
+            api.JWT_SECRET,
+            algorithm="HS256",
+        )
+        for token in (expired, "tampered"):
+            with self.subTest(token=token):
+                result, upload_root = self._post_guest_audio(
+                    analysis_purpose="settings_suggestion",
+                    verification_token=token,
+                )
+                response, status_code = result
+                self.assertEqual(status_code, 400)
+                self.assertFalse(any(upload_root.rglob("*.wav")))
+
+    def test_disabled_feature_rejects_only_settings_purpose_uploads(self):
+        (settings_response, settings_status), upload_root = self._post_guest_audio(
+            analysis_purpose="settings_suggestion",
+            feature_enabled=False,
+        )
+        (quality_response, quality_status), _ = self._post_guest_audio(
+            analysis_purpose="quality_evaluation",
+            feature_enabled=False,
+        )
+
+        self.assertEqual(settings_status, 404)
+        self.assertIn("error", settings_response.get_json())
+        self.assertFalse(any(upload_root.rglob("*.wav")))
+        self.assertEqual(quality_status, 201)
+        self.assertNotIn("settings_recommendation", quality_response.get_json())
 
 
 if __name__ == "__main__":

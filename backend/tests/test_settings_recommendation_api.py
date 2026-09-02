@@ -11,6 +11,7 @@ os.environ.setdefault(
 )
 
 import app as api
+from karaok.modules.settings_recommendations import service as recommendation_service
 
 
 api.app.config["TESTING"] = True
@@ -176,6 +177,94 @@ class SettingsRecommendationApiTests(unittest.TestCase):
             response.get_json()["enabled_genres"],
             ["hip-hop", "pop", "rock"],
         )
+
+    def test_authenticated_suggestion_context_is_owner_scoped(self):
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.return_value = profile_row()
+        form = {
+            "analysis_purpose": "settings_suggestion",
+            "genre": "Rock",
+            "amplifier_profile_id": "12",
+            "current_settings": json.dumps(
+                {
+                    "volume": 5,
+                    "bass": 4,
+                    "treble": 6,
+                    "sharpness": 5,
+                    "flatness": 5,
+                }
+            ),
+        }
+
+        with patch.object(api, "get_db", return_value=connection):
+            context = recommendation_service.parse_suggestion_form(
+                form,
+                guest=False,
+                user_id=7,
+            )
+
+        self.assertEqual(context.genre, "rock")
+        self.assertEqual(context.amplifier_profile_id, 12)
+        self.assertEqual(context.current.bass, 4.0)
+        profile_query = cursor.execute.call_args_list[0]
+        self.assertIn("amplifier_profile_id = %s AND user_id = %s", profile_query.args[0])
+        self.assertEqual(profile_query.args[1], (12, 7))
+
+    def test_authenticated_verification_requires_applied_childless_parent(self):
+        form = {
+            "analysis_purpose": "settings_suggestion",
+            "genre": "rock",
+            "amplifier_profile_id": "12",
+            "verification_of": "41",
+            "current_settings": json.dumps(
+                {
+                    "volume": 5.5,
+                    "bass": 5.5,
+                    "treble": 5.5,
+                    "sharpness": 5,
+                    "flatness": 4.5,
+                }
+            ),
+        }
+        invalid_parents = (
+            recommendation_row(
+                recommendation_status="generated",
+                child_recommendation_id=None,
+            ),
+            recommendation_row(
+                recommendation_status="applied",
+                child_recommendation_id=42,
+            ),
+        )
+        for parent in invalid_parents:
+            with self.subTest(parent=parent):
+                connection = MagicMock()
+                cursor = connection.cursor.return_value
+                cursor.fetchone.side_effect = [profile_row(), parent]
+                with patch.object(api, "get_db", return_value=connection):
+                    with self.assertRaises(ValueError):
+                        recommendation_service.parse_suggestion_form(
+                            form,
+                            guest=False,
+                            user_id=7,
+                        )
+                parent_query = cursor.execute.call_args_list[1]
+                self.assertIn("sr.user_id = %s", parent_query.args[0])
+                self.assertEqual(parent_query.args[1], (41, 7, 12))
+
+    def test_suggestion_verification_fields_are_mutually_exclusive(self):
+        with self.assertRaisesRegex(ValueError, "mutually exclusive"):
+            recommendation_service.parse_suggestion_form(
+                {
+                    "analysis_purpose": "settings_suggestion",
+                    "genre": "rock",
+                    "verification_of": "41",
+                    "verification_token": "token",
+                },
+                guest=True,
+                user_id=None,
+            )
 
     def test_lists_only_the_authenticated_users_profiles(self):
         response, connection, cursor = self.request_with_database(

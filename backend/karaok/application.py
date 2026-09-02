@@ -71,6 +71,7 @@ from .modules.system.routes import blueprint as system_routes
 from .modules.settings_recommendations.routes import (
     blueprint as settings_recommendation_routes,
 )
+from .modules.settings_recommendations import service as settings_recommendation_service
 from .modules.users.routes import blueprint as users_routes
 from .security.password_service import (
     EMAIL_RE,
@@ -103,6 +104,27 @@ EMPIRICAL_RESULT_STATUSES = {
     "good_but_needs_improvement": "Needs Improvement",
     "bad": "Problematic",
 }
+SETTINGS_RECOMMENDATION_SELECT_COLUMNS = """
+    sr.recommendation_id AS settings_recommendation_id,
+    sr.assessment_id AS settings_assessment_id,
+    sr.amplifier_profile_id AS settings_amplifier_profile_id,
+    sr.parent_recommendation_id AS settings_parent_recommendation_id,
+    sr.genre AS settings_genre,
+    sr.current_positions AS settings_current_positions,
+    sr.recommended_positions AS settings_recommended_positions,
+    sr.adjustments AS settings_adjustments,
+    sr.original_score AS settings_original_score,
+    sr.verification_score AS settings_verification_score,
+    sr.overall_confidence AS settings_overall_confidence,
+    sr.algorithm_version AS settings_algorithm_version,
+    sr.genre_profile_version AS settings_genre_profile_version,
+    sr.recommendation_status AS settings_recommendation_status,
+    sr.created_at AS settings_created_at,
+    sr.applied_at AS settings_applied_at,
+    ap.scale_min AS settings_scale_min,
+    ap.scale_max AS settings_scale_max,
+    ap.scale_step AS settings_scale_step
+""".strip()
 
 
 class AudioAnalyzerExecutionError(RuntimeError):
@@ -595,6 +617,56 @@ def _enrich_audio_test_row(row: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
+def _attach_stored_recommendation(row: dict[str, Any]) -> dict[str, Any]:
+    recommendation = settings_recommendation_service.stored_recommendation_payload(
+        row
+    )
+    for key in tuple(row):
+        if key.startswith("settings_"):
+            row.pop(key)
+    if row.get("analysis_purpose") == "settings_suggestion":
+        row["settings_recommendation"] = recommendation
+    return row
+
+
+def _analysis_safety_signals(analysis: dict[str, Any]) -> dict[str, Any]:
+    quality = analysis.get("quality_assessment")
+    quality = quality if isinstance(quality, dict) else {}
+    measured = quality.get("measured")
+    measured = measured if isinstance(measured, dict) else {}
+    thresholds = quality.get("thresholds")
+    thresholds = thresholds if isinstance(thresholds, dict) else {}
+
+    clipped = _nested_number(analysis, "distortion", "clipped_sample_percentage")
+    clipping_limit = _nested_number(
+        thresholds,
+        "clipped_samples_failure_above_percentage",
+    )
+    distortion = _nested_number(analysis, "distortion", "estimated_score")
+    distortion_limit = _nested_number(thresholds, "distortion_warning_above")
+    snr = _nested_number(measured, "estimated_snr_db")
+    noise_limit = _nested_number(thresholds, "snr_warning_below_db")
+    return {
+        "silent": False,
+        "corrupt": False,
+        "too_short": False,
+        "clipping": (
+            clipped is not None
+            and clipping_limit is not None
+            and clipped > clipping_limit
+        ),
+        "excessive_noise": (
+            snr is not None and noise_limit is not None and snr < noise_limit
+        ),
+        "excessive_distortion": (
+            distortion is not None
+            and distortion_limit is not None
+            and distortion > distortion_limit
+        ),
+        "low_confidence_metrics": [],
+    }
+
+
 def summarize_audio_analysis(dump: dict[str, Any]) -> dict[str, Any]:
     """Convert transient analyzer output into the public measured result."""
     analysis = dump.get("analysis")
@@ -628,6 +700,7 @@ def summarize_audio_analysis(dump: dict[str, Any]) -> dict[str, Any]:
         "sharpness": sharpness,
         "flatness": flatness,
         "empirical_quality": empirical,
+        "safety_signals": _analysis_safety_signals(analysis),
     }
 
 
@@ -635,7 +708,16 @@ def persist_audio_analysis(
     assessment_id: int,
     upload_id: int,
     dump: dict[str, Any],
+    *,
+    recommendation: settings_recommendation_service.SettingsRecommendation
+    | None = None,
+    recommendation_context: settings_recommendation_service.SuggestionContext
+    | None = None,
 ) -> dict[str, Any]:
+    if (recommendation is None) != (recommendation_context is None):
+        raise ValueError(
+            "recommendation and recommendation_context must be provided together"
+        )
     summary = summarize_audio_analysis(dump)
     quality_score = summary["score"]
     result_status = summary["status"]
@@ -672,18 +754,22 @@ def persist_audio_analysis(
 
     conn = get_db()
     cursor = conn.cursor()
+    recommendation_id = None
+    recommendation_response = None
     try:
-        cursor.execute(
-            """SELECT gp.preset_id
-               FROM genre_preset gp
-               JOIN audio_upload au
-                 ON au.upload_id = %s
-                AND au.genre_name IS NOT NULL
-                AND LOWER(gp.genre_name) = LOWER(au.genre_name)
-               LIMIT 1""",
-            (upload_id,),
-        )
-        preset = cursor.fetchone()
+        preset = None
+        if recommendation is None:
+            cursor.execute(
+                """SELECT gp.preset_id
+                   FROM genre_preset gp
+                   JOIN audio_upload au
+                     ON au.upload_id = %s
+                    AND au.genre_name IS NOT NULL
+                    AND LOWER(gp.genre_name) = LOWER(au.genre_name)
+                   LIMIT 1""",
+                (upload_id,),
+            )
+            preset = cursor.fetchone()
         cursor.execute(
             """INSERT INTO audio_analysis_result
                (assessment_id, threshold_id, preset_id, quality_score,
@@ -716,6 +802,110 @@ def persist_audio_analysis(
                 spectrogram_path,
             ),
         )
+        if recommendation is not None:
+            context = recommendation_context
+            if context.guest or context.user_id is None:
+                raise ValueError("Authenticated persistence requires an owned context")
+            if context.amplifier_profile_id is None:
+                raise ValueError("Authenticated persistence requires an amplifier profile")
+            if context.verification:
+                cursor.execute(
+                    """SELECT sr.recommendation_id
+                       FROM settings_recommendation sr
+                       LEFT JOIN settings_recommendation child
+                         ON child.parent_recommendation_id = sr.recommendation_id
+                       WHERE sr.recommendation_id = %s AND sr.user_id = %s
+                         AND sr.amplifier_profile_id = %s
+                         AND sr.recommendation_status = 'applied'
+                         AND child.recommendation_id IS NULL
+                       FOR UPDATE""",
+                    (
+                        context.verification_of,
+                        context.user_id,
+                        context.amplifier_profile_id,
+                    ),
+                )
+                if cursor.fetchone() is None:
+                    raise ValueError(
+                        "verification_of is no longer eligible for verification"
+                    )
+
+            recommendation_data = recommendation.to_dict()
+            original_score = (
+                context.before_score if context.verification else quality_score
+            )
+            verification_score = quality_score if context.verification else None
+            cursor.execute(
+                """INSERT INTO settings_recommendation
+                   (user_id, assessment_id, amplifier_profile_id,
+                    parent_recommendation_id, genre, current_positions,
+                    recommended_positions, adjustments, original_score,
+                    verification_score, overall_confidence, algorithm_version,
+                    genre_profile_version, recommendation_status)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                           %s, %s, %s, %s)""",
+                (
+                    context.user_id,
+                    assessment_id,
+                    context.amplifier_profile_id,
+                    context.verification_of,
+                    recommendation.genre,
+                    json.dumps(
+                        recommendation_data["current"],
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        allow_nan=False,
+                    ),
+                    json.dumps(
+                        recommendation_data["recommended"],
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        allow_nan=False,
+                    ),
+                    json.dumps(
+                        recommendation_data["adjustments"],
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        allow_nan=False,
+                    ),
+                    original_score,
+                    verification_score,
+                    recommendation.overall_confidence,
+                    recommendation.algorithm_version,
+                    recommendation.profile_version,
+                    recommendation.status,
+                ),
+            )
+            recommendation_id = cursor.lastrowid
+            if context.verification:
+                parent_status = (
+                    "verified" if quality_score >= context.before_score else "reverted"
+                )
+                cursor.execute(
+                    """UPDATE settings_recommendation
+                       SET verification_score = %s, recommendation_status = %s
+                       WHERE recommendation_id = %s AND user_id = %s
+                         AND recommendation_status = 'applied'""",
+                    (
+                        quality_score,
+                        parent_status,
+                        context.verification_of,
+                        context.user_id,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise ValueError(
+                        "verification_of changed before verification was saved"
+                    )
+            recommendation_response = (
+                settings_recommendation_service.recommendation_payload(
+                    recommendation,
+                    context,
+                    score=quality_score,
+                    recommendation_id=int(recommendation_id),
+                    persisted=True,
+                )
+            )
         cursor.execute(
             """UPDATE assessment
                SET assessment_status = 'Completed', result_status = %s,
@@ -739,6 +929,8 @@ def persist_audio_analysis(
     finally:
         cursor.close()
         conn.close()
+    if recommendation_response is not None:
+        summary["settings_recommendation"] = recommendation_response
     return summary
 
 
@@ -1701,20 +1893,29 @@ def get_audio_tests():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        """SELECT a.assessment_id AS id, a.test_name,
+        f"""SELECT a.assessment_id AS id, a.test_name,
                   r.quality_score AS score, r.noise_level,
                   r.distortion_level, r.bass, r.treble, r.loudness,
                   r.sharpness, r.flatness, a.result_status AS status,
                   a.assessment_status, a.analysis_purpose, a.duration_seconds,
-                  a.assessment_date AS created_at
+                  a.assessment_date AS created_at,
+                  {SETTINGS_RECOMMENDATION_SELECT_COLUMNS}
            FROM assessment a
            LEFT JOIN audio_analysis_result r
              ON r.assessment_id = a.assessment_id
+           LEFT JOIN settings_recommendation sr
+             ON sr.assessment_id = a.assessment_id AND sr.user_id = a.user_id
+           LEFT JOIN amplifier_profile ap
+             ON ap.amplifier_profile_id = sr.amplifier_profile_id
+            AND ap.user_id = a.user_id
            WHERE a.user_id = %s
            ORDER BY a.assessment_date DESC""",
         (g.user_id,),
     )
-    rows = [_enrich_audio_test_row(row) for row in cursor.fetchall()]
+    rows = [
+        _attach_stored_recommendation(_enrich_audio_test_row(row))
+        for row in cursor.fetchall()
+    ]
     cursor.close()
     conn.close()
     return jsonify(rows)
@@ -1725,15 +1926,21 @@ def get_audio_test(test_id: int):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        """SELECT a.assessment_id AS id, a.test_name,
+        f"""SELECT a.assessment_id AS id, a.test_name,
                   r.quality_score AS score, r.noise_level,
                   r.distortion_level, r.bass, r.treble, r.loudness,
                   r.sharpness, r.flatness, a.result_status AS status,
                   a.assessment_status, a.analysis_purpose, a.duration_seconds,
-                  a.assessment_date AS created_at
+                  a.assessment_date AS created_at,
+                  {SETTINGS_RECOMMENDATION_SELECT_COLUMNS}
            FROM assessment a
            LEFT JOIN audio_analysis_result r
              ON r.assessment_id = a.assessment_id
+           LEFT JOIN settings_recommendation sr
+             ON sr.assessment_id = a.assessment_id AND sr.user_id = a.user_id
+           LEFT JOIN amplifier_profile ap
+             ON ap.amplifier_profile_id = sr.amplifier_profile_id
+            AND ap.user_id = a.user_id
            WHERE a.assessment_id = %s AND a.user_id = %s""",
         (test_id, g.user_id),
     )
@@ -1742,7 +1949,7 @@ def get_audio_test(test_id: int):
     conn.close()
     if not row:
         return jsonify({"error": "Not found"}), 404
-    return jsonify(_enrich_audio_test_row(row)), 200
+    return jsonify(_attach_stored_recommendation(_enrich_audio_test_row(row))), 200
 
 
 @require_auth("user")
@@ -1864,16 +2071,22 @@ def get_audio_uploads():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        """SELECT au.upload_id AS id, au.file_name,
+        f"""SELECT au.upload_id AS id, au.file_name,
                   au.genre_name AS genre, au.score, au.status,
                   au.size_bytes, au.mime_type, a.duration_seconds,
-                  a.analysis_purpose, au.created_at
+                  a.analysis_purpose, au.created_at,
+                  {SETTINGS_RECOMMENDATION_SELECT_COLUMNS}
            FROM audio_upload au
            JOIN assessment a ON a.assessment_id = au.assessment_id
+           LEFT JOIN settings_recommendation sr
+             ON sr.assessment_id = a.assessment_id AND sr.user_id = a.user_id
+           LEFT JOIN amplifier_profile ap
+             ON ap.amplifier_profile_id = sr.amplifier_profile_id
+            AND ap.user_id = a.user_id
            WHERE a.user_id = %s ORDER BY au.created_at DESC""",
         (g.user_id,),
     )
-    rows = cursor.fetchall()
+    rows = [_attach_stored_recommendation(row) for row in cursor.fetchall()]
     cursor.close()
     conn.close()
     return jsonify(rows)
@@ -1905,6 +2118,18 @@ def create_guest_audio_analysis():
     analysis_purpose = request.form.get("analysis_purpose", "quality_evaluation")
     if analysis_purpose not in ALLOWED_ANALYSIS_PURPOSES:
         return jsonify({"error": "analysis_purpose is invalid"}), 400
+    suggestion_context = None
+    if analysis_purpose == "settings_suggestion":
+        if not SETTINGS_RECOMMENDATIONS_ENABLED:
+            return jsonify({"error": "Not found"}), 404
+        try:
+            suggestion_context = settings_recommendation_service.parse_suggestion_form(
+                request.form,
+                guest=True,
+                user_id=None,
+            )
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
 
     guest_dir = os.path.join(AUDIO_UPLOAD_DIR, "_guest")
     os.makedirs(guest_dir, exist_ok=True)
@@ -1935,11 +2160,38 @@ def create_guest_audio_analysis():
                 analysis_purpose=analysis_purpose,
             )
             analysis_summary = summarize_audio_analysis(analysis_dump)
+            settings_payload = None
+            if suggestion_context is not None:
+                recommendation = settings_recommendation_service.build_recommendation(
+                    analysis_summary,
+                    suggestion_context,
+                    verification=suggestion_context.verification,
+                )
+                verification_token = None
+                if not suggestion_context.verification and recommendation.status == "generated":
+                    verification_token = (
+                        settings_recommendation_service.issue_guest_verification_token(
+                            recommendation,
+                            suggestion_context.scale,
+                            before_score=analysis_summary["score"],
+                        )
+                    )
+                settings_payload = (
+                    settings_recommendation_service.recommendation_payload(
+                        recommendation,
+                        suggestion_context,
+                        score=analysis_summary["score"],
+                        recommendation_id=None,
+                        persisted=False,
+                        verification_token=verification_token,
+                    )
+                )
             visualization_images = _guest_visualization_images(analysis_dump)
             status = "Completed"
         except AudioAnalyzerExecutionError as error:
             analysis_dump = error.dump
             analysis_summary = None
+            settings_payload = None
             status = "Failed"
         except Exception:
             app.logger.exception("Guest audio analysis failed")
@@ -1955,6 +2207,7 @@ def create_guest_audio_analysis():
                 "error": "Audio analysis failed unexpectedly",
             }
             analysis_summary = None
+            settings_payload = None
             status = "Failed"
     finally:
         try:
@@ -1966,48 +2219,42 @@ def create_guest_audio_analysis():
     if isinstance(upload_details, dict):
         upload_details["assessment_id"] = None
     response_data = {
-                "id": None,
-                "assessment_id": None,
-                "guest": True,
-                "persisted": False,
-                "file_name": original_name,
-                "duration_seconds": duration,
-                "size_bytes": size,
-                "mime_type": mime_type,
-                "status": status,
-                "result_status": (
-                    analysis_summary["status"] if analysis_summary else "Failed"
-                ),
-                "score": analysis_summary["score"] if analysis_summary else None,
-                "noise_level": (
-                    analysis_summary["noise_level"] if analysis_summary else None
-                ),
-                "distortion_level": (
-                    analysis_summary["distortion_level"]
-                    if analysis_summary
-                    else None
-                ),
-                "bass": analysis_summary["bass"] if analysis_summary else None,
-                "treble": analysis_summary["treble"] if analysis_summary else None,
-                "loudness": (
-                    analysis_summary["loudness"] if analysis_summary else None
-                ),
-                "sharpness": (
-                    analysis_summary["sharpness"] if analysis_summary else None
-                ),
-                "flatness": (
-                    analysis_summary["flatness"] if analysis_summary else None
-                ),
-                "empirical_quality": (
-                    analysis_summary["empirical_quality"]
-                    if analysis_summary
-                    else None
-                ),
-                "analysis_purpose": analysis_purpose,
-                "analysis_dump": analysis_dump,
-                "visualizations": visualization_images,
-                "created_at": utcnow().isoformat(),
-            }
+        "id": None,
+        "assessment_id": None,
+        "guest": True,
+        "persisted": False,
+        "file_name": original_name,
+        "duration_seconds": duration,
+        "size_bytes": size,
+        "mime_type": mime_type,
+        "status": status,
+        "result_status": (
+            analysis_summary["status"] if analysis_summary else "Failed"
+        ),
+        "score": analysis_summary["score"] if analysis_summary else None,
+        "noise_level": (
+            analysis_summary["noise_level"] if analysis_summary else None
+        ),
+        "distortion_level": (
+            analysis_summary["distortion_level"] if analysis_summary else None
+        ),
+        "bass": analysis_summary["bass"] if analysis_summary else None,
+        "treble": analysis_summary["treble"] if analysis_summary else None,
+        "loudness": analysis_summary["loudness"] if analysis_summary else None,
+        "sharpness": (
+            analysis_summary["sharpness"] if analysis_summary else None
+        ),
+        "flatness": analysis_summary["flatness"] if analysis_summary else None,
+        "empirical_quality": (
+            analysis_summary["empirical_quality"] if analysis_summary else None
+        ),
+        "analysis_purpose": analysis_purpose,
+        "analysis_dump": analysis_dump,
+        "visualizations": visualization_images,
+        "created_at": utcnow().isoformat(),
+    }
+    if settings_payload is not None:
+        response_data["settings_recommendation"] = settings_payload
     return jsonify(response_data), 201
 
 
@@ -2036,6 +2283,19 @@ def create_audio_upload():
     analysis_purpose = request.form.get("analysis_purpose", "quality_evaluation")
     if analysis_purpose not in ALLOWED_ANALYSIS_PURPOSES:
         return jsonify({"error": "analysis_purpose is invalid"}), 400
+    suggestion_context = None
+    if analysis_purpose == "settings_suggestion":
+        if not SETTINGS_RECOMMENDATIONS_ENABLED:
+            return jsonify({"error": "Not found"}), 404
+        try:
+            suggestion_context = settings_recommendation_service.parse_suggestion_form(
+                request.form,
+                guest=False,
+                user_id=g.user_id,
+            )
+            genre = suggestion_context.genre
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
 
     user_dir = os.path.join(AUDIO_UPLOAD_DIR, str(g.user_id))
     os.makedirs(user_dir, exist_ok=True)
@@ -2093,6 +2353,7 @@ def create_audio_upload():
     finally:
         cursor.close()
         conn.close()
+    retryable_settings_failure = False
     try:
         analysis_dump = run_audio_analyzer(
             stored_path,
@@ -2101,10 +2362,19 @@ def create_audio_upload():
             original_name=original_name,
             analysis_purpose=analysis_purpose,
         )
+        recommendation = None
+        if suggestion_context is not None:
+            recommendation = settings_recommendation_service.build_recommendation(
+                summarize_audio_analysis(analysis_dump),
+                suggestion_context,
+                verification=suggestion_context.verification,
+            )
         analysis_summary = persist_audio_analysis(
             assessment_id,
             upload_id,
             analysis_dump,
+            recommendation=recommendation,
+            recommendation_context=suggestion_context,
         )
         status = "Completed"
         audit_result = "success"
@@ -2121,6 +2391,11 @@ def create_audio_upload():
         audit_result = "failure"
     except Exception as error:
         app.logger.exception("Uploaded audio analysis failed")
+        retryable_settings_failure = (
+            suggestion_context is not None
+            and isinstance(locals().get("analysis_dump"), dict)
+            and analysis_dump.get("analysis_status") == "completed"
+        )
         failure_dump = {
             "dump_schema_version": 1,
             "analysis_status": "failed",
@@ -2153,58 +2428,62 @@ def create_audio_upload():
         resource_id=upload_id,
         details=f"purpose={analysis_purpose}; status={status}",
     )
-    return (
-        jsonify(
-            {
-                "id": upload_id,
-                "assessment_id": assessment_id,
-                "file_name": original_name,
-                "genre": genre,
-                "duration_seconds": duration,
-                "size_bytes": size,
-                "mime_type": mime_type,
-                "status": status,
-                "result_status": (
-                    analysis_summary["status"] if analysis_summary else "Failed"
-                ),
-                "score": analysis_summary["score"] if analysis_summary else None,
-                "noise_level": (
-                    analysis_summary["noise_level"] if analysis_summary else None
-                ),
-                "distortion_level": (
-                    analysis_summary["distortion_level"]
-                    if analysis_summary
-                    else None
-                ),
-                "bass": analysis_summary["bass"] if analysis_summary else None,
-                "treble": analysis_summary["treble"] if analysis_summary else None,
-                "loudness": (
-                    analysis_summary["loudness"] if analysis_summary else None
-                ),
-                "sharpness": (
-                    analysis_summary["sharpness"] if analysis_summary else None
-                ),
-                "flatness": (
-                    analysis_summary["flatness"] if analysis_summary else None
-                ),
-                "empirical_quality": (
-                    analysis_summary["empirical_quality"]
-                    if analysis_summary
-                    else None
-                ),
-                "analysis_purpose": analysis_purpose,
-                "analysis_dump_url": f"/api/audio-uploads/{upload_id}/analysis-dump",
-                "visualizations": {
-                    kind: f"/api/audio-tests/{assessment_id}/visualizations/{kind}"
-                    for kind in ("waveform", "spectrogram")
+    if retryable_settings_failure:
+        return (
+            jsonify(
+                {
+                    "error": "Settings recommendation could not be saved. Please retry.",
+                    "retryable": True,
+                    "assessment_id": assessment_id,
+                    "upload_id": upload_id,
                 }
-                if analysis_summary
-                else {},
-                "analysis_dump": analysis_dump,
-            }
+            ),
+            503,
+        )
+    response_data = {
+        "id": upload_id,
+        "assessment_id": assessment_id,
+        "file_name": original_name,
+        "genre": genre,
+        "duration_seconds": duration,
+        "size_bytes": size,
+        "mime_type": mime_type,
+        "status": status,
+        "result_status": (
+            analysis_summary["status"] if analysis_summary else "Failed"
         ),
-        201,
-    )
+        "score": analysis_summary["score"] if analysis_summary else None,
+        "noise_level": (
+            analysis_summary["noise_level"] if analysis_summary else None
+        ),
+        "distortion_level": (
+            analysis_summary["distortion_level"] if analysis_summary else None
+        ),
+        "bass": analysis_summary["bass"] if analysis_summary else None,
+        "treble": analysis_summary["treble"] if analysis_summary else None,
+        "loudness": analysis_summary["loudness"] if analysis_summary else None,
+        "sharpness": (
+            analysis_summary["sharpness"] if analysis_summary else None
+        ),
+        "flatness": analysis_summary["flatness"] if analysis_summary else None,
+        "empirical_quality": (
+            analysis_summary["empirical_quality"] if analysis_summary else None
+        ),
+        "analysis_purpose": analysis_purpose,
+        "analysis_dump_url": f"/api/audio-uploads/{upload_id}/analysis-dump",
+        "visualizations": {
+            kind: f"/api/audio-tests/{assessment_id}/visualizations/{kind}"
+            for kind in ("waveform", "spectrogram")
+        }
+        if analysis_summary
+        else {},
+        "analysis_dump": analysis_dump,
+    }
+    if analysis_summary and analysis_summary.get("settings_recommendation") is not None:
+        response_data["settings_recommendation"] = analysis_summary[
+            "settings_recommendation"
+        ]
+    return jsonify(response_data), 201
 
 
 @require_auth("user")
@@ -2251,17 +2530,23 @@ def get_audio_analysis_dump(upload_id: int):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        """SELECT au.assessment_id, au.file_name,
+        f"""SELECT au.assessment_id, au.file_name,
                   a.analysis_purpose, a.assessment_status, a.result_status,
                   r.quality_score, r.noise_level, r.distortion_level,
                   r.bass, r.treble, r.loudness, r.sharpness, r.flatness,
                   r.empirical_status, r.worst_feature_status,
                   r.worst_features, r.empirical_details,
-                  r.scoring_algorithm_version, r.reference_recording_count
+                  r.scoring_algorithm_version, r.reference_recording_count,
+                  {SETTINGS_RECOMMENDATION_SELECT_COLUMNS}
            FROM audio_upload au
            JOIN assessment a ON a.assessment_id = au.assessment_id
            LEFT JOIN audio_analysis_result r
              ON r.assessment_id = a.assessment_id
+           LEFT JOIN settings_recommendation sr
+             ON sr.assessment_id = a.assessment_id AND sr.user_id = a.user_id
+           LEFT JOIN amplifier_profile ap
+             ON ap.amplifier_profile_id = sr.amplifier_profile_id
+            AND ap.user_id = a.user_id
            WHERE au.upload_id = %s AND a.user_id = %s""",
         (upload_id, g.user_id),
     )
@@ -2283,45 +2568,46 @@ def get_audio_analysis_dump(upload_id: int):
         except (TypeError, json.JSONDecodeError):
             return fallback
 
-    return jsonify(
-        {
-            "dump_schema_version": 1,
-            "analysis_status": "completed",
-            "analysis_purpose": upload_record["analysis_purpose"],
-            "upload": {
-                "assessment_id": upload_record["assessment_id"],
-                "original_file_name": upload_record["file_name"],
+    response_data = {
+        "dump_schema_version": 1,
+        "analysis_status": "completed",
+        "analysis_purpose": upload_record["analysis_purpose"],
+        "upload": {
+            "assessment_id": upload_record["assessment_id"],
+            "original_file_name": upload_record["file_name"],
+        },
+        "analysis": {
+            "noise": {"noise_dbfs": upload_record["noise_level"]},
+            "distortion": {
+                "estimated_score": upload_record["distortion_level"]
             },
-            "analysis": {
-                "noise": {"noise_dbfs": upload_record["noise_level"]},
-                "distortion": {
-                    "estimated_score": upload_record["distortion_level"]
-                },
-                "bass": {"energy_percentage": upload_record["bass"]},
-                "treble": {"energy_percentage": upload_record["treble"]},
-                "loudness": {"integrated_lufs": upload_record["loudness"]},
-                "sharpness": {"normalized_score": upload_record["sharpness"]},
-                "flatness": {"mean": upload_record["flatness"]},
-                "quality_assessment": {
-                    "status": upload_record["result_status"],
-                    "empirical_status": upload_record["empirical_status"],
-                    "worst_feature_status": upload_record["worst_feature_status"],
-                    "worst_features": decoded_json(
-                        upload_record["worst_features"], []
-                    ),
-                },
+            "bass": {"energy_percentage": upload_record["bass"]},
+            "treble": {"energy_percentage": upload_record["treble"]},
+            "loudness": {"integrated_lufs": upload_record["loudness"]},
+            "sharpness": {"normalized_score": upload_record["sharpness"]},
+            "flatness": {"mean": upload_record["flatness"]},
+            "quality_assessment": {
+                "status": upload_record["result_status"],
+                "empirical_status": upload_record["empirical_status"],
+                "worst_feature_status": upload_record["worst_feature_status"],
+                "worst_features": decoded_json(
+                    upload_record["worst_features"], []
+                ),
             },
-            "empirical_quality": decoded_json(
-                upload_record["empirical_details"], {}
-            ),
-            "scoring_algorithm_version": upload_record[
-                "scoring_algorithm_version"
-            ],
-            "reference_recording_count": upload_record[
-                "reference_recording_count"
-            ],
-        }
-    )
+        },
+        "empirical_quality": decoded_json(
+            upload_record["empirical_details"], {}
+        ),
+        "scoring_algorithm_version": upload_record["scoring_algorithm_version"],
+        "reference_recording_count": upload_record["reference_recording_count"],
+    }
+    if upload_record["analysis_purpose"] == "settings_suggestion":
+        response_data["settings_recommendation"] = (
+            settings_recommendation_service.stored_recommendation_payload(
+                upload_record
+            )
+        )
+    return jsonify(response_data)
 
 
 @require_auth("admin")
