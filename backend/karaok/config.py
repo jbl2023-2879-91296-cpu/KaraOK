@@ -38,6 +38,9 @@ ADMIN_DB_CONFIG = {
 ADMIN_DATA_API_ENABLED = os.getenv("ADMIN_DATA_API_ENABLED", "false").lower() == "true"
 ADMIN_DATA_API_KEY_HASH = os.getenv("ADMIN_DATA_API_KEY_HASH", "").strip().lower()
 ADMIN_DATA_API_QUERY_TIMEOUT_MS = int(os.getenv("ADMIN_DATA_API_QUERY_TIMEOUT_MS", "5000"))
+SETTINGS_RECOMMENDATIONS_ENABLED = (
+    os.getenv("SETTINGS_RECOMMENDATIONS_ENABLED", "false").lower() == "true"
+)
 JWT_SECRET = os.getenv("JWT_SECRET", "")
 JWT_ISSUER = "karaok-api"
 ACCESS_TOKEN_MINUTES = int(os.getenv("ACCESS_TOKEN_MINUTES", "15"))

@@ -56,6 +56,7 @@ from .config import (
     SMTP_PASSWORD,
     SMTP_PORT,
     SMTP_USERNAME,
+    SETTINGS_RECOMMENDATIONS_ENABLED,
     TRUST_PROXY,
 )
 from .infrastructure.database import get_db
@@ -67,6 +68,9 @@ from .modules.audit.routes import blueprint as audit_routes
 from .modules.auth.routes import blueprint as auth_routes
 from .modules.genre_settings.routes import blueprint as genre_settings_routes
 from .modules.system.routes import blueprint as system_routes
+from .modules.settings_recommendations.routes import (
+    blueprint as settings_recommendation_routes,
+)
 from .modules.users.routes import blueprint as users_routes
 from .security.password_service import (
     EMAIL_RE,
@@ -2360,5 +2364,6 @@ for route_group in (
     genre_settings_routes,
     audio_analysis_routes,
     audit_routes,
+    settings_recommendation_routes,
 ):
     app.register_blueprint(route_group)
