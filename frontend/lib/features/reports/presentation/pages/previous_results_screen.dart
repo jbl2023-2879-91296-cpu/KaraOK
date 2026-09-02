@@ -3,17 +3,22 @@ import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/core/storage/guest_assessment_store.dart';
 import 'package:karaok_app/features/auth/presentation/pages/signup_screen.dart';
 import 'package:karaok_app/features/assessments/data/assessment_api.dart';
-import 'package:karaok_app/features/reports/presentation/pages/results_screen.dart';
+import 'package:karaok_app/features/assessments/presentation/pages/audio_test_screen.dart';
+import 'package:karaok_app/features/sound_settings/domain/settings_recommendation.dart';
+
+typedef PreviousResultsLoader = Future<List<dynamic>> Function();
 
 class PreviousResultsScreen extends StatefulWidget {
   const PreviousResultsScreen({
     super.key,
     this.title = 'Reports',
     this.accentColor = const Color(0xFF4A90D9),
+    this.resultsLoader,
   });
 
   final String title;
   final Color accentColor;
+  final PreviousResultsLoader? resultsLoader;
 
   @override
   State<PreviousResultsScreen> createState() => _PreviousResultsScreenState();
@@ -31,6 +36,19 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
   }
 
   Future<void> _load() async {
+    if (widget.resultsLoader case final loader?) {
+      try {
+        final tests = await loader();
+        if (!mounted) return;
+        setState(() {
+          _results = tests;
+          _loading = false;
+        });
+      } catch (_) {
+        if (mounted) setState(() => _loading = false);
+      }
+      return;
+    }
     if (UserSession.instance.isGuest) {
       final tests = await GuestAssessmentStore.instance.guestHistory();
       if (!mounted) return;
@@ -63,6 +81,36 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
   List<dynamic> get _filtered {
     if (_filter == 'All') return _results;
     return _results.where((r) => r['status'] == _filter).toList();
+  }
+
+  void _openVerification(SettingsSuggestionInput input) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AudioTestScreen(
+          purpose: AudioAnalysisPurpose.settingsSuggestion,
+          genre: input.genre,
+          settingsSuggestion: input,
+        ),
+      ),
+    );
+  }
+
+  void _openResult(Map<dynamic, dynamic> record) {
+    final purpose = record['analysis_purpose'] == 'settings_suggestion'
+        ? AudioAnalysisPurpose.settingsSuggestion
+        : AudioAnalysisPurpose.qualityEvaluation;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => audioResultDestination(
+          record: record,
+          purpose: purpose,
+          isGuest: UserSession.instance.isGuest,
+          onVerify: _openVerification,
+        ),
+      ),
+    );
   }
 
   @override
@@ -174,17 +222,9 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
                               ? const Color(0xFFFF9800)
                               : const Color(0xFFF44336);
                           return GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => ResultsScreen.fromRecord(
-                                    Map<dynamic, dynamic>.from(item as Map),
-                                    isGuest: UserSession.instance.isGuest,
-                                  ),
-                                ),
-                              );
-                            },
+                            onTap: () => _openResult(
+                              Map<dynamic, dynamic>.from(item as Map),
+                            ),
                             child: Container(
                               margin: const EdgeInsets.only(bottom: 10),
                               padding: const EdgeInsets.symmetric(

@@ -16,6 +16,7 @@ import 'package:karaok_app/features/assessments/data/audio_staging_service.dart'
 import 'package:karaok_app/features/auth/presentation/pages/login_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/results_screen.dart';
 import 'package:karaok_app/features/sound_settings/domain/settings_recommendation.dart';
+import 'package:karaok_app/features/sound_settings/presentation/pages/settings_recommendation_screen.dart';
 
 enum AudioInputState {
   idle,
@@ -61,6 +62,30 @@ extension AudioAnalysisPurposeDetails on AudioAnalysisPurpose {
     AudioAnalysisPurpose.settingsSuggestion =>
       'Audio uploaded and analyzed for settings successfully.',
   };
+}
+
+/// Chooses the result experience without changing the quality-evaluation flow.
+Widget audioResultDestination({
+  required Map<dynamic, dynamic> record,
+  required AudioAnalysisPurpose purpose,
+  required bool isGuest,
+  ValueChanged<SettingsSuggestionInput>? onVerify,
+}) {
+  final rawRecommendation = record['settings_recommendation'];
+  if (purpose == AudioAnalysisPurpose.settingsSuggestion &&
+      rawRecommendation is Map) {
+    final rawSafetySignals = record['safety_signals'];
+    return SettingsRecommendationScreen(
+      recommendation: SettingsRecommendation.fromJson(
+        Map<String, dynamic>.from(rawRecommendation),
+      ),
+      safetySignals: rawSafetySignals is Map
+          ? Map<String, dynamic>.from(rawSafetySignals)
+          : const {},
+      onVerify: onVerify,
+    );
+  }
+  return ResultsScreen.fromRecord(record, isGuest: isGuest);
 }
 
 class AudioTestScreen extends StatefulWidget {
@@ -444,6 +469,19 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
     }
   }
 
+  void _openVerification(SettingsSuggestionInput input) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AudioTestScreen(
+          purpose: AudioAnalysisPurpose.settingsSuggestion,
+          genre: input.genre,
+          settingsSuggestion: input,
+        ),
+      ),
+    );
+  }
+
   Future<void> _send() async {
     final item = _staging.current;
     if (item == null || _state == AudioInputState.uploading) return;
@@ -475,7 +513,16 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
       final completed = response['status'] == 'Completed';
       final result = Map<String, dynamic>.from(response)
         ..['test_name'] = item.fileName
-        ..['status'] = response['result_status'];
+        ..['status'] = response['result_status']
+        ..['analysis_purpose'] = widget.purpose.requestValue;
+      final destination = completed
+          ? audioResultDestination(
+              record: result,
+              purpose: widget.purpose,
+              isGuest: isGuest,
+              onVerify: _openVerification,
+            )
+          : null;
       int? guestRemaining;
       if (completed && isGuest) {
         try {
@@ -511,14 +558,10 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
                     : widget.purpose.successMessage
               : 'Audio was uploaded, but analysis could not be completed.';
         });
-        if (completed &&
-            widget.purpose == AudioAnalysisPurpose.qualityEvaluation) {
+        if (completed) {
           await Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (_) =>
-                  ResultsScreen.fromRecord(result, isGuest: isGuest),
-            ),
+            MaterialPageRoute(builder: (_) => destination!),
           );
         }
       }
