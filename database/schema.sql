@@ -1,9 +1,9 @@
 -- KaraOK fresh-install schema v3
 --
--- Authoritative bootstrap for a new empty database as of 2026-09-02. This
--- version replaces public owner/technician account types with one public `user`
--- account and expands the required personal profile fields. Import this
--- file into a new/empty karaok_db; it intentionally does not destroy an existing
+-- Authoritative bootstrap for a new empty database as of 2026-09-03. This
+-- consolidates all schema changes through the adjusted-settings feature,
+-- including amplifier profiles and generated recommendations. Import this file
+-- into a new/empty karaok_db; it intentionally does not destroy an existing
 -- populated deployment.
 --
 -- Password recovery uses user.requires_password_change and does not require

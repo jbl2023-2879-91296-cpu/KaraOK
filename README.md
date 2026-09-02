@@ -49,10 +49,11 @@ attribution, exclusions, versions, and derived quartiles are recorded in
 [`docs/settings-profile-sources.md`](docs/settings-profile-sources.md).
 
 The backend feature flag `SETTINGS_RECOMMENDATIONS_ENABLED` defaults to `false`.
-Operators must apply the additive migration and pass the controlled-trial gate
-before enabling it outside an approved staging environment. Disabling the flag
-stops new generation and hides the settings endpoints without deleting stored
-profiles, assessments, or recommendations.
+Fresh or disposable environments must be built from the consolidated
+`database/schema.sql`, and operators must pass the controlled-trial gate before
+enabling the feature outside an approved staging environment. Disabling the
+flag stops new generation and hides the settings endpoints without deleting
+stored profiles, assessments, or recommendations.
 
 ## Technology
 
@@ -72,7 +73,7 @@ KaraOK/
 |-- backend/          Flask API, analyzer, thresholds, and tests
 |-- admin/            Local Admin Console and its ignored operating guide
 |-- frontend/         Flutter application and widget tests
-|-- database/         Fresh-install schema and additive migrations
+|-- database/         Consolidated fresh-install MySQL schema
 |-- deploy/ovh/       Production service and web-server configuration
 |-- CHANGELOG.md      User-visible implementation history
 `-- README.md         Public project documentation

@@ -2,6 +2,16 @@
 
 All notable changes to KaraOK are documented here.
 
+## 2026-09-03 - Database schema consolidation
+
+### Changed
+
+- Consolidated the settings-recommendation tables into the authoritative
+  `database/schema.sql` bootstrap and removed the redundant standalone SQL
+  migration.
+- Updated the integration harness and deployment guidance to create fresh test
+  databases from that single SQL file.
+
 ## 2026-09-02 - Adjusted amplifier settings generation
 
 ### Added
@@ -13,7 +23,7 @@ All notable changes to KaraOK are documented here.
 - Added licensed-source genre targets for Rock, Pop, and Hip-Hop with canonical
   checksum validation and reproducible source attribution in
   `docs/settings-profile-sources.md`.
-- Added the additive `20260902_01_settings_recommendations.sql` migration, a
+- Added settings-recommendation persistence to the fresh-install schema, a
   controlled-trial validator, cross-layer contract tests, and a Windows
   real-service integration harness using an isolated MySQL database.
 
@@ -27,8 +37,8 @@ All notable changes to KaraOK are documented here.
   as manual user actions; KaraOK never controls amplifier hardware.
 - Added audit coverage for amplifier-profile changes, settings-purpose audio
   processing, and application of persisted recommendations.
-- Production enablement remains gated on the complete automated suite, additive
-  staging migration, health checks, at least five controlled songs per enabled
+- Production enablement remains gated on the complete automated suite, staging
+  schema verification, health checks, at least five controlled songs per enabled
   genre across low/neutral/high starts, a passing trial report, and final review.
 
 ## 2026-08-05 - Data Administration API and local Admin Console
