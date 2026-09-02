@@ -63,6 +63,15 @@ finally {
 
 Write-Output "PASS: Composer and PHP resolve from registered paths"
 
+$expectedMySqlPath = (Resolve-Path -LiteralPath $PSCommandPath).Path
+$actualMySqlPath = Resolve-MySqlPath `
+    -RegisteredPaths @() `
+    -FallbackPaths @($expectedMySqlPath)
+if ($actualMySqlPath -ne $expectedMySqlPath) {
+    throw "FAIL: expected MySQL fallback '$expectedMySqlPath', got '$actualMySqlPath'"
+}
+Write-Output "PASS: MySQL resolves from a fallback when PATH is stale"
+
 $expectedAdbPath = (Resolve-Path -LiteralPath $PSCommandPath).Path
 $actualAdbPath = Resolve-AdbPath -FallbackPaths @($expectedAdbPath)
 if ($actualAdbPath -ne $expectedAdbPath) {

@@ -161,6 +161,17 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     }
   }
 
+  Future<void> _retryLoad() async {
+    if (_loading) return;
+    setState(() {
+      _loading = true;
+      _featureDisabled = false;
+      _loadError = null;
+      _profilesLoadError = null;
+    });
+    await _load();
+  }
+
   void _useProfile(AmplifierProfile profile) {
     _scale = profile.scale;
     _preset = _presetFor(profile.scale);
@@ -409,8 +420,19 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                         icon: Icons.block,
                         message: 'Settings generation is not enabled',
                       ),
-                    if (_loadError case final error?)
+                    if (_loadError case final error?) ...[
                       _Notice(icon: Icons.cloud_off, message: error),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: OutlinedButton.icon(
+                          key: const Key('settings-load-retry'),
+                          onPressed: _retryLoad,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Retry'),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     if (_profilesLoadError case final error?)
                       _Notice(icon: Icons.cloud_off, message: error),
                     Text(

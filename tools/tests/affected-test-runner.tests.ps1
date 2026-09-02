@@ -1,0 +1,152 @@
+$ErrorActionPreference = 'Stop'
+
+$runnerPath = Join-Path (Split-Path -Parent $PSScriptRoot) `
+    'run-affected-tests.ps1'
+if (-not (Test-Path -LiteralPath $runnerPath -PathType Leaf)) {
+    throw "FAIL: affected-test runner is missing: $runnerPath"
+}
+
+. $runnerPath
+
+function Assert-TestGroups {
+    param(
+        [Parameter(Mandatory = $true)][string]$Scenario,
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [string[]]$Expected,
+        [AllowEmptyCollection()][string[]]$Actual
+    )
+
+    $expectedText = $Expected -join ','
+    $actualText = @($Actual) -join ','
+    if ($actualText -ne $expectedText) {
+        throw "FAIL: $Scenario expected '$expectedText', got '$actualText'"
+    }
+}
+
+$settingsGroups = @(Get-AffectedTestGroups -ChangedPaths @(
+        'backend/settings_recommendations/engine.py'
+        'frontend/lib/features/sound_settings/data/settings_api.dart'
+        'tools/dev-command-resolution.ps1'
+    ))
+Assert-TestGroups `
+    -Scenario 'known settings changes select focused groups' `
+    -Expected @('backend-settings', 'flutter-settings', 'flutter-analyze', 'powershell-tools') `
+    -Actual $settingsGroups
+Write-Output 'PASS: known settings changes select focused groups'
+
+$fallbackGroups = @(Get-AffectedTestGroups -ChangedPaths @(
+        'backend/karaok/new_module.py'
+        'frontend/lib/features/profile/new_screen.dart'
+    ))
+Assert-TestGroups `
+    -Scenario 'unknown application changes select full layer suites' `
+    -Expected @('backend-full', 'flutter-full', 'flutter-analyze') `
+    -Actual $fallbackGroups
+Write-Output 'PASS: unknown application changes select full layer suites'
+
+$documentationGroups = @(Get-AffectedTestGroups -ChangedPaths @(
+        'README.md'
+        'docs/notes.md'
+    ))
+Assert-TestGroups `
+    -Scenario 'documentation-only changes require no code tests' `
+    -Expected @() `
+    -Actual $documentationGroups
+Write-Output 'PASS: documentation-only changes require no code tests'
+
+$allGroups = @(Get-AffectedTestGroups `
+        -ChangedPaths @() `
+        -RunAll `
+        -IncludeIntegration)
+Assert-TestGroups `
+    -Scenario 'full mode includes the historical baseline and integration' `
+    -Expected @(
+        'backend-full'
+        'flutter-full'
+        'flutter-analyze'
+        'powershell-tools'
+        'integration'
+    ) `
+    -Actual $allGroups
+Write-Output 'PASS: full mode includes the historical baseline and integration'
+
+$testRoot = Join-Path $PSScriptRoot ".tmp-affected-runner-$PID"
+try {
+    New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
+    $failedResult = Invoke-CapturedTestGroup `
+        -Name 'intentional-failure' `
+        -LogDirectory $testRoot `
+        -Action {
+            Write-Output 'diagnostic marker'
+            throw 'expected failure'
+        }
+    if ($failedResult.Passed) {
+        throw 'FAIL: a throwing test group was reported as passing'
+    }
+    if ($failedResult.Output -notmatch 'diagnostic marker' -or
+        $failedResult.Output -notmatch 'expected failure') {
+        throw 'FAIL: failed group output did not retain its diagnostics'
+    }
+    Write-Output 'PASS: failed groups retain diagnostics'
+
+    $passedResult = Invoke-CapturedTestGroup `
+        -Name 'intentional-success' `
+        -LogDirectory $testRoot `
+        -Action { Write-Output 'successful detail that should stay captured' }
+    if (-not $passedResult.Passed) {
+        throw 'FAIL: a successful test group was reported as failing'
+    }
+    if ($passedResult.Output -notmatch 'successful detail') {
+        throw 'FAIL: successful group output was not captured'
+    }
+    Write-Output 'PASS: successful groups can be summarized without printing details'
+
+    $powerShellExecutable = (Get-Process -Id $PID).Path
+    $warningResult = Invoke-CapturedTestGroup `
+        -Name 'successful-native-warning' `
+        -LogDirectory $testRoot `
+        -Action {
+            & $powerShellExecutable -NoProfile -Command `
+                "[Console]::Error.WriteLine('native warning'); exit 0"
+        }
+    if (-not $warningResult.Passed) {
+        throw 'FAIL: stderr from a successful native process was treated as failure'
+    }
+    if ($warningResult.Output -notmatch 'native warning') {
+        throw 'FAIL: stderr from the native process was not captured'
+    }
+    Write-Output 'PASS: native stderr is captured without overriding a zero exit code'
+
+    $warningScript = Join-Path $testRoot 'nested-native-warning.ps1'
+    @(
+        "`$ErrorActionPreference = 'Stop'"
+        "& '$powerShellExecutable' -NoProfile -Command `"[Console]::Error.WriteLine('nested warning'); exit 0`""
+        "if (`$LASTEXITCODE -ne 0) { throw 'native child failed' }"
+    ) | Set-Content -LiteralPath $warningScript
+    $nestedWarningResult = Invoke-CapturedPowerShellScript `
+        -Name 'successful-nested-native-warning' `
+        -ScriptPath $warningScript `
+        -ScriptArguments @() `
+        -LogDirectory $testRoot
+    if (-not $nestedWarningResult.Passed) {
+        throw 'FAIL: nested native stderr overrode the successful script exit code'
+    }
+    if ($nestedWarningResult.Output -notmatch 'nested warning') {
+        throw 'FAIL: nested native stderr was not retained in captured output'
+    }
+    Write-Output 'PASS: nested scripts use their exit code despite native stderr'
+}
+finally {
+    $resolvedTestRoot = [IO.Path]::GetFullPath($testRoot)
+    $resolvedTestsDirectory = [IO.Path]::GetFullPath($PSScriptRoot)
+    if (-not $resolvedTestRoot.StartsWith(
+            $resolvedTestsDirectory + [IO.Path]::DirectorySeparatorChar,
+            [StringComparison]::OrdinalIgnoreCase
+        )) {
+        throw "Refusing to clean an unexpected test path: $resolvedTestRoot"
+    }
+    if (Test-Path -LiteralPath $resolvedTestRoot) {
+        Remove-Item -LiteralPath $resolvedTestRoot -Recurse -Force
+    }
+}
