@@ -33,10 +33,7 @@ TABLE_POLICIES: dict[str, TablePolicy] = {
     ),
     "genre_preset": TablePolicy(
         "preset_id",
-        create_fields=("genre_name", "bass", "treble", "loudness", "sharpness", "flatness"),
-        update_fields=("genre_name", "bass", "treble", "loudness", "sharpness", "flatness"),
-        deletable=True,
-        label="Genre presets",
+        label="Legacy genre presets",
     ),
     "audio_quality_threshold": TablePolicy(
         "threshold_id",
@@ -54,9 +51,15 @@ TABLE_POLICIES: dict[str, TablePolicy] = {
     "audio_analysis_result": TablePolicy("result_id", label="Analysis results"),
     "user_genre_setting": TablePolicy(
         "setting_id",
-        update_fields=("genre_name", "volume", "bass", "treble", "flatness", "sharpness"),
-        deletable=True,
-        label="User genre settings",
+        label="Legacy user genre settings",
+    ),
+    "amplifier_profile": TablePolicy(
+        "amplifier_profile_id",
+        label="Amplifier profiles",
+    ),
+    "settings_recommendation": TablePolicy(
+        "recommendation_id",
+        label="Settings recommendations",
     ),
     "audio_upload": TablePolicy("upload_id", label="Audio uploads"),
     "audit_log": TablePolicy("audit_log_id", label="Audit log"),

@@ -83,29 +83,4 @@ class SettingsApi {
       await _client.applySettingsRecommendation(recommendationId),
     );
   }
-
-  // TODO(task-10): Remove after the disconnected legacy screens are deleted.
-  @Deprecated('Use amplifier profiles and generated recommendations.')
-  Future<Map<String, dynamic>> getGenreSettings(String genre) =>
-      _client.getGenreSettings(genre);
-
-  @Deprecated('Use amplifier profiles and generated recommendations.')
-  Future<List<dynamic>> getAllGenreSettings() => _client.getAllGenreSettings();
-
-  @Deprecated('Use amplifier profiles and generated recommendations.')
-  Future<Map<String, dynamic>> saveGenreSettings({
-    required String genre,
-    required int volume,
-    required int bass,
-    required int treble,
-    required int flatness,
-    required int sharpness,
-  }) => _client.saveGenreSettings(
-    genre: genre,
-    volume: volume,
-    bass: bass,
-    treble: treble,
-    flatness: flatness,
-    sharpness: sharpness,
-  );
 }

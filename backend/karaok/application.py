@@ -66,7 +66,6 @@ from .modules.admin_data.routes import blueprint as admin_data_routes
 from .modules.audio_analysis.routes import blueprint as audio_analysis_routes
 from .modules.audit.routes import blueprint as audit_routes
 from .modules.auth.routes import blueprint as auth_routes
-from .modules.genre_settings.routes import blueprint as genre_settings_routes
 from .modules.system.routes import blueprint as system_routes
 from .modules.settings_recommendations.routes import (
     blueprint as settings_recommendation_routes,
@@ -2020,53 +2019,6 @@ def delete_audio_test(test_id: int):
 
 
 @require_auth("user")
-def get_genre_settings():
-    genre = request.args.get("genre")
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    if genre:
-        genre = clean_text(genre, "genre", 2, 50)
-        cursor.execute("SELECT * FROM user_genre_setting WHERE genre_name = %s AND user_id = %s ORDER BY updated_at DESC LIMIT 1", (genre, g.user_id))
-        result = cursor.fetchone()
-    else:
-        cursor.execute("SELECT * FROM user_genre_setting WHERE user_id = %s ORDER BY genre_name", (g.user_id,))
-        result = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    if genre and not result:
-        return jsonify({"error": "No settings for this genre"}), 404
-    return jsonify(result)
-
-
-@require_auth("user")
-def save_genre_settings():
-    data = json_body()
-    genre = clean_text(data.get("genre"), "genre", 2, 50)
-    values = [int(bounded_number(data.get(field), field, 0, 100)) for field in ("volume", "bass", "treble", "flatness", "sharpness")]
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute(
-        """SELECT preset_id FROM genre_preset
-           WHERE LOWER(genre_name) = LOWER(%s) LIMIT 1""",
-        (genre,),
-    )
-    preset = cursor.fetchone()
-    cursor.execute(
-        """INSERT INTO user_genre_setting
-           (user_id, preset_id, genre_name, volume, bass, treble,
-            flatness, sharpness)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
-        (g.user_id, preset[0] if preset else None, genre, *values),
-    )
-    conn.commit()
-    setting_id = cursor.lastrowid
-    cursor.close()
-    conn.close()
-    audit("genre_settings_saved", "success", user_id=g.user_id, resource_type="genre_setting", resource_id=setting_id)
-    return jsonify({"id": setting_id, "genre": genre}), 201
-
-
-@require_auth("user")
 def get_audio_uploads():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
@@ -2647,7 +2599,6 @@ for route_group in (
     auth_routes,
     users_routes,
     assessments_routes,
-    genre_settings_routes,
     audio_analysis_routes,
     audit_routes,
     settings_recommendation_routes,

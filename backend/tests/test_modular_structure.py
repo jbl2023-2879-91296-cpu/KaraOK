@@ -24,12 +24,15 @@ class ModularStructureTests(unittest.TestCase):
                 "users.get_users",
                 "assessments.get_audio_tests",
                 "audio_analysis.create_audio_upload",
-                "genre_settings.get_genre_settings",
                 "audit.get_audit_logs",
                 "admin_data.health",
                 "admin_data.records",
             }.issubset(endpoints)
         )
+
+    def test_legacy_genre_settings_route_is_removed(self):
+        response = api.app.test_client().get("/api/genre-settings")
+        self.assertEqual(response.status_code, 404)
 
     def test_legacy_entry_point_exposes_packaged_application(self):
         self.assertEqual(api.app.import_name, "karaok.application")
