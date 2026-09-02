@@ -23,12 +23,16 @@ if __package__ in (None, ""):
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from audio_thresholds.artifact_integrity import (  # type: ignore[import-not-found]
+        canonical_artifact_checksum,
+    )
     from audio_thresholds.metric_definitions import (  # type: ignore[import-not-found]
         METRIC_DEFINITIONS,
         default_weights,
         validate_weights,
     )
 else:
+    from .artifact_integrity import canonical_artifact_checksum
     from .metric_definitions import METRIC_DEFINITIONS, default_weights, validate_weights
 
 
@@ -40,6 +44,7 @@ DEFAULT_BOOTSTRAP_ITERATIONS = 10_000
 DEFAULT_BOOTSTRAP_SEED = 20_260_719
 DEFAULT_MINIMUM_SAMPLES = 20
 STRICT_RECOVERY_PERCENTAGE = 99.0
+QUALITY_PROFILE_VERSION = "2026.09.1"
 
 BASE_REQUIRED_COLUMNS = {
     "analysis_id",
@@ -319,8 +324,9 @@ def derive_threshold_artifact(
         }
 
     label = source_label if source_label is not None else Path(source_path).as_posix()
-    return {
+    artifact = {
         "schema_version": 1,
+        "quality_profile_version": QUALITY_PROFILE_VERSION,
         "algorithm_version": "1.0.0",
         "purpose": "Provisional empirical reference for recordings labeled good.",
         "source": {
@@ -384,6 +390,8 @@ def derive_threshold_artifact(
             "The cohort is limited to the current phone-recording and analyzer conditions.",
         ],
     }
+    artifact["artifact_checksum"] = canonical_artifact_checksum(artifact)
+    return artifact
 
 
 def write_threshold_artifact(artifact: Mapping[str, Any], output_path: str | Path) -> Path:
