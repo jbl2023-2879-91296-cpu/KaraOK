@@ -14,13 +14,15 @@ param()
 
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "dev-command-resolution.ps1")
+
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $backendDirectory = Join-Path $repositoryRoot "backend"
 $adminDirectory = Join-Path $repositoryRoot "admin"
 $frontendDirectory = Join-Path $repositoryRoot "frontend"
 $backendHealthUrl = "http://127.0.0.1:5000/api/health"
 $adminLoginUrl = "http://127.0.0.1:8080/login"
-$flutterApiUrl = "http://localhost:5000/api"
+$flutterApiUrl = "http://127.0.0.1:5000/api"
 $backendProcess = $null
 $backendListenerIds = @()
 $backendStartedHere = $false
@@ -183,9 +185,10 @@ if (-not (Test-Path -LiteralPath (Join-Path $adminDirectory "composer.json"))) {
     throw "Admin Console Composer project not found: $adminDirectory\composer.json"
 }
 
-$pythonLauncher = Get-Command py -ErrorAction Stop
 $flutterCommand = Get-Command flutter -ErrorAction Stop
-$composerCommand = Get-Command composer -ErrorAction Stop
+$composerPath = Resolve-ComposerPath
+$backendPythonPath = Resolve-BackendPythonPath `
+    -BackendDirectory $backendDirectory
 
 try {
     if (Wait-ForBackendHealth -TimeoutSeconds 2) {
@@ -198,10 +201,10 @@ try {
             Stop-UnhealthyPythonListeners -ListenerIds $occupiedListenerIds
         }
 
-        Write-Host "Starting KaraOK backend with: py app.py" `
+        Write-Host "Starting KaraOK backend with: $backendPythonPath app.py" `
             -ForegroundColor Cyan
         $backendProcess = Start-Process `
-            -FilePath $pythonLauncher.Source `
+            -FilePath $backendPythonPath `
             -ArgumentList "app.py" `
             -WorkingDirectory $backendDirectory `
             -WindowStyle Hidden `
@@ -247,14 +250,14 @@ try {
             -ForegroundColor Cyan
         Push-Location $adminDirectory
         try {
-            & $composerCommand.Source install --no-interaction --no-progress
+            & $composerPath install --no-interaction --no-progress
             if ($LASTEXITCODE -ne 0) {
                 throw "composer install exited with code $LASTEXITCODE"
             }
 
             Write-Host "Running Admin Console tests with Composer..." `
                 -ForegroundColor Cyan
-            & $composerCommand.Source test
+            & $composerPath test
             if ($LASTEXITCODE -ne 0) {
                 throw "composer test exited with code $LASTEXITCODE"
             }
@@ -265,8 +268,8 @@ try {
 
         Write-Host "Starting KaraOK Admin Console with: composer serve" `
             -ForegroundColor Cyan
-        $composerPath = $composerCommand.Source.Replace("'", "''")
-        $adminLaunchCommand = "& '$composerPath' serve"
+        $escapedComposerPath = $composerPath.Replace("'", "''")
+        $adminLaunchCommand = "& '$escapedComposerPath' serve"
         $encodedAdminCommand = [Convert]::ToBase64String(
             [Text.Encoding]::Unicode.GetBytes($adminLaunchCommand)
         )

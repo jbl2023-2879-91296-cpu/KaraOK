@@ -1,0 +1,99 @@
+function Resolve-ComposerPath {
+    [CmdletBinding()]
+    param(
+        [string[]]$FallbackPaths,
+        [string[]]$RegisteredPaths
+    )
+
+    $command = Get-Command composer -ErrorAction SilentlyContinue
+    if ($null -ne $command) {
+        return $command.Source
+    }
+
+    if (-not $PSBoundParameters.ContainsKey("RegisteredPaths")) {
+        $RegisteredPaths = @(
+            [Environment]::GetEnvironmentVariable("Path", "Machine") -split ";"
+            [Environment]::GetEnvironmentVariable("Path", "User") -split ";"
+        )
+    }
+
+    $processPaths = @($env:Path -split ";")
+    foreach ($registeredPath in $RegisteredPaths) {
+        $expandedPath = [Environment]::ExpandEnvironmentVariables(
+            $registeredPath.Trim().Trim('"')
+        )
+        if (
+            $expandedPath -and
+            (Test-Path -LiteralPath $expandedPath -PathType Container) -and
+            $processPaths -notcontains $expandedPath
+        ) {
+            $env:Path = "$env:Path;$expandedPath"
+            $processPaths += $expandedPath
+        }
+    }
+
+    $command = Get-Command composer -ErrorAction SilentlyContinue
+    if ($null -ne $command) {
+        return $command.Source
+    }
+
+    if ($null -eq $FallbackPaths -or $FallbackPaths.Count -eq 0) {
+        $FallbackPaths = @(
+            (Join-Path `
+                ([Environment]::GetFolderPath("LocalApplicationData")) `
+                "ComposerSetup\bin\composer.bat")
+            (Join-Path `
+                ([Environment]::GetFolderPath("CommonApplicationData")) `
+                "ComposerSetup\bin\composer.bat")
+        )
+    }
+
+    foreach ($candidate in $FallbackPaths) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+
+    throw "Composer was not found in PATH or its standard Windows installation locations. Install Composer from https://getcomposer.org/download/."
+}
+
+function Resolve-BackendPythonPath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BackendDirectory,
+        [string]$MachineName = [Environment]::MachineName,
+        [scriptblock]$Validator
+    )
+
+    $safeMachineName = $MachineName -replace "[^A-Za-z0-9._-]", "-"
+    $primaryPath = Join-Path $BackendDirectory ".venv\Scripts\python.exe"
+    $fallbackPath = Join-Path $BackendDirectory `
+        ".venv.$safeMachineName\Scripts\python.exe"
+
+    if ($null -eq $Validator) {
+        $Validator = {
+            param([string]$Candidate)
+            try {
+                & $Candidate -c `
+                    "import argon2, flask, flask_cors, flask_limiter, librosa, matplotlib, mysql.connector, mutagen, numpy, pandas, jwt, dotenv, scipy, soundfile" `
+                    2>$null
+                return $LASTEXITCODE -eq 0
+            }
+            catch {
+                return $false
+            }
+        }
+    }
+
+    foreach ($candidate in @($primaryPath, $fallbackPath)) {
+        if (
+            (Test-Path -LiteralPath $candidate -PathType Leaf) -and
+            (& $Validator $candidate)
+        ) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+
+    throw "No working backend Python environment was found. Checked '$primaryPath' and '$fallbackPath'."
+}
