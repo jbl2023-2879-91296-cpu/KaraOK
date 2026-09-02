@@ -253,16 +253,14 @@ sudo -u karaok grep '^SETTINGS_RECOMMENDATIONS_ENABLED=false$' \
   /opt/karaok/app/backend/.env
 ```
 
-Before changing the schema, complete and verify the backup in section 3. Apply
-the additive migration to staging first; do not use the destructive schema
-rebuild in section 9 for this feature:
+The standalone settings migration has been consolidated into
+`database/schema.sql`. For a fresh or disposable staging deployment, complete
+and verify the backup in section 3, then use the fresh-database rebuild in
+section 9. Do not import `schema.sql` over a populated database because it is a
+bootstrap, not an in-place migration; an existing production database requires
+a separately reviewed in-place schema change before this feature is enabled.
 
 ```bash
-cd /opt/karaok/app
-
-sudo mysql karaok_db \
-  < database/migrations/20260902_01_settings_recommendations.sql
-
 sudo mysql -D karaok_db -e "
 SHOW TABLES LIKE 'amplifier_profile';
 SHOW TABLES LIKE 'settings_recommendation';

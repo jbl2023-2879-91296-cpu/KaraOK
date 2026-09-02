@@ -11,7 +11,6 @@ $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $backendRoot = Join-Path $repositoryRoot 'backend'
 $frontendRoot = Join-Path $repositoryRoot 'frontend'
 $schemaPath = Join-Path $repositoryRoot 'database\schema.sql'
-$migrationPath = Join-Path $repositoryRoot 'database\migrations\20260902_01_settings_recommendations.sql'
 $pythonPath = Join-Path $backendRoot '.venv\Scripts\python.exe'
 $backendProcess = $null
 $settingsE2eTemp = $null
@@ -97,10 +96,8 @@ try {
         throw "Backend virtual-environment Python was not found at $pythonPath."
     }
     $flutterCommand = Get-Command flutter -ErrorAction Stop
-    foreach ($requiredPath in @($schemaPath, $migrationPath)) {
-        if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
-            throw "Required database script was not found: $requiredPath"
-        }
+    if (-not (Test-Path -LiteralPath $schemaPath -PathType Leaf)) {
+        throw "Required database script was not found: $schemaPath"
     }
     $dotenvSearchDirectory = Join-Path $backendRoot 'karaok'
     while ($null -ne $dotenvSearchDirectory) {
@@ -207,12 +204,6 @@ try {
         throw 'The rewritten schema still contains an executable reference to karaok_db.'
     }
     Invoke-MySqlInput -Executable $mysqlExecutable -Database $settingsE2eDb -Sql $schemaSql -FailureMessage 'Could not import database/schema.sql into the integration database'
-
-    $migrationSql = Get-Content -LiteralPath $migrationPath -Raw
-    if ($migrationSql -match '(?im)^\s*(CREATE\s+DATABASE|USE)\b') {
-        throw 'The settings migration unexpectedly selects or creates a database.'
-    }
-    Invoke-MySqlInput -Executable $mysqlExecutable -Database $settingsE2eDb -Sql $migrationSql -FailureMessage 'Could not import the settings recommendation migration'
 
     Set-BackendEnvironment 'DB_HOST' '127.0.0.1'
     Set-BackendEnvironment 'DB_PORT' '3306'

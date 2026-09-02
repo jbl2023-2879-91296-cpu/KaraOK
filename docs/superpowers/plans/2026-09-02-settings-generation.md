@@ -1,5 +1,10 @@
 # Adjusted Settings Generation Implementation Plan
 
+> **Database note (2026-09-03):** The standalone settings migration described
+> in this historical implementation plan was later consolidated into
+> `database/schema.sql` and removed. Fresh and disposable databases now use that
+> one authoritative SQL file.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the Sound Settings Recommendation module that converts a genre-labelled recording and five current amplifier-knob positions into safe, explainable adjusted targets, with one optional verification pass.
@@ -26,7 +31,7 @@
 - Give guest initial recommendations a 24-hour signed verification token; never persist or log that token.
 - Preserve the current Audio Quality Evaluation behavior and response shape.
 - Do not bundle restricted source audio or genre annotations.
-- Use versioned database migrations; do not require a destructive schema rebuild.
+- Keep one authoritative fresh-install schema for the disposable test database.
 - Use TDD for every implementation task and commit only the files listed by that task.
 
 ---
@@ -49,7 +54,6 @@
 
 ### Backend persistence and HTTP
 
-- Create `database/migrations/20260902_01_settings_recommendations.sql`: additive production migration.
 - Modify `database/schema.sql`: authoritative fresh-install tables and indexes.
 - Create `backend/karaok/modules/settings_recommendations/__init__.py`: feature package marker.
 - Create `backend/karaok/modules/settings_recommendations/service.py`: multipart validation, amplifier CRUD, ownership checks, recommendation serialization, and persistence statements.
@@ -60,7 +64,7 @@
 - Modify `backend/karaok/modules/admin_data/policy.py`: legacy settings read-only; new recommendation tables read-only.
 - Modify `backend/tests/test_audio_pipeline.py`: authenticated/guest generation and atomic persistence tests.
 - Create `backend/tests/test_settings_recommendation_api.py`: profile CRUD, ownership, apply, and verification contract tests.
-- Modify `backend/tests/test_security.py`: fresh-schema and migration assertions.
+- Modify `backend/tests/test_security.py`: consolidated fresh-schema assertions.
 - Modify `backend/tests/test_admin_data_api.py`: Data Administration capability assertions.
 
 ### Flutter data and UI
@@ -373,10 +377,9 @@ Run: `git add backend/settings_recommendations backend/tests/test_settings_recom
 
 ---
 
-### Task 4: Add Versioned Persistence Schema
+### Task 4: Add Consolidated Persistence Schema
 
 **Files:**
-- Create: `database/migrations/20260902_01_settings_recommendations.sql`
 - Modify: `database/schema.sql`
 - Modify: `backend/tests/test_security.py`
 
@@ -389,22 +392,20 @@ Run: `git add backend/settings_recommendations backend/tests/test_settings_recom
 ```python
 def test_schema_persists_owned_amplifier_recommendations(self):
     schema = (ROOT / "database" / "schema.sql").read_text(encoding="utf-8")
-    migration = (ROOT / "database" / "migrations" / "20260902_01_settings_recommendations.sql").read_text(encoding="utf-8")
-    for sql in (schema, migration):
-        self.assertIn("CREATE TABLE IF NOT EXISTS amplifier_profile", sql)
-        self.assertIn("CREATE TABLE IF NOT EXISTS settings_recommendation", sql)
-        self.assertIn("UNIQUE KEY uq_settings_recommendation_assessment", sql)
-        self.assertIn("UNIQUE KEY uq_settings_recommendation_parent", sql)
-        self.assertIn("parent_recommendation_id", sql)
-        self.assertIn("ON DELETE CASCADE", sql)
+    self.assertIn("CREATE TABLE IF NOT EXISTS amplifier_profile", schema)
+    self.assertIn("CREATE TABLE IF NOT EXISTS settings_recommendation", schema)
+    self.assertIn("UNIQUE KEY uq_settings_recommendation_assessment", schema)
+    self.assertIn("UNIQUE KEY uq_settings_recommendation_parent", schema)
+    self.assertIn("parent_recommendation_id", schema)
+    self.assertIn("ON DELETE CASCADE", schema)
 ```
 
 - [ ] **Step 2: Run the schema test and confirm failure**
 
 Run: `cd backend; py -3.13 -m unittest tests.test_security.SecurityValidationTests.test_schema_persists_owned_amplifier_recommendations -v`
-Expected: FAIL because the migration and tables do not exist.
+Expected: FAIL because the tables do not exist in the consolidated schema.
 
-- [ ] **Step 3: Add the additive migration and matching fresh schema**
+- [ ] **Step 3: Add the tables to the consolidated fresh schema**
 
 ```sql
 CREATE TABLE IF NOT EXISTS amplifier_profile (
@@ -452,12 +453,13 @@ CREATE TABLE IF NOT EXISTS settings_recommendation (
 );
 ```
 
-Place tables after their referenced parent tables in `schema.sql`. In the migration, create `amplifier_profile` first and `settings_recommendation` second.
+Place the tables after their referenced parent tables in `schema.sql`. Create
+`amplifier_profile` first and `settings_recommendation` second.
 
-- [ ] **Step 4: Execute the migration against an empty disposable MySQL database and inspect relationships**
+- [ ] **Step 4: Import the schema into an empty disposable MySQL database and inspect relationships**
 
-Run: `mysql -u root -p karaok_test < database/migrations/20260902_01_settings_recommendations.sql`
-Then: `mysql -u root -p -D karaok_test -e "SHOW CREATE TABLE amplifier_profile; SHOW CREATE TABLE settings_recommendation;"`
+Run: `mysql -u root -p < database/schema.sql`
+Then: `mysql -u root -p -D karaok_db -e "SHOW CREATE TABLE amplifier_profile; SHOW CREATE TABLE settings_recommendation;"`
 Expected: both tables and all four recommendation foreign keys exist.
 
 - [ ] **Step 5: Run schema tests and commit**
@@ -1003,7 +1005,7 @@ The script performs these exact operations inside `try/finally`:
 
 1. Set `$settingsE2eDb = 'karaok_settings_e2e'` and abort unless it equals that literal and matches `^[a-z0-9_]+$`.
 2. Require `mysql`, `backend\.venv\Scripts\python.exe`, Flutter Windows desktop support, `KARAOK_E2E_DB_USER`, and `KARAOK_E2E_DB_PASSWORD`.
-3. Through `mysql --login-path=karaok-e2e`, drop only `karaok_settings_e2e` if it exists, create it, and import `database/schema.sql` plus the Task 4 migration.
+3. Through `mysql --login-path=karaok-e2e`, drop only `karaok_settings_e2e` if it exists, create it, and import the consolidated `database/schema.sql`.
 4. Create a unique directory below `[System.IO.Path]::GetTempPath()` for uploads/results. Set the child backend environment to `DB_NAME=karaok_settings_e2e`, the two restricted credentials, `APP_PORT=5100`, `DEV_MODE=true`, `EXPOSE_REGISTRATION_OTP=true`, `SETTINGS_RECOMMENDATIONS_ENABLED=true`, an integration-only 64-character `JWT_SECRET`, and the unique audio directories.
 5. Launch `backend\.venv\Scripts\python.exe backend\run.py` with `Start-Process -PassThru -WindowStyle Hidden`, poll `/api/health` for at most 30 seconds, then run the Flutter command from Step 3.
 6. In `finally`, stop only the captured backend process, drop only the exact validated test database, resolve `$settingsE2eTemp` and verify that it remains beneath `[System.IO.Path]::GetTempPath()` before `Remove-Item -LiteralPath $settingsE2eTemp -Recurse -Force`, and restore every process environment value changed by the script.
@@ -1031,7 +1033,7 @@ Run: `git add tools/run-settings-integration.ps1 frontend/integration_test/setti
 - Modify: `backend/tests/test_modular_structure.py`
 
 **Interfaces:**
-- Documents the module flow, source attribution, additive migration, feature flag, controlled trial format, and rollback behavior.
+- Documents the module flow, source attribution, consolidated schema, feature flag, controlled trial format, and rollback behavior.
 
 - [ ] **Step 1: Add documentation assertions to modular structure tests**
 
@@ -1048,9 +1050,9 @@ def test_public_docs_name_settings_generation_safety_and_sources(self):
 Run: `cd backend; py -3.13 -m unittest tests.test_modular_structure -v`
 Expected: FAIL until documentation is updated.
 
-- [ ] **Step 3: Document behavior, migration, feature flag, and operational checks**
+- [ ] **Step 3: Document behavior, schema, feature flag, and operational checks**
 
-Document the `SETTINGS_RECOMMENDATIONS_ENABLED=false` safe default implemented in Task 5, migration application, profile artifact checksum verification, source attribution, API health checks, audit events, and disabling the flag as rollback. State that KaraOK recommends physical positions but never controls the amplifier.
+Document the `SETTINGS_RECOMMENDATIONS_ENABLED=false` safe default implemented in Task 5, schema import, profile artifact checksum verification, source attribution, API health checks, audit events, and disabling the flag as rollback. State that KaraOK recommends physical positions but never controls the amplifier.
 
 - [ ] **Step 4: Run formatters and static checks**
 
@@ -1066,9 +1068,9 @@ Run: `cd backend; py -3.13 -m unittest discover -s tests -p "test_*.py" -v`
 Run: `cd admin; composer test`
 Expected: all Flutter, backend, and Admin Console tests PASS.
 
-- [ ] **Step 6: Apply the migration in staging and run controlled trials**
+- [ ] **Step 6: Rebuild the disposable staging database and run controlled trials**
 
-Apply `database/migrations/20260902_01_settings_recommendations.sql`, enable the feature flag in staging, and collect at least five songs per enabled genre across low, neutral, and high starts. Run:
+Rebuild the disposable staging database from `database/schema.sql`, enable the feature flag in staging, and collect at least five songs per enabled genre across low, neutral, and high starts. Run:
 
 ```powershell
 py -3.13 backend\scripts\validate_settings_trials.py `
