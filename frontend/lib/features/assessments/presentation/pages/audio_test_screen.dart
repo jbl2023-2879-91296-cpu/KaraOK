@@ -15,6 +15,7 @@ import 'package:karaok_app/features/assessments/data/assessment_api.dart';
 import 'package:karaok_app/features/assessments/data/audio_staging_service.dart';
 import 'package:karaok_app/features/auth/presentation/pages/login_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/results_screen.dart';
+import 'package:karaok_app/features/sound_settings/domain/settings_recommendation.dart';
 
 enum AudioInputState {
   idle,
@@ -68,10 +69,12 @@ class AudioTestScreen extends StatefulWidget {
     this.genre,
     this.selectFileOnOpen = false,
     this.purpose = AudioAnalysisPurpose.qualityEvaluation,
+    this.settingsSuggestion,
   });
   final String? genre;
   final bool selectFileOnOpen;
   final AudioAnalysisPurpose purpose;
+  final SettingsSuggestionInput? settingsSuggestion;
 
   @override
   State<AudioTestScreen> createState() => _AudioTestScreenState();
@@ -464,9 +467,10 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
         fileName: item.fileName,
         fileBytes: item.bytes,
         durationSeconds: item.duration.inSeconds,
-        genre: widget.genre,
+        genre: widget.settingsSuggestion?.genre ?? widget.genre,
         analysisPurpose: widget.purpose.requestValue,
         guest: isGuest,
+        settingsSuggestion: widget.settingsSuggestion,
       );
       final completed = response['status'] == 'Completed';
       final result = Map<String, dynamic>.from(response)
