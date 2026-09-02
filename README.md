@@ -27,6 +27,33 @@ spectrogram reports.
 - A local-only KaraOK Admin Console provides analytics, schema visibility, and
   policy-controlled record management through the live Data Administration API.
 
+## Adjusted amplifier settings
+
+Audio Settings Suggestion turns a controlled test recording into five physical
+targets: Volume, Bass, Treble, Sharpness, and Flatness. The user first selects a
+supported genre, identifies the amplifier's printed scale, and enters all five
+current knob positions. KaraOK analyzes the recording with the same five audio
+measurements used by its quality evaluation, compares them with the versioned
+genre profile, and displays each current position beside its adjusted target.
+
+KaraOK recommends physical positions but never controls or remotely changes the
+amplifier. After setting the knobs manually, **Record Again to Verify** repeats
+the same song section and reports whether the score improved. If verification
+worsens the score, the app tells the user to return to the previous settings.
+Users should keep the room, microphone position, playback level, singer
+distance, and song section consistent between recordings.
+
+The enabled Rock, Pop, and Hip-Hop profiles are derived from licensed recordings
+and protected by a canonical artifact checksum. Source selection, license
+attribution, exclusions, versions, and derived quartiles are recorded in
+[`docs/settings-profile-sources.md`](docs/settings-profile-sources.md).
+
+The backend feature flag `SETTINGS_RECOMMENDATIONS_ENABLED` defaults to `false`.
+Operators must apply the additive migration and pass the controlled-trial gate
+before enabling it outside an approved staging environment. Disabling the flag
+stops new generation and hides the settings endpoints without deleting stored
+profiles, assessments, or recommendations.
+
 ## Technology
 
 | Layer          | Technology                                |
@@ -45,7 +72,7 @@ KaraOK/
 |-- backend/          Flask API, analyzer, thresholds, and tests
 |-- admin/            Local Admin Console and its ignored operating guide
 |-- frontend/         Flutter application and widget tests
-|-- database/         Fresh-install MySQL schema
+|-- database/         Fresh-install schema and additive migrations
 |-- deploy/ovh/       Production service and web-server configuration
 |-- CHANGELOG.md      User-visible implementation history
 `-- README.md         Public project documentation

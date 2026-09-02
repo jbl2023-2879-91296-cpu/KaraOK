@@ -242,6 +242,85 @@ sudo -u karaok ./.venv/bin/python -c "from karaok.infrastructure.database import
 
 The administration feature requires no MySQL schema rebuild.
 
+## Adjusted amplifier settings rollout gate
+
+The settings-recommendation module must remain disabled in production until its
+staging evidence and final review pass. Confirm the safe default in the service
+environment without printing secrets:
+
+```bash
+sudo -u karaok grep '^SETTINGS_RECOMMENDATIONS_ENABLED=false$' \
+  /opt/karaok/app/backend/.env
+```
+
+Before changing the schema, complete and verify the backup in section 3. Apply
+the additive migration to staging first; do not use the destructive schema
+rebuild in section 9 for this feature:
+
+```bash
+cd /opt/karaok/app
+
+sudo mysql karaok_db \
+  < database/migrations/20260902_01_settings_recommendations.sql
+
+sudo mysql -D karaok_db -e "
+SHOW TABLES LIKE 'amplifier_profile';
+SHOW TABLES LIKE 'settings_recommendation';
+"
+```
+
+Verify the deployed genre-profile artifact. Loading it recalculates and checks
+its canonical content checksum:
+
+```bash
+cd /opt/karaok/app/backend
+
+sudo -u karaok ./.venv/bin/python -c \
+  "from audio_thresholds import load_genre_profiles; p=load_genre_profiles(); assert p.artifact_checksum == '125800de3f963adf02e20a8edb2a4a492f750ae7814a1ac3272ecfdf222e6ec2'; print(p.artifact_checksum)"
+```
+
+Review `docs/settings-profile-sources.md` for source attribution, licenses,
+selection exclusions, enabled genres, and profile version. KaraOK recommends
+five physical knob positions but never controls the amplifier.
+
+In staging only, set `SETTINGS_RECOMMENDATIONS_ENABLED=true`, restart the API,
+and require both health endpoints to return
+`{"db":"connected","status":"ok"}`. Confirm that a settings-purpose upload
+persists a five-target recommendation and that history reload returns the same
+recommendation ID. Inspect audit logs for:
+
+- `amplifier_profile_created`, `amplifier_profile_updated`, and
+  `amplifier_profile_deleted`
+- `audio_upload_analyzed` with `purpose=settings_suggestion`
+- `settings_recommendation_applied`
+
+Collect at least five songs for each enabled genre, covering low, neutral, and
+high starting positions. Use exactly these CSV columns:
+
+```text
+trial_id,genre,start_profile,before_score,after_score,clipping_violation
+```
+
+Run the deterministic release gate from the repository root:
+
+```bash
+./backend/.venv/bin/python backend/scripts/validate_settings_trials.py \
+  results/settings-trials.csv \
+  --output results/settings-trials-report.json
+
+cat results/settings-trials-report.json
+```
+
+Do not enable production unless `passed` is `true`, clipping violations are
+zero, every worsening or low-confidence trial has been reviewed, all automated
+suites pass, and final code review approves the complete feature diff.
+
+Rollback is configuration-only: set
+`SETTINGS_RECOMMENDATIONS_ENABLED=false`, restart the API, and recheck both
+health endpoints. This stops new generation and hides the settings endpoints;
+it does not delete stored profiles, assessments, recommendations, or audits.
+Never drop the additive tables as a routine rollback.
+
 ## 9. Rebuild the MySQL schema
 
 > **Destructive operation:** This section permanently deletes all live users,

@@ -2,6 +2,35 @@
 
 All notable changes to KaraOK are documented here.
 
+## 2026-09-02 - Adjusted amplifier settings generation
+
+### Added
+
+- Added versioned, genre-aware recommendations for all five physical amplifier
+  controls: Volume, Bass, Treble, Sharpness, and Flatness.
+- Added authenticated amplifier profiles, persisted recommendations, guest-local
+  profiles, manual apply confirmation, and controlled re-recording verification.
+- Added licensed-source genre targets for Rock, Pop, and Hip-Hop with canonical
+  checksum validation and reproducible source attribution in
+  `docs/settings-profile-sources.md`.
+- Added the additive `20260902_01_settings_recommendations.sql` migration, a
+  controlled-trial validator, cross-layer contract tests, and a Windows
+  real-service integration harness using an isolated MySQL database.
+
+### Safety and rollout
+
+- Kept `SETTINGS_RECOMMENDATIONS_ENABLED=false` as the safe default. Disabling
+  it rejects new settings generation and hides module endpoints without
+  deleting stored data.
+- Bounded every recommended target to the user's amplifier scale and increment,
+  blocked unsafe or low-quality recordings, and retained all physical changes
+  as manual user actions; KaraOK never controls amplifier hardware.
+- Added audit coverage for amplifier-profile changes, settings-purpose audio
+  processing, and application of persisted recommendations.
+- Production enablement remains gated on the complete automated suite, additive
+  staging migration, health checks, at least five controlled songs per enabled
+  genre across low/neutral/high starts, a passing trial report, and final review.
+
 ## 2026-08-05 - Data Administration API and local Admin Console
 
 ### Added

@@ -96,7 +96,7 @@ class AnalysisCache {
           path.join(visualizationDirectory.path, '$assessmentId-$kind.bin'),
         );
         if (await cacheFile.exists() && await cacheFile.length() > 0) {
-          return cacheFile.readAsBytes();
+          return await cacheFile.readAsBytes();
         }
       }
     } catch (_) {
