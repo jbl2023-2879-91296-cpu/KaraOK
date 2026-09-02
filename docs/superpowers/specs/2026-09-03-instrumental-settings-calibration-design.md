@@ -1,7 +1,7 @@
 # Instrumental Settings Calibration and Database Simplification Design
 
 **Date:** 2026-09-03
-**Status:** Approved in conversation; awaiting written-spec review
+**Status:** Approved
 
 ## Purpose
 
