@@ -72,6 +72,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
   bool _submitting = false;
   bool _featureDisabled = false;
   String? _loadError;
+  String? _profilesLoadError;
   String? _genreError;
   String? _positionError;
   String? _scaleError;
@@ -123,11 +124,17 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
         final stored = await _guestStore.read();
         if (stored != null) _useProfile(stored);
       } else {
-        final profiles = await _settingsApi.listProfiles();
-        _profiles = profiles;
-        if (profiles.isNotEmpty) {
-          _selectedProfile = profiles.first;
-          _useProfile(profiles.first);
+        try {
+          final profiles = await _settingsApi.listProfiles();
+          _profiles = profiles;
+          if (profiles.isNotEmpty) {
+            _selectedProfile = profiles.first;
+            _useProfile(profiles.first);
+          }
+        } catch (_) {
+          _profilesLoadError =
+              'Saved amplifier profiles could not be loaded. '
+              'You can still create a new amplifier.';
         }
       }
       if (!mounted) return;
@@ -403,6 +410,8 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                         message: 'Settings generation is not enabled',
                       ),
                     if (_loadError case final error?)
+                      _Notice(icon: Icons.cloud_off, message: error),
+                    if (_profilesLoadError case final error?)
                       _Notice(icon: Icons.cloud_off, message: error),
                     Text(
                       'Tell KaraOK how your physical controls are set now.',

@@ -306,6 +306,32 @@ try {
         Write-Host "Admin Console ready at $adminLoginUrl" -ForegroundColor Green
     }
 
+    $adbPath = Resolve-AdbPath
+    if ($null -ne $adbPath) {
+        $adbDevicesOutput = @(& $adbPath devices)
+        if ($LASTEXITCODE -eq 0) {
+            $androidDeviceIds = @(
+                Get-AuthorizedAndroidDeviceIds `
+                    -AdbDevicesOutput $adbDevicesOutput
+            )
+            foreach ($deviceId in $androidDeviceIds) {
+                & $adbPath -s $deviceId reverse tcp:5000 tcp:5000 | Out-Null
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host `
+                        "Android API forwarding ready for $deviceId." `
+                        -ForegroundColor Green
+                }
+                else {
+                    Write-Warning `
+                        "Could not forward Android port 5000 for $deviceId."
+                }
+            }
+        }
+        else {
+            Write-Warning "ADB could not enumerate Android devices."
+        }
+    }
+
     Write-Host "Starting Flutter with API_BASE_URL=$flutterApiUrl" `
         -ForegroundColor Cyan
     Push-Location $frontendDirectory

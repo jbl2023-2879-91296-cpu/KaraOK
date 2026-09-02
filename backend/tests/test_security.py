@@ -58,14 +58,25 @@ class SecurityValidationTests(unittest.TestCase):
         self.assertNotIn("token", parameters[2])
         connection.commit.assert_called_once()
 
-    def test_password_policy_accepts_strong_password(self):
-        self.assertEqual(api.validate_password("Good#A1b"), "Good#A1b")
+    def test_password_policy_accepts_strong_passwords_from_8_to_128_characters(self):
+        maximum_length_password = "Aa1!" + ("x" * 124)
+        for password in ("Good#A1b", "Good#A1bc", maximum_length_password):
+            with self.subTest(length=len(password)):
+                try:
+                    validated = api.validate_password(password)
+                except ValueError as error:
+                    self.fail(f"valid password was rejected: {error}")
+                self.assertEqual(validated, password)
 
-    def test_password_policy_rejects_weak_password(self):
-        with self.assertRaises(ValueError):
-            api.validate_password("short")
-        with self.assertRaises(ValueError):
-            api.validate_password("Good#A1bc")
+    def test_password_policy_rejects_passwords_outside_length_limits(self):
+        for password in ("Go#1abc", "Aa1!" + ("x" * 125)):
+            with self.subTest(length=len(password)), self.assertRaises(ValueError):
+                api.validate_password(password)
+
+    def test_password_policy_requires_every_character_type(self):
+        for password in ("good#a1b", "GOOD#A1B", "Good#abc", "Good1abc"):
+            with self.subTest(password=password), self.assertRaises(ValueError):
+                api.validate_password(password)
 
     def test_profile_images_accept_common_phone_formats(self):
         samples = {

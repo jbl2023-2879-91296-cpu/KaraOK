@@ -396,9 +396,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 _LabeledField(
                   label: 'Password',
                   controller: _passCtrl,
-                  hint: 'Exactly 8 characters with mixed types',
+                  hint: '8-128 characters with mixed types',
                   obscure: _obscurePass,
-                  maxLength: 8,
+                  maxLength: PasswordPolicy.maximumLength,
                   suffixIcon: IconButton(
                     icon: Icon(
                       _obscurePass ? Icons.visibility_off : Icons.visibility,
@@ -414,7 +414,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   controller: _confirmCtrl,
                   hint: 'Retype your password',
                   obscure: _obscureConf,
-                  maxLength: 8,
+                  maxLength: PasswordPolicy.maximumLength,
                   suffixIcon: IconButton(
                     icon: Icon(
                       _obscureConf ? Icons.visibility_off : Icons.visibility,

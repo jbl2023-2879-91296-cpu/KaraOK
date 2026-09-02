@@ -2,6 +2,6 @@
 abstract final class Environment {
   static const apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://localhost:5000/api',
+    defaultValue: 'http://127.0.0.1:5000/api',
   );
 }

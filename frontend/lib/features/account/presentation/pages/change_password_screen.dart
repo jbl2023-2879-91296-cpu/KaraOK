@@ -782,7 +782,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   controller: _newController,
                   label: 'New password',
                   obscure: _obscureNew,
-                  maxLength: 8,
+                  maxLength: PasswordPolicy.maximumLength,
                   toggle: () => setState(() => _obscureNew = !_obscureNew),
                   validator: _validateNewPassword,
                 ),
@@ -791,7 +791,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   controller: _confirmController,
                   label: 'Retype new password',
                   obscure: _obscureConfirm,
-                  maxLength: 8,
+                  maxLength: PasswordPolicy.maximumLength,
                   toggle: () =>
                       setState(() => _obscureConfirm = !_obscureConfirm),
                   validator: (value) => value != _newController.text
