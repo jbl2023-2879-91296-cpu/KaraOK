@@ -2,6 +2,7 @@ import json
 import os
 import unittest
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
@@ -15,6 +16,13 @@ from karaok.modules.settings_recommendations import service as recommendation_se
 
 
 api.app.config["TESTING"] = True
+RECOMMENDATION_FIXTURE = (
+    Path(__file__).resolve().parents[2]
+    / "frontend"
+    / "test"
+    / "fixtures"
+    / "settings_recommendation_response.json"
+)
 
 
 def account_row():
@@ -79,11 +87,46 @@ def recommendation_row(**overrides):
         ),
         "adjustments": json.dumps(
             {
-                "volume": {"delta": 0.5, "reason_code": "below_genre_range"},
-                "bass": {"delta": 1.5, "reason_code": "below_genre_range"},
-                "treble": {"delta": -0.5, "reason_code": "above_genre_range"},
-                "sharpness": {"delta": 0.0, "reason_code": "within_genre_range"},
-                "flatness": {"delta": -0.5, "reason_code": "above_genre_range"},
+                "volume": {
+                    "current": 5.0,
+                    "recommended": 5.5,
+                    "delta": 0.5,
+                    "delta_normalized": 5.0,
+                    "reason_code": "below_genre_range",
+                    "confidence": "high",
+                },
+                "bass": {
+                    "current": 4.0,
+                    "recommended": 5.5,
+                    "delta": 1.5,
+                    "delta_normalized": 15.0,
+                    "reason_code": "below_genre_range",
+                    "confidence": "medium",
+                },
+                "treble": {
+                    "current": 6.0,
+                    "recommended": 5.5,
+                    "delta": -0.5,
+                    "delta_normalized": -5.0,
+                    "reason_code": "above_genre_range",
+                    "confidence": "medium",
+                },
+                "sharpness": {
+                    "current": 5.0,
+                    "recommended": 5.0,
+                    "delta": 0.0,
+                    "delta_normalized": 0.0,
+                    "reason_code": "within_genre_range",
+                    "confidence": "medium",
+                },
+                "flatness": {
+                    "current": 5.0,
+                    "recommended": 4.5,
+                    "delta": -0.5,
+                    "delta_normalized": -5.0,
+                    "reason_code": "above_genre_range",
+                    "confidence": "medium",
+                },
             }
         ),
         "original_score": 72.4,
@@ -457,6 +500,23 @@ class SettingsRecommendationApiTests(unittest.TestCase):
         )
         self.assertIn("user_id = %s", query.args[0])
         self.assertEqual(query.args[1], (41, 7, 7))
+
+    def test_get_recommendation_matches_shared_cross_layer_fixture(self):
+        expected = json.loads(RECOMMENDATION_FIXTURE.read_text(encoding="utf-8"))
+        response, _, _ = self.request_with_database(
+            "GET",
+            "/api/settings-recommendations/41",
+            fetchone=[
+                recommendation_row(
+                    verification_score=68.4,
+                    recommendation_status="reverted",
+                    applied_at=datetime(2026, 9, 2, 1, tzinfo=timezone.utc),
+                )
+            ],
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), expected)
 
     def test_apply_updates_profile_positions_atomically(self):
         response, connection, cursor = self.request_with_database(

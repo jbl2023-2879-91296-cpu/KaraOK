@@ -1,0 +1,83 @@
+{
+  "id": 41,
+  "persisted": true,
+  "assessment_id": 31,
+  "amplifier_profile_id": 12,
+  "parent_recommendation_id": null,
+  "status": "reverted",
+  "genre": "rock",
+  "profile_version": "2026.09.1",
+  "algorithm_version": "1.0.0",
+  "overall_confidence": "medium",
+  "scale": {
+    "minimum": 0.0,
+    "maximum": 10.0,
+    "step": 0.5
+  },
+  "current": {
+    "volume": 5.0,
+    "bass": 4.0,
+    "treble": 6.0,
+    "sharpness": 5.0,
+    "flatness": 5.0
+  },
+  "recommended": {
+    "volume": 5.5,
+    "bass": 5.5,
+    "treble": 5.5,
+    "sharpness": 5.0,
+    "flatness": 4.5
+  },
+  "adjustments": {
+    "volume": {
+      "current": 5.0,
+      "recommended": 5.5,
+      "delta": 0.5,
+      "delta_normalized": 5.0,
+      "reason_code": "below_genre_range",
+      "confidence": "high"
+    },
+    "bass": {
+      "current": 4.0,
+      "recommended": 5.5,
+      "delta": 1.5,
+      "delta_normalized": 15.0,
+      "reason_code": "below_genre_range",
+      "confidence": "medium"
+    },
+    "treble": {
+      "current": 6.0,
+      "recommended": 5.5,
+      "delta": -0.5,
+      "delta_normalized": -5.0,
+      "reason_code": "above_genre_range",
+      "confidence": "medium"
+    },
+    "sharpness": {
+      "current": 5.0,
+      "recommended": 5.0,
+      "delta": 0.0,
+      "delta_normalized": 0.0,
+      "reason_code": "within_genre_range",
+      "confidence": "medium"
+    },
+    "flatness": {
+      "current": 5.0,
+      "recommended": 4.5,
+      "delta": -0.5,
+      "delta_normalized": -5.0,
+      "reason_code": "above_genre_range",
+      "confidence": "medium"
+    }
+  },
+  "original_score": 72.4,
+  "verification_score": 68.4,
+  "before_score": 72.4,
+  "after_score": 68.4,
+  "score_change": -4.0,
+  "verification_status": "worsened",
+  "rollback_recommended": true,
+  "verification_token": null,
+  "created_at": "2026-09-02T00:00:00+00:00",
+  "applied_at": "2026-09-02T01:00:00+00:00"
+}
