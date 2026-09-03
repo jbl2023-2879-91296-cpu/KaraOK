@@ -1,7 +1,8 @@
 import hashlib
 import json
-import tempfile
 import unittest
+import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 from audio_thresholds import (
@@ -20,13 +21,23 @@ from audio_thresholds.derive_thresholds import (
     load_good_cohort,
     write_threshold_artifact,
 )
+from audio_thresholds.artifact_integrity import canonical_artifact_checksum
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-RESULTS_CSV = REPOSITORY_ROOT / "results" / "results.csv"
+RESULTS_CSV = Path(__file__).resolve().parent / "fixtures" / "good_audio_results.csv"
 THRESHOLD_JSON = (
     REPOSITORY_ROOT / "backend" / "audio_thresholds" / "good_audio_thresholds.json"
 )
+
+
+@contextmanager
+def temporary_threshold_path():
+    path = Path(__file__).resolve().parent / f".threshold-{uuid.uuid4().hex}.json"
+    try:
+        yield path
+    finally:
+        path.unlink(missing_ok=True)
 
 
 class GoodAudioThresholdTests(unittest.TestCase):
@@ -35,6 +46,10 @@ class GoodAudioThresholdTests(unittest.TestCase):
         cls.thresholds = load_thresholds(THRESHOLD_JSON)
 
     def test_current_csv_selects_thirty_unique_complete_recordings(self):
+        self.assertEqual(
+            hashlib.sha256(RESULTS_CSV.read_bytes()).hexdigest(),
+            "bcc5d4c2710f1d49572a17db56c5cc23ff5e8161f17adc9d2486b0edc8adfaa5",
+        )
         cohort = load_good_cohort(RESULTS_CSV)
 
         self.assertEqual(len(cohort.rows), 30)
@@ -164,8 +179,8 @@ class GoodAudioThresholdTests(unittest.TestCase):
         )
         self.assertEqual(first, second)
 
-        with tempfile.TemporaryDirectory() as directory:
-            output = write_threshold_artifact(first, Path(directory) / "thresholds.json")
+        with temporary_threshold_path() as path:
+            output = write_threshold_artifact(first, path)
             parsed = json.loads(output.read_text(encoding="utf-8"))
         self.assertEqual(parsed, first)
 
@@ -190,11 +205,114 @@ class GoodAudioThresholdTests(unittest.TestCase):
     def test_loader_rejects_tampered_empirical_artifact(self):
         payload = json.loads(THRESHOLD_JSON.read_text(encoding="utf-8"))
         payload["metrics"]["bass"]["median"] += 1
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "tampered.json"
+        with temporary_threshold_path() as path:
             path.write_text(json.dumps(payload), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "checksum"):
                 load_thresholds(path)
+
+    def _assert_schema_mutation_rejected(self, path, key, value=None, *, remove=False):
+        payload = json.loads(THRESHOLD_JSON.read_text(encoding="utf-8"))
+        target = payload
+        for part in path:
+            target = target[part]
+        if remove:
+            del target[key]
+        else:
+            target[key] = value
+        payload["artifact_checksum"] = canonical_artifact_checksum(payload)
+        with temporary_threshold_path() as artifact_path:
+            artifact_path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaises(ValueError):
+                load_thresholds(artifact_path)
+
+    def test_loader_rejects_unknown_and_missing_fields_at_authoritative_levels(self):
+        levels = (
+            ((), "unexpected", False),
+            ((), "purpose", True),
+            (("source",), "unexpected", False),
+            (("source",), "path", True),
+            (("cohort",), "unexpected", False),
+            (("cohort",), "source_row_count", True),
+            (("cohort", "exclusions"), "unexpected", False),
+            (("cohort", "exclusions"), "not_completed", True),
+            (("derivation",), "unexpected", False),
+            (("derivation",), "library", True),
+            (("classification",), "unexpected", False),
+            (("classification",), "good", True),
+            (("scoring",), "unexpected", False),
+            (("scoring",), "range", True),
+            (("scoring", "anchors"), "unexpected", False),
+            (("scoring", "anchors"), "median", True),
+            (("overall",), "unexpected", False),
+            (("overall",), "ranked_features", True),
+            (("overall", "weights"), "unexpected", False),
+            (("overall", "weights"), "bass", True),
+            (("overall", "status_rules"), "unexpected", False),
+            (("overall", "status_rules"), "bad", True),
+            (("metrics",), "unexpected", False),
+            (("metrics",), "bass", True),
+            (("metrics", "bass"), "unexpected", False),
+            (("metrics", "bass"), "unit", True),
+            (("metrics", "bass", "bootstrap_95_ci"), "unexpected", False),
+            (("metrics", "bass", "bootstrap_95_ci"), "median", True),
+            (("spearman_correlations",), "unexpected", False),
+            (("spearman_correlations",), "bass", True),
+            (("spearman_correlations", "bass"), "unexpected", False),
+            (("spearman_correlations", "bass"), "treble", True),
+            (("recovery_sensitivity",), "unexpected", False),
+            (("recovery_sensitivity",), "strict_rule", True),
+            (("recovery_sensitivity", "metrics"), "unexpected", False),
+            (("recovery_sensitivity", "metrics"), "bass", True),
+            (("recovery_sensitivity", "metrics", "bass"), "unexpected", False),
+            (("recovery_sensitivity", "metrics", "bass"), "strict_p05", True),
+        )
+        for path, key, remove in levels:
+            with self.subTest(path=".".join(path), key=key, remove=remove):
+                self._assert_schema_mutation_rejected(
+                    path,
+                    key,
+                    "unexpected",
+                    remove=remove,
+                )
+
+    def test_loader_rejects_invalid_empirical_evidence_anchors_and_units(self):
+        mutations = (
+            (("source",), "sha256", "not-a-sha256"),
+            (("classification",), "good", "value looks nice"),
+            (("scoring",), "range", [0.0, 99.0]),
+            (("scoring", "anchors"), "median", 99.0),
+            (
+                ("overall",),
+                "ranked_features",
+                ["bass", "loudness", "treble", "sharpness", "flatness"],
+            ),
+            (("overall", "status_rules"), "good", "overall_score >= 75"),
+            (("metrics", "bass"), "csv_column", "wrong.column"),
+            (("metrics", "bass"), "unit", "ratio"),
+            (("metrics", "bass"), "rank", 3),
+            (("metrics", "bass"), "sample_count", 29),
+        )
+        for path, key, value in mutations:
+            with self.subTest(path=".".join(path), key=key, value=value):
+                self._assert_schema_mutation_rejected(path, key, value)
+
+    def test_loader_rejects_coerced_and_non_finite_empirical_numbers(self):
+        mutations = (
+            ((), "schema_version", 1.0),
+            (("cohort",), "selected_recording_count", "30"),
+            (("derivation",), "bootstrap_iterations", 10000.0),
+            (("overall", "weights"), "bass", "0.25"),
+            (("metrics", "bass"), "sample_count", True),
+            (("metrics", "bass"), "median", "70.7"),
+            (("metrics", "bass"), "median", "NaN"),
+            (("metrics", "bass", "bootstrap_95_ci"), "median", ["NaN", 80.0]),
+            (("spearman_correlations", "bass"), "treble", "-0.18"),
+            (("recovery_sensitivity",), "strict_sample_count", 29.0),
+            (("recovery_sensitivity", "metrics", "bass"), "strict_p05", "Infinity"),
+        )
+        for path, key, value in mutations:
+            with self.subTest(path=".".join(path), key=key, value=value):
+                self._assert_schema_mutation_rejected(path, key, value)
 
 
 if __name__ == "__main__":

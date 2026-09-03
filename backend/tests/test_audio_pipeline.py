@@ -697,6 +697,115 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertEqual(enriched["status"], "Acceptable")
         self.assertEqual(len(enriched["empirical_quality"]["features"]), 5)
 
+    def test_historical_assessment_helper_uses_persisted_empirical_result(self):
+        row = {
+            "score": 91.5,
+            "status": "Problematic",
+            "loudness": -99.0,
+            "bass": 99.0,
+            "treble": 99.0,
+            "sharpness": 99.0,
+            "flatness": 0.99,
+            "empirical_status": "good",
+            "worst_feature_status": "good_but_needs_improvement",
+            "worst_features": '["treble"]',
+            "empirical_details": json.dumps(
+                {
+                    "overall_score": 91.5,
+                    "overall_status": "good",
+                    "worst_feature_status": "good_but_needs_improvement",
+                    "worst_features": ["treble"],
+                    "reference": {"source_sha256": "stored-source"},
+                }
+            ),
+            "quality_profile_version": "historical-quality-v1",
+            "quality_profile_checksum": "b" * 64,
+        }
+        current_result = {
+            "overall_score": 2.0,
+            "overall_status": "bad",
+            "worst_feature_status": "bad",
+            "worst_features": ["loudness", "bass"],
+            "features": {},
+        }
+
+        with patch.object(api, "evaluate_features", return_value=current_result) as evaluate:
+            enriched = api._enrich_audio_test_row(row)
+
+        evaluate.assert_not_called()
+        self.assertEqual(enriched["score"], 91.5)
+        self.assertEqual(enriched["status"], "Acceptable")
+        self.assertEqual(enriched["empirical_quality"]["overall_score"], 91.5)
+        self.assertEqual(enriched["empirical_quality"]["overall_status"], "good")
+        self.assertEqual(
+            enriched["empirical_quality"]["worst_feature_status"],
+            "good_but_needs_improvement",
+        )
+        self.assertEqual(enriched["empirical_quality"]["worst_features"], ["treble"])
+        self.assertEqual(
+            enriched["empirical_quality"]["reference"]["source_sha256"],
+            "stored-source",
+        )
+        self.assertEqual(enriched["quality_profile_version"], "historical-quality-v1")
+        self.assertEqual(enriched["quality_profile_checksum"], "b" * 64)
+
+    def test_assessment_list_and_detail_select_persisted_empirical_fields(self):
+        for route in ("list", "detail"):
+            with self.subTest(route=route):
+                connection = MagicMock()
+                cursor = connection.cursor.return_value
+                row = {
+                    "id": 11,
+                    "test_name": "recording.wav",
+                    "score": 91.5,
+                    "noise_level": -42.0,
+                    "distortion_level": 8.0,
+                    "bass": 40.0,
+                    "treble": 12.0,
+                    "loudness": -14.0,
+                    "sharpness": 0.2,
+                    "flatness": 0.03,
+                    "empirical_status": "good",
+                    "worst_feature_status": "good",
+                    "worst_features": "[]",
+                    "empirical_details": '{"overall_score": 91.5}',
+                    "quality_profile_version": "historical-quality-v1",
+                    "quality_profile_checksum": "b" * 64,
+                    "status": "Acceptable",
+                    "assessment_status": "Completed",
+                    "analysis_purpose": "quality_evaluation",
+                    "duration_seconds": 2,
+                    "created_at": datetime(2026, 9, 2, tzinfo=timezone.utc),
+                }
+                if route == "list":
+                    cursor.fetchall.return_value = [row]
+                    request_path = "/api/audio-tests"
+                else:
+                    cursor.fetchone.return_value = row
+                    request_path = "/api/audio-tests/11"
+
+                with api.app.test_request_context(request_path), patch.object(
+                    api, "get_db", return_value=connection
+                ):
+                    api.g.user_id = 7
+                    if route == "list":
+                        response = api.get_audio_tests.__wrapped__()
+                    else:
+                        response, status_code = api.get_audio_test.__wrapped__(11)
+                        self.assertEqual(status_code, 200)
+
+                payload = response.get_json()
+                payload = payload[0] if route == "list" else payload
+                self.assertEqual(payload["empirical_quality"]["overall_score"], 91.5)
+                statement = cursor.execute.call_args.args[0]
+                for column in (
+                    "r.empirical_status",
+                    "r.worst_feature_status",
+                    "r.worst_features",
+                    "r.empirical_details",
+                ):
+                    self.assertIn(column, statement)
+
     def test_analysis_persistence_has_no_genre_lookup(self):
         connection = MagicMock()
         cursor = connection.cursor.return_value
