@@ -314,6 +314,53 @@ class GoodAudioThresholdTests(unittest.TestCase):
             with self.subTest(path=".".join(path), key=key, value=value):
                 self._assert_schema_mutation_rejected(path, key, value)
 
+    def test_loader_rejects_unknown_status_counts_and_algorithm_version(self):
+        mutations = (
+            (
+                ("cohort",),
+                "quality_status_counts",
+                {"passed": 3, "warning": 26, "invented": 1},
+            ),
+            (
+                ("cohort",),
+                "decode_status_counts",
+                {"complete": 4, "recovered_partial": 25, "invented": 1},
+            ),
+            ((), "algorithm_version", "9.9.9"),
+        )
+        for path, key, value in mutations:
+            with self.subTest(path=".".join(path), key=key):
+                self._assert_schema_mutation_rejected(path, key, value)
+
+    def test_loader_rejects_changed_recovery_rule_and_false_deltas(self):
+        self._assert_schema_mutation_rejected(
+            ("recovery_sensitivity",),
+            "strict_rule",
+            "decode_status is complete",
+        )
+        payload = json.loads(THRESHOLD_JSON.read_text(encoding="utf-8"))
+        recovery_metric = payload["recovery_sensitivity"]["metrics"]["bass"]
+        recovery_metric["p05_delta_from_full"] += 0.001
+        payload["artifact_checksum"] = canonical_artifact_checksum(payload)
+        with temporary_threshold_path() as artifact_path:
+            artifact_path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaises(ValueError):
+                load_thresholds(artifact_path)
+
+    def test_loader_rejects_empty_limitations(self):
+        self._assert_schema_mutation_rejected((), "limitations", [])
+
+    def test_loader_rejects_noncanonical_cohort_utc_timestamp(self):
+        for timestamp in (
+            "2026-07-19T10:16:41.122103Z",
+            "2026-07-19t10:16:41.122103+00:00",
+            "2026-02-30T10:16:41.122103+00:00",
+        ):
+            with self.subTest(timestamp=timestamp):
+                self._assert_schema_mutation_rejected(
+                    ("cohort",), "latest_analyzed_at_utc", timestamp
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

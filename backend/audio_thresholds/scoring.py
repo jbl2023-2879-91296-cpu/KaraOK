@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -19,6 +20,12 @@ NOT_EVALUATED = "not_evaluated"
 DEFAULT_THRESHOLD_PATH = Path(__file__).with_name("good_audio_thresholds.json")
 _STATUS_SEVERITY = {GOOD: 0, GOOD_BUT_NEEDS_IMPROVEMENT: 1, BAD: 2}
 _METRIC_KEYS = tuple(definition.key for definition in METRIC_DEFINITIONS)
+_ALGORITHM_VERSION = "1.0.0"
+_QUALITY_STATUSES = frozenset({"passed", "warning", "failed"})
+_DECODE_STATUSES = frozenset({"complete", "fallback_complete", "recovered_partial"})
+_STRICT_RECOVERY_RULE = (
+    "decode_status is complete or recovered_frame_percentage is at least 99.0"
+)
 _ARTIFACT_KEYS = frozenset(
     {
         "schema_version",
@@ -182,9 +189,17 @@ def _string_list(value: Any, field: str, *, expected_length: int | None = None) 
     return value
 
 
-def _count_mapping(value: Any, field: str, *, expected_total: int) -> None:
+def _count_mapping(
+    value: Any,
+    field: str,
+    *,
+    expected_total: int,
+    allowed_keys: frozenset[str],
+) -> None:
     if not isinstance(value, Mapping) or not value:
         raise ValueError(f"{field} must be a non-empty count object.")
+    if not set(value).issubset(allowed_keys):
+        raise ValueError(f"{field} contains unsupported status keys.")
     total = 0
     for key, count in value.items():
         if not isinstance(key, str) or not key.strip():
@@ -218,6 +233,22 @@ def _validate_empirical_artifact(artifact: Mapping[str, Any]) -> None:
         "latest_analyzed_at_utc",
     ):
         _required_string(cohort, name, "cohort")
+    latest_analyzed_at = cohort["latest_analyzed_at_utc"]
+    try:
+        parsed_latest_analyzed_at = datetime.strptime(
+            latest_analyzed_at, "%Y-%m-%dT%H:%M:%S.%f+00:00"
+        )
+    except ValueError as error:
+        raise ValueError(
+            "cohort.latest_analyzed_at_utc must be a canonical UTC timestamp."
+        ) from error
+    if (
+        parsed_latest_analyzed_at.strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
+        != latest_analyzed_at
+    ):
+        raise ValueError(
+            "cohort.latest_analyzed_at_utc must be a canonical UTC timestamp."
+        )
     exclusions = _exact_mapping(cohort["exclusions"], _EXCLUSION_KEYS, "cohort.exclusions")
     parsed_exclusions = {
         key: _strict_integer(value, f"cohort.exclusions.{key}")
@@ -239,11 +270,13 @@ def _validate_empirical_artifact(artifact: Mapping[str, Any]) -> None:
         cohort["quality_status_counts"],
         "cohort.quality_status_counts",
         expected_total=selected_count,
+        allowed_keys=_QUALITY_STATUSES,
     )
     _count_mapping(
         cohort["decode_status_counts"],
         "cohort.decode_status_counts",
         expected_total=selected_count,
+        allowed_keys=_DECODE_STATUSES,
     )
     recovered_min = _strict_finite(
         cohort["recovered_frame_percentage_min"],
@@ -416,7 +449,11 @@ def _validate_empirical_artifact(artifact: Mapping[str, Any]) -> None:
     recovery = _exact_mapping(
         artifact["recovery_sensitivity"], _RECOVERY_KEYS, "recovery_sensitivity"
     )
-    _required_string(recovery, "strict_rule", "recovery_sensitivity")
+    if (
+        _required_string(recovery, "strict_rule", "recovery_sensitivity")
+        != _STRICT_RECOVERY_RULE
+    ):
+        raise ValueError("recovery_sensitivity.strict_rule does not match the derivation rule.")
     strict_count = _strict_integer(
         recovery["strict_sample_count"], "recovery_sensitivity.strict_sample_count"
     )
@@ -438,8 +475,20 @@ def _validate_empirical_artifact(artifact: Mapping[str, Any]) -> None:
         }
         if not parsed["strict_p05"] <= parsed["strict_median"] <= parsed["strict_p95"]:
             raise ValueError(f"{field} strict distribution anchors must be ordered.")
+        full_metric = metrics[metric_key]
+        for strict_name, full_name, delta_name in (
+            ("strict_p05", "p05", "p05_delta_from_full"),
+            ("strict_median", "median", "median_delta_from_full"),
+            ("strict_p95", "p95", "p95_delta_from_full"),
+        ):
+            expected_delta = parsed[strict_name] - float(full_metric[full_name])
+            if not math.isclose(
+                parsed[delta_name], expected_delta, rel_tol=0.0, abs_tol=1e-12
+            ):
+                raise ValueError(f"{field}.{delta_name} does not match the full cohort.")
 
-    _string_list(artifact["limitations"], "limitations")
+    if not _string_list(artifact["limitations"], "limitations"):
+        raise ValueError("limitations must contain at least one entry.")
 
 
 def load_thresholds(path: str | Path = DEFAULT_THRESHOLD_PATH) -> dict[str, Any]:
@@ -463,6 +512,8 @@ def load_thresholds(path: str | Path = DEFAULT_THRESHOLD_PATH) -> dict[str, Any]
     for field in ("quality_profile_version", "algorithm_version", "artifact_checksum"):
         if not isinstance(artifact.get(field), str) or not artifact[field].strip():
             raise ValueError(f"Threshold file is missing {field}.")
+    if artifact["algorithm_version"] != _ALGORITHM_VERSION:
+        raise ValueError("Unsupported empirical-threshold algorithm_version.")
     if re.fullmatch(r"[0-9a-f]{64}", artifact["artifact_checksum"]) is None:
         raise ValueError("Threshold artifact_checksum must be a lowercase SHA-256 checksum.")
     expected = canonical_artifact_checksum(artifact)

@@ -142,6 +142,40 @@ try {
     Write-Output 'PASS: successful groups can be summarized without printing details'
 
     $powerShellExecutable = (Get-Process -Id $PID).Path
+    $closedWarningAction = {
+        & $powerShellExecutable -NoProfile -Command `
+            "[Console]::Error.WriteLine('closed native warning'); exit 0"
+    }.GetNewClosure()
+    $closedWarningResult = Invoke-CapturedTestGroup `
+        -Name 'successful-closed-native-warning' `
+        -LogDirectory $testRoot `
+        -Action $closedWarningAction
+    if (-not $closedWarningResult.Passed) {
+        throw (
+            'FAIL: a closed action promoted successful native stderr to failure'
+        )
+    }
+    if ($closedWarningResult.Output -notmatch 'closed native warning') {
+        throw 'FAIL: closed-action native stderr was not captured'
+    }
+    Write-Output 'PASS: closed actions use native exit code despite stderr'
+
+    $closedFailureAction = {
+        & $powerShellExecutable -NoProfile -Command `
+            "[Console]::Error.WriteLine('closed native failure'); exit 7"
+    }.GetNewClosure()
+    $closedFailureResult = Invoke-CapturedTestGroup `
+        -Name 'failed-closed-native-process' `
+        -LogDirectory $testRoot `
+        -Action $closedFailureAction
+    if ($closedFailureResult.Passed) {
+        throw 'FAIL: a nonzero closed native action was reported as passing'
+    }
+    if ($closedFailureResult.Output -notmatch 'closed native failure') {
+        throw 'FAIL: closed native failure diagnostics were not captured'
+    }
+    Write-Output 'PASS: closed native failures retain stderr diagnostics'
+
     $warningResult = Invoke-CapturedTestGroup `
         -Name 'successful-native-warning' `
         -LogDirectory $testRoot `

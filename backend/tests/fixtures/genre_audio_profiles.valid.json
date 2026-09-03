@@ -2,13 +2,13 @@
   "schema_version": 1,
   "profile_version": "test-v1",
   "generated_at": "2026-09-02T00:00:00Z",
-  "generator_version": "test-generator-1",
+  "generator_version": "1.0.0",
   "sources": {
     "source": "Licensed test corpus",
     "release": "test-release-1",
     "license": "CC BY 4.0",
     "citation_url": "https://example.test/genre-profile-source",
-    "selection_filters": {"analysis_status": "completed"},
+    "selection_filters": {"individual_license": "CC BY 4.0", "measurement_source": "KaraOK audio_engine.analyze_audio"},
     "compatible_feature_notes": "All five KaraOK analyzer features are compatible.",
     "calculation_method": "linear quartiles with robust scale",
     "recordings": [
@@ -19,7 +19,7 @@
       {"recording_id": "rock-005", "genre": "rock", "instrumental_status": "confirmed_instrumental"}
     ]
   },
-  "artifact_checksum": "39b2a99a8ceb2af8412b14157651903e764309c965b2b376b06e6c01c9b21764",
+  "artifact_checksum": "8614616c340d0bc7de56d2ae730509ff9c550a84744327930947db4ad317e592",
   "genres": {
     "rock": {
       "sample_count": 5,
