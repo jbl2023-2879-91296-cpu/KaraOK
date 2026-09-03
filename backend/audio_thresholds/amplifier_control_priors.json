@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "prior_version": "2026.09.1",
+  "normalized_scale": {"minimum": 0.0, "maximum": 100.0},
+  "positions": {"volume": 40.0, "bass": 50.0, "treble": 50.0, "sharpness": 50.0, "flatness": 50.0},
+  "requires_physical_confirmation": true,
+  "assumptions": [
+    "Volume begins below midpoint to preserve headroom; it is not a universal optimum.",
+    "Bass and Treble use the neutral midpoint documented for conventional tone controls.",
+    "Sharpness and Flatness use neutral project assumptions pending hardware response data."
+  ],
+  "sources": [
+    {"title": "ITU-R BS.1770-5", "url": "https://www.itu.int/rec/R-REC-BS.1770-5-202311-I/en", "supports": "Programme loudness and true-peak measurement concepts."},
+    {"title": "Yamaha R-N1000A tone control manual", "url": "https://manual.yamaha.com/av/22/rn1000a/en-US/8393117835.html", "supports": "Bass and Treble midpoint is flat response."},
+    {"title": "librosa spectral_flatness", "url": "https://librosa.org/doc/main/generated/librosa.feature.spectral_flatness.html", "supports": "Spectral flatness definition."},
+    {"title": "MathWorks acousticSharpness", "url": "https://www.mathworks.com/help/audio/ref/acousticsharpness.html", "supports": "Standards-based sharpness context; KaraOK's score is not acum."}
+  ],
+  "artifact_checksum": "22f1dde7455dd1d6d6c83c54a00d885e6bd3fecd89a8b05f6874bf88a774be71"
+}

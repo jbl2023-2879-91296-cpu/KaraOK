@@ -1,0 +1,14 @@
+{
+  "profile_version": "2026.09.1",
+  "profile_checksum": "8b87b9f1106bab8dab4978e4590e84c9bb294400a0d60ce5263e196f44701b61",
+  "quality_profile_version": "2026.09.1",
+  "quality_profile_checksum": "e86040c27a2d346c7fda3001ca0fd6cfeabed579ea1f63ed70f8e029dfbb20be",
+  "enabled_genres": ["hip-hop", "pop", "rock"],
+  "control_priors": {
+    "prior_version": "2026.09.1",
+    "artifact_checksum": "22f1dde7455dd1d6d6c83c54a00d885e6bd3fecd89a8b05f6874bf88a774be71",
+    "normalized_scale": {"minimum": 0.0, "maximum": 100.0},
+    "positions": {"volume": 40.0, "bass": 50.0, "treble": 50.0, "sharpness": 50.0, "flatness": 50.0},
+    "requires_physical_confirmation": true
+  }
+}

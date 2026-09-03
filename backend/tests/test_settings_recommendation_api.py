@@ -25,6 +25,13 @@ RECOMMENDATION_FIXTURE = (
     / "fixtures"
     / "settings_recommendation_response.json"
 )
+METADATA_FIXTURE = (
+    Path(__file__).resolve().parents[2]
+    / "frontend"
+    / "test"
+    / "fixtures"
+    / "settings_profile_metadata_response.json"
+)
 
 
 def account_row():
@@ -210,17 +217,23 @@ class SettingsRecommendationApiTests(unittest.TestCase):
         self.assertTrue(all(response.status_code == 404 for response in responses))
         audit.assert_not_called()
 
-    def test_public_metadata_returns_only_enabled_genres_and_version(self):
+    def test_public_metadata_returns_the_shared_artifact_contract(self):
         with patch.object(
             api, "SETTINGS_RECOMMENDATIONS_ENABLED", True, create=True
         ):
             response = self.client.get("/api/settings-profile-metadata")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(set(response.get_json()), {"profile_version", "enabled_genres"})
         self.assertEqual(
-            response.get_json()["enabled_genres"],
-            ["hip-hop", "pop", "rock"],
+            set(response.get_json()),
+            {
+                "profile_version", "profile_checksum", "quality_profile_version",
+                "quality_profile_checksum", "enabled_genres", "control_priors",
+            },
+        )
+        self.assertEqual(
+            response.get_json(),
+            json.loads(METADATA_FIXTURE.read_text(encoding="utf-8")),
         )
 
     def test_authenticated_suggestion_context_is_owner_scoped(self):
