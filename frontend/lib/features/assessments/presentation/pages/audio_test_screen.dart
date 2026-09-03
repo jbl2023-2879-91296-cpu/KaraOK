@@ -43,7 +43,7 @@ extension AudioAnalysisPurposeDetails on AudioAnalysisPurpose {
     AudioAnalysisPurpose.qualityEvaluation =>
       'Record audio or select an audio file to evaluate its sound quality.',
     AudioAnalysisPurpose.settingsSuggestion =>
-      'Record audio or select an audio file to generate suggested sound settings.',
+      'Record the karaoke machine\'s rendered instrumental playback or select a rendered audio file to generate five amplifier settings.',
   };
 
   String get submitLabel => switch (this) {

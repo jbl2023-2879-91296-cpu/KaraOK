@@ -1,8 +1,9 @@
+import io
 import os
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import wave
 
 os.environ.setdefault("JWT_SECRET", "test-only-secret-that-is-at-least-32-characters")
@@ -11,6 +12,76 @@ import app as api
 
 
 class AudioValidationTests(unittest.TestCase):
+    def setUp(self):
+        self.previous_testing = api.app.config.get("TESTING", False)
+        api.app.config["TESTING"] = True
+        self.client = api.app.test_client()
+        token, _ = api.issue_access_token(
+            {"user_id": 7, "user_type": "user"}
+        )
+        self.headers = {"Authorization": f"Bearer {token}"}
+
+    def tearDown(self):
+        api.app.config["TESTING"] = self.previous_testing
+
+    def _post_authenticated_audio(self, extension):
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.side_effect = [
+            None,
+            {
+                "role": "user",
+                "is_active": True,
+                "email_verified_at": "2026-09-03T00:00:00Z",
+                "security_updated_at_epoch": None,
+                "requires_password_change": False,
+            },
+        ]
+        with patch.object(api, "get_db", return_value=connection), patch.object(
+            api, "audit"
+        ):
+            return self.client.post(
+                "/api/audio-uploads",
+                data={
+                    "audio": (
+                        io.BytesIO(b"MThd"),
+                        f"sample.{extension}",
+                    )
+                },
+                headers=self.headers,
+                content_type="multipart/form-data",
+            )
+
+    def test_symbolic_midi_uploads_explain_that_rendered_audio_is_required(self):
+        message = (
+            "MIDI event files are not rendered audio. Record the karaoke machine "
+            "playback or select WAV, MP3, M4A, AAC, OGG, or FLAC."
+        )
+        for extension in ("mid", "midi"):
+            for path in ("/api/guest/audio-analysis", "/api/audio-uploads"):
+                with self.subTest(extension=extension, path=path):
+                    response = (
+                        self.client.post(
+                            path,
+                            data={
+                                "audio": (
+                                    io.BytesIO(b"MThd"),
+                                    f"sample.{extension}",
+                                )
+                            },
+                            content_type="multipart/form-data",
+                        )
+                        if path == "/api/guest/audio-analysis"
+                        else self._post_authenticated_audio(extension)
+                    )
+                    self.assertEqual(response.status_code, 400)
+                    self.assertEqual(response.get_json()["error"], message)
+
+    def test_unrelated_extension_retains_generic_rejection(self):
+        response = self._post_authenticated_audio("txt")
+        self.assertEqual(response.status_code, 415)
+        self.assertEqual(response.get_json()["error"], "Unsupported audio format")
+
     def test_valid_wav_duration_is_read_from_file(self):
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp:
             path = temp.name

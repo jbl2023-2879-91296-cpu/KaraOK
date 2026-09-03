@@ -95,6 +95,11 @@ limiter = configure_extensions(app)
 
 app.config["MAX_CONTENT_LENGTH"] = MAX_AUDIO_BYTES + (1024 * 1024)
 
+MIDI_RENDERED_AUDIO_MESSAGE = (
+    "MIDI event files are not rendered audio. Record the karaoke machine playback "
+    "or select WAV, MP3, M4A, AAC, OGG, or FLAC."
+)
+
 VALID_ROLES = {"user", "admin"}
 SELF_REGISTER_ROLE = "user"
 VALID_STATUSES = {"Acceptable", "Needs Improvement", "Problematic"}
@@ -2069,6 +2074,8 @@ def create_guest_audio_analysis():
         ), 400
     original_name = secure_filename(upload.filename)
     extension = original_name.rsplit(".", 1)[-1].lower() if "." in original_name else ""
+    if extension in {"mid", "midi"}:
+        return jsonify({"error": MIDI_RENDERED_AUDIO_MESSAGE}), 400
     if extension not in ALLOWED_AUDIO_EXTENSIONS:
         return jsonify({"error": "Unsupported audio format"}), 415
     mime_type = (
@@ -2232,6 +2239,8 @@ def create_audio_upload():
         return jsonify({"error": "A multipart audio file is required in the 'audio' field"}), 400
     original_name = secure_filename(upload.filename)
     extension = original_name.rsplit(".", 1)[-1].lower() if "." in original_name else ""
+    if extension in {"mid", "midi"}:
+        return jsonify({"error": MIDI_RENDERED_AUDIO_MESSAGE}), 400
     if extension not in ALLOWED_AUDIO_EXTENSIONS:
         return jsonify({"error": "Unsupported audio format"}), 415
     mime_type = (
