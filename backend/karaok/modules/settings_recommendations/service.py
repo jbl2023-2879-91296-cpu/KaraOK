@@ -151,9 +151,19 @@ def _positive_identifier(value: Any, field: str) -> int:
 
 def _same_scale(left: AmplifierScale, right: AmplifierScale) -> bool:
     return all(
-        math.isclose(getattr(left, field), getattr(right, field), abs_tol=1e-12)
+        math.isclose(
+            getattr(left, field),
+            getattr(right, field),
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        )
         for field in ("minimum", "maximum", "step")
     )
+
+
+def _quantized_step_index(value: float, scale: AmplifierScale) -> int:
+    quantized = scale.denormalize(scale.normalize(value))
+    return round((quantized - scale.minimum) / scale.step)
 
 
 def _same_positions(
@@ -162,11 +172,8 @@ def _same_positions(
     scale: AmplifierScale,
 ) -> bool:
     return all(
-        math.isclose(
-            scale.denormalize(scale.normalize(getattr(left, name))),
-            scale.denormalize(scale.normalize(getattr(right, name))),
-            abs_tol=1e-12,
-        )
+        _quantized_step_index(getattr(left, name), scale)
+        == _quantized_step_index(getattr(right, name), scale)
         for name in KNOB_NAMES
     )
 

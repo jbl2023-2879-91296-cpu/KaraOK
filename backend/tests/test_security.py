@@ -1,6 +1,7 @@
 import os
 import base64
 from pathlib import Path
+import re
 import time
 import unittest
 from unittest.mock import patch
@@ -11,6 +12,7 @@ from werkzeug.exceptions import InternalServerError, TooManyRequests
 os.environ.setdefault("JWT_SECRET", "test-only-secret-that-is-at-least-32-characters")
 
 import app as api
+from audio_thresholds import load_genre_profiles
 
 api.app.config["TESTING"] = True
 
@@ -374,15 +376,46 @@ class SecurityValidationTests(unittest.TestCase):
     def test_deploy_schema_gate_matches_authoritative_tables_and_genre_artifact(self):
         root = Path(__file__).resolve().parents[2]
         deploy = (root / "deploy.md").read_text(encoding="utf-8")
+        schema = (root / "database" / "schema.sql").read_text(encoding="utf-8")
 
-        self.assertIn(
-            "8b87b9f1106bab8dab4978e4590e84c9bb294400a0d60ce5263e196f44701b61",
+        checksum_command = re.search(
+            r'''"from audio_thresholds import load_genre_profiles; '''
+            r'''p=load_genre_profiles\(\); assert p\.artifact_checksum == '''
+            r'''\'([0-9a-f]{64})\'; print\(p\.artifact_checksum\)"''',
             deploy,
         )
-        self.assertIn("| `table_count`               |       11 |", deploy)
-        self.assertIn("retired-table query rows", deploy)
-        self.assertNotIn("FROM audio_quality_threshold", deploy)
-        self.assertNotIn("FROM genre_preset", deploy)
+        self.assertIsNotNone(checksum_command)
+        self.assertEqual(
+            checksum_command.group(1),
+            load_genre_profiles().artifact_checksum,
+        )
+
+        documented_table_count = re.search(
+            r"\|\s*`table_count`\s*\|\s*(\d+)\s*\|",
+            deploy,
+        )
+        self.assertIsNotNone(documented_table_count)
+        schema_tables = re.findall(
+            r"(?m)^CREATE TABLE IF NOT EXISTS ([a-z_]+)",
+            schema,
+        )
+        self.assertEqual(int(documented_table_count.group(1)), len(schema_tables))
+
+        retired_table_command = re.search(
+            r"table_name IN \(([^)]+)\)",
+            deploy,
+        )
+        self.assertIsNotNone(retired_table_command)
+        retired_tables = re.findall(r"'([^']+)'", retired_table_command.group(1))
+        self.assertTrue(retired_tables)
+        self.assertTrue(set(retired_tables).isdisjoint(schema_tables))
+
+        documented_retired_rows = re.search(
+            r"\|\s*retired-table query rows\s*\|\s*(\d+)\s*\|",
+            deploy,
+        )
+        self.assertIsNotNone(documented_retired_rows)
+        self.assertEqual(int(documented_retired_rows.group(1)), 0)
 
     def test_schema_persists_owned_amplifier_recommendations(self):
         root = Path(__file__).resolve().parents[2]
