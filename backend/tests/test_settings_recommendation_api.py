@@ -470,6 +470,64 @@ class SettingsRecommendationApiTests(unittest.TestCase):
         self.assertEqual(context.verification_of, 41)
         self.assertEqual(context.before_score, 72.4)
 
+    def test_verification_scale_comparison_rejects_large_scale_multi_step_change(self):
+        original = AmplifierScale(0.0, 9_000_000.0, 0.001)
+        changed = AmplifierScale(0.0, 9_000_000.005, 0.001)
+
+        self.assertFalse(recommendation_service._same_scale(original, changed))
+
+    def test_verification_positions_reject_large_scale_multi_step_change(self):
+        scale = AmplifierScale(0.0, 9_000_000.0, 0.001)
+        original = KnobSettings(
+            8_000_000.0,
+            8_000_000.0,
+            8_000_000.0,
+            8_000_000.0,
+            8_000_000.0,
+        )
+        changed = KnobSettings(
+            8_000_000.006,
+            8_000_000.0,
+            8_000_000.0,
+            8_000_000.0,
+            8_000_000.0,
+        )
+
+        self.assertFalse(
+            recommendation_service._same_positions(original, changed, scale)
+        )
+
+    def test_verification_comparison_preserves_normal_and_custom_scale_matches(self):
+        normal_scale = AmplifierScale(0.0, 10.0, 0.5)
+        custom_scale = AmplifierScale(-3.0, 7.0, 0.25)
+
+        self.assertTrue(
+            recommendation_service._same_scale(
+                normal_scale,
+                AmplifierScale(0.0, 10.0, 0.5),
+            )
+        )
+        self.assertTrue(
+            recommendation_service._same_scale(
+                custom_scale,
+                AmplifierScale(-3.0, 7.0, 0.25),
+            )
+        )
+        self.assertTrue(
+            recommendation_service._same_positions(
+                KnobSettings(5.49, 4.0, 6.0, 5.0, 4.5),
+                KnobSettings(5.5, 4.0, 6.0, 5.0, 4.5),
+                normal_scale,
+            )
+        )
+        self.assertTrue(
+            recommendation_service._same_positions(
+                KnobSettings(-2.88, -2.5, 0.0, 2.5, 6.88),
+                KnobSettings(-3.0, -2.5, 0.0, 2.5, 7.0),
+                custom_scale,
+            )
+        )
+
     def test_suggestion_verification_fields_are_mutually_exclusive(self):
         with self.assertRaisesRegex(ValueError, "mutually exclusive"):
             recommendation_service.parse_suggestion_form(
