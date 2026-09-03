@@ -6,6 +6,7 @@ import json
 import math
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
@@ -23,6 +24,9 @@ METRIC_UNITS = {
     "flatness": "ratio",
 }
 INSTRUMENTAL_STATUSES = frozenset({"confirmed_instrumental", "unverified"})
+GENERATOR_VERSION = "1.0.0"
+SELECTION_FILTER_KEYS = frozenset({"individual_license", "measurement_source"})
+MEASUREMENT_SOURCE = "KaraOK audio_engine.analyze_audio"
 InstrumentalStatus = Literal["confirmed_instrumental", "unverified"]
 ARTIFACT_KEYS = frozenset(
     {
@@ -206,18 +210,20 @@ def _validated_source_recordings(
         citation_url = _required_string(source, "citation_url")
         if re.fullmatch(r"https?://\S+", citation_url) is None:
             raise ValueError("Genre profile source citation_url must be an HTTP(S) URL")
-        filters = source.get("selection_filters")
-        if not isinstance(filters, Mapping) or not filters:
-            raise ValueError("Genre profile source requires selection_filters")
-        if any(
-            not isinstance(key, str)
-            or not key.strip()
-            or not isinstance(value, str)
-            or not value.strip()
-            for key, value in filters.items()
-        ):
+        filters = _exact_mapping(
+            source.get("selection_filters"),
+            SELECTION_FILTER_KEYS,
+            "Genre profile source selection_filters",
+        )
+        if _required_string(filters, "individual_license") != source["license"]:
             raise ValueError(
-                "Genre profile source selection_filters require non-empty string entries"
+                "Genre profile source selection_filters individual_license "
+                "must match source license"
+            )
+        if _required_string(filters, "measurement_source") != MEASUREMENT_SOURCE:
+            raise ValueError(
+                "Genre profile source selection_filters measurement_source "
+                "does not match the derivation source"
             )
         _required_string(source, "compatible_feature_notes")
         _required_string(source, "calculation_method")
@@ -232,7 +238,12 @@ def _validated_source_recordings(
             if recording_id in recording_ids:
                 raise ValueError(f"Genre profile sources duplicate recording_id {recording_id!r}")
             recording_ids.add(recording_id)
-            genre = normalize_genre(_required_string(recording, "genre"))
+            raw_genre = _required_string(recording, "genre")
+            genre = normalize_genre(raw_genre)
+            if raw_genre != genre:
+                raise ValueError(
+                    "Genre profile source recording genre must use its canonical key"
+                )
             if genre not in statuses:
                 raise ValueError(f"Licensed recording cohort has no enabled profile for {genre!r}")
             instrumental_status = _required_string(recording, "instrumental_status")
@@ -276,17 +287,31 @@ def parse_genre_profile_artifact(data: Mapping[str, Any]) -> GenreProfileArtifac
     profile_version = _required_string(data, "profile_version")
     generated_at = _required_string(data, "generated_at")
     generator_version = _required_string(data, "generator_version")
+    try:
+        parsed_generated_at = datetime.strptime(generated_at, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as error:
+        raise ValueError(
+            "Genre profile generated_at must be a canonical UTC timestamp"
+        ) from error
+    if parsed_generated_at.strftime("%Y-%m-%dT%H:%M:%SZ") != generated_at:
+        raise ValueError("Genre profile generated_at must be a canonical UTC timestamp")
+    if generator_version != GENERATOR_VERSION:
+        raise ValueError("Unsupported genre profile generator_version")
     sources = data.get("sources")
 
     genres_data = data.get("genres")
     if not isinstance(genres_data, Mapping) or not genres_data:
         raise ValueError("Genre profile artifact requires a non-empty genres object")
 
+    normalized_genre_keys = [normalize_genre(raw_key) for raw_key in genres_data]
+    if len(set(normalized_genre_keys)) != len(normalized_genre_keys):
+        raise ValueError("Genre profile artifact has duplicate normalized genre keys")
+
     profiles: dict[str, GenreProfile] = {}
     for raw_key, raw_profile in genres_data.items():
         key = normalize_genre(raw_key)
-        if key in profiles:
-            raise ValueError(f"Genre profile artifact has duplicate normalized genre {key!r}")
+        if raw_key != key:
+            raise ValueError(f"Genre profile key {raw_key!r} is not canonical")
         if not isinstance(raw_profile, Mapping):
             raise ValueError(f"Genre profile {key!r} must be an object")
         raw_profile = _exact_mapping(

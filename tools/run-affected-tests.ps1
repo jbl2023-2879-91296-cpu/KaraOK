@@ -141,8 +141,20 @@ function Invoke-CapturedTestGroup {
     $logPath = Join-Path $LogDirectory "$safeName.log"
     $passed = $true
     $savedErrorActionPreference = $ErrorActionPreference
+    $actionModule = $Action.Module
+    $savedActionErrorPreference = $null
     try {
         $ErrorActionPreference = 'Continue'
+        if ($null -ne $actionModule) {
+            $savedActionErrorPreference = `
+                $actionModule.SessionState.PSVariable.GetValue(
+                    'ErrorActionPreference'
+                )
+            $actionModule.SessionState.PSVariable.Set(
+                'ErrorActionPreference',
+                'Continue'
+            )
+        }
         $global:LASTEXITCODE = 0
         & $Action *> $logPath
         if ($LASTEXITCODE -ne 0) {
@@ -154,6 +166,12 @@ function Invoke-CapturedTestGroup {
         $_ | Out-String | Out-File -LiteralPath $logPath -Append
     }
     finally {
+        if ($null -ne $actionModule) {
+            $actionModule.SessionState.PSVariable.Set(
+                'ErrorActionPreference',
+                $savedActionErrorPreference
+            )
+        }
         $ErrorActionPreference = $savedErrorActionPreference
     }
 

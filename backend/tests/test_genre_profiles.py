@@ -188,6 +188,46 @@ class GenreProfileTests(unittest.TestCase):
             with self.subTest(path=".".join(map(str, path)), key=key, value=value):
                 self._assert_schema_mutation_rejected(path, key, value)
 
+    def test_rejects_unsupported_generator_version(self):
+        self._assert_schema_mutation_rejected((), "generator_version", "9.9.9")
+
+    def test_rejects_unknown_and_missing_selection_filter_fields(self):
+        mutations = (
+            ("unexpected", "value", False),
+            ("individual_license", None, True),
+            ("measurement_source", None, True),
+        )
+        for key, value, remove in mutations:
+            with self.subTest(key=key, remove=remove):
+                self._assert_schema_mutation_rejected(
+                    ("sources", "selection_filters"),
+                    key,
+                    value,
+                    remove=remove,
+                )
+
+    def test_rejects_noncanonical_or_invalid_utc_timestamp(self):
+        for generated_at in (
+            "2026-09-02T00:00:00+00:00",
+            "2026-09-02t00:00:00z",
+            "2026-09-02T00:00:00.000Z",
+            "2026-02-30T00:00:00Z",
+        ):
+            with self.subTest(generated_at=generated_at):
+                self._assert_schema_mutation_rejected(
+                    (), "generated_at", generated_at
+                )
+
+    def test_rejects_noncanonical_genre_keys_and_recording_genres(self):
+        payload = valid_payload()
+        payload["genres"]["Rock"] = payload["genres"].pop("rock")
+        with self.assertRaises(ValueError):
+            parse_genre_profile_artifact(with_valid_checksum(payload))
+
+        self._assert_schema_mutation_rejected(
+            ("sources", "recordings", 0), "genre", "Rock"
+        )
+
     def test_caches_artifact_for_the_same_path(self):
         path = FIXTURES / "genre_audio_profiles.valid.json"
         self.assertIs(load_genre_profiles(path), load_genre_profiles(path))

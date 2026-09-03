@@ -696,6 +696,186 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertGreater(enriched["score"], 80.0)
         self.assertEqual(enriched["status"], "Acceptable")
         self.assertEqual(len(enriched["empirical_quality"]["features"]), 5)
+        self.assertEqual(
+            enriched["quality_profile_version"],
+            enriched["empirical_quality"]["quality_profile_version"],
+        )
+        self.assertEqual(
+            enriched["quality_profile_checksum"],
+            enriched["empirical_quality"]["quality_profile_checksum"],
+        )
+
+    def test_stored_score_and_provenance_with_null_empirical_fields_is_not_rescored(self):
+        row = {
+            "score": 72.0,
+            "status": "Needs Improvement",
+            "loudness": -99.0,
+            "bass": 99.0,
+            "treble": 99.0,
+            "sharpness": 99.0,
+            "flatness": 0.99,
+            "empirical_status": None,
+            "worst_feature_status": None,
+            "worst_features": None,
+            "empirical_details": None,
+            "scoring_algorithm_version": "historical-algorithm",
+            "quality_profile_version": "historical-quality-v1",
+            "quality_profile_checksum": "b" * 64,
+            "reference_recording_count": 30,
+        }
+
+        with patch.object(api, "evaluate_features") as evaluate:
+            enriched = api._enrich_audio_test_row(row)
+
+        evaluate.assert_not_called()
+        self.assertEqual(enriched["score"], 72.0)
+        self.assertEqual(enriched["status"], "Needs Improvement")
+        self.assertEqual(enriched["empirical_quality"]["overall_score"], 72.0)
+        self.assertEqual(
+            enriched["empirical_quality"]["overall_status"],
+            "good_but_needs_improvement",
+        )
+        self.assertEqual(enriched["empirical_quality"]["worst_features"], [])
+        self.assertEqual(
+            enriched["empirical_quality"]["quality_profile_version"],
+            "historical-quality-v1",
+        )
+        self.assertEqual(
+            enriched["empirical_quality"]["quality_profile_checksum"],
+            "b" * 64,
+        )
+
+    def test_null_score_with_stored_provenance_is_not_legacy_backfill(self):
+        row = {
+            "score": None,
+            "status": "Acceptable",
+            "loudness": -11.2,
+            "bass": 70.7,
+            "treble": 0.13,
+            "sharpness": 0.00075,
+            "flatness": 0.000032,
+            "empirical_status": None,
+            "worst_feature_status": None,
+            "worst_features": None,
+            "empirical_details": None,
+            "scoring_algorithm_version": "historical-algorithm",
+            "quality_profile_version": "historical-quality-v1",
+            "quality_profile_checksum": "b" * 64,
+            "reference_recording_count": 30,
+        }
+
+        with patch.object(api, "evaluate_features") as evaluate:
+            enriched = api._enrich_audio_test_row(row)
+
+        evaluate.assert_not_called()
+        self.assertIsNone(enriched["score"])
+        self.assertNotIn("overall_score", enriched["empirical_quality"])
+        self.assertEqual(enriched["status"], "Acceptable")
+        self.assertEqual(
+            enriched["empirical_quality"]["quality_profile_version"],
+            "historical-quality-v1",
+        )
+
+    def test_stored_empirical_columns_override_conflicting_detail_json(self):
+        row = {
+            "score": 91.5,
+            "status": "Problematic",
+            "empirical_status": "good",
+            "worst_feature_status": "good_but_needs_improvement",
+            "worst_features": '["treble"]',
+            "empirical_details": json.dumps(
+                {
+                    "overall_score": 1.0,
+                    "overall_status": "bad",
+                    "worst_feature_status": "bad",
+                    "worst_features": ["bass"],
+                    "algorithm_version": "conflicting-algorithm",
+                    "quality_profile_version": "conflicting-quality",
+                    "quality_profile_checksum": "c" * 64,
+                    "reference_recording_count": 999,
+                    "features": {"bass": {"status": "bad"}},
+                }
+            ),
+            "scoring_algorithm_version": "historical-algorithm",
+            "quality_profile_version": "historical-quality-v1",
+            "quality_profile_checksum": "b" * 64,
+            "reference_recording_count": 30,
+        }
+
+        enriched = api._enrich_audio_test_row(row)
+
+        empirical = enriched["empirical_quality"]
+        self.assertEqual(empirical["overall_score"], 91.5)
+        self.assertEqual(empirical["overall_status"], "good")
+        self.assertEqual(
+            empirical["worst_feature_status"], "good_but_needs_improvement"
+        )
+        self.assertEqual(empirical["worst_features"], ["treble"])
+        self.assertEqual(empirical["algorithm_version"], "historical-algorithm")
+        self.assertEqual(empirical["quality_profile_version"], "historical-quality-v1")
+        self.assertEqual(empirical["quality_profile_checksum"], "b" * 64)
+        self.assertEqual(empirical["reference_recording_count"], 30)
+        self.assertEqual(empirical["features"]["bass"]["status"], "bad")
+
+    def test_malformed_empirical_details_is_not_exposed_as_non_object(self):
+        for raw_details in ("not-json", '["not", "an", "object"]', ["list"]):
+            with self.subTest(raw_details=raw_details):
+                row = {
+                    "score": 88.0,
+                    "status": "Acceptable",
+                    "empirical_status": "good",
+                    "worst_feature_status": "good",
+                    "worst_features": '["bass"]',
+                    "empirical_details": raw_details,
+                }
+
+                enriched = api._enrich_audio_test_row(row)
+
+                self.assertIsInstance(enriched["empirical_quality"], dict)
+                self.assertEqual(enriched["empirical_quality"]["overall_score"], 88.0)
+                self.assertEqual(enriched["empirical_quality"]["worst_features"], ["bass"])
+
+    def test_malformed_worst_features_column_preserves_typed_detail_data(self):
+        for raw_worst_features in (None, "not-json", '["bass", 3]'):
+            with self.subTest(raw_worst_features=raw_worst_features):
+                row = {
+                    "score": 91.5,
+                    "status": "Acceptable",
+                    "empirical_status": "good",
+                    "worst_feature_status": "good",
+                    "worst_features": raw_worst_features,
+                    "empirical_details": json.dumps(
+                        {
+                            "overall_score": 91.5,
+                            "overall_status": "good",
+                            "worst_features": ["flatness"],
+                        }
+                    ),
+                }
+
+                enriched = api._enrich_audio_test_row(row)
+
+                self.assertEqual(
+                    enriched["empirical_quality"]["worst_features"],
+                    ["flatness"],
+                )
+
+    def test_unsupported_stored_empirical_status_falls_back_and_logs_corruption(self):
+        row = {
+            "score": 91.5,
+            "status": "Problematic",
+            "empirical_status": "future_status",
+            "worst_feature_status": "bad",
+            "worst_features": "[]",
+            "empirical_details": '{"overall_status": "good"}',
+        }
+
+        with patch.object(api.app.logger, "warning") as warning:
+            enriched = api._enrich_audio_test_row(row)
+
+        self.assertEqual(enriched["status"], "Problematic")
+        self.assertEqual(enriched["empirical_quality"]["overall_status"], "bad")
+        warning.assert_called_once()
 
     def test_historical_assessment_helper_uses_persisted_empirical_result(self):
         row = {
@@ -797,12 +977,21 @@ class AudioPipelineTests(unittest.TestCase):
                 payload = response.get_json()
                 payload = payload[0] if route == "list" else payload
                 self.assertEqual(payload["empirical_quality"]["overall_score"], 91.5)
+                for raw_field in (
+                    "empirical_status",
+                    "worst_feature_status",
+                    "worst_features",
+                    "empirical_details",
+                ):
+                    self.assertNotIn(raw_field, payload)
                 statement = cursor.execute.call_args.args[0]
                 for column in (
                     "r.empirical_status",
                     "r.worst_feature_status",
                     "r.worst_features",
                     "r.empirical_details",
+                    "r.scoring_algorithm_version",
+                    "r.reference_recording_count",
                 ):
                     self.assertIn(column, statement)
 
@@ -873,6 +1062,60 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertIn("r.quality_profile_checksum", statement)
         self.assertIn("JOIN assessment", cursor.execute.call_args.args[0])
 
+    def test_historical_analysis_dump_normalizes_conflicting_and_malformed_fields(self):
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.return_value = {
+            "assessment_id": 11,
+            "file_name": "recording.wav",
+            "analysis_purpose": "quality_evaluation",
+            "assessment_status": "Completed",
+            "result_status": "Needs Improvement",
+            "quality_score": 72.0,
+            "noise_level": -42.0,
+            "distortion_level": 8.0,
+            "bass": 40.0,
+            "treble": 12.0,
+            "loudness": -14.0,
+            "sharpness": 0.2,
+            "flatness": 0.03,
+            "empirical_status": "future_status",
+            "worst_feature_status": "good_but_needs_improvement",
+            "worst_features": '["treble", 3]',
+            "empirical_details": json.dumps(
+                {
+                    "overall_score": 1.0,
+                    "overall_status": "bad",
+                    "worst_feature_status": "bad",
+                    "worst_features": ["flatness"],
+                }
+            ),
+            "scoring_algorithm_version": "historical-algorithm",
+            "quality_profile_version": "historical-quality-v1",
+            "quality_profile_checksum": "b" * 64,
+            "reference_recording_count": 30,
+        }
+        with api.app.test_request_context(
+            "/api/audio-uploads/13/analysis-dump"
+        ), patch.object(api, "get_db", return_value=connection), patch.object(
+            api.app.logger, "warning"
+        ) as warning:
+            api.g.user_id = 7
+            response = api.get_audio_analysis_dump.__wrapped__(13)
+
+        payload = response.get_json()
+        quality = payload["analysis"]["quality_assessment"]
+        self.assertEqual(quality["status"], "Needs Improvement")
+        self.assertEqual(quality["empirical_status"], "good_but_needs_improvement")
+        self.assertEqual(quality["worst_feature_status"], "good_but_needs_improvement")
+        self.assertEqual(quality["worst_features"], ["flatness"])
+        self.assertEqual(payload["empirical_quality"]["overall_score"], 72.0)
+        self.assertEqual(
+            payload["empirical_quality"]["quality_profile_version"],
+            "historical-quality-v1",
+        )
+        warning.assert_called_once()
+
     def test_settings_assessment_detail_rebuilds_persisted_recommendation(self):
         connection = MagicMock()
         cursor = connection.cursor.return_value
@@ -899,15 +1142,18 @@ class AudioPipelineTests(unittest.TestCase):
 
         with api.app.test_request_context("/api/audio-tests/11"), patch.object(
             api, "get_db", return_value=connection
-        ):
+        ), patch.object(api, "evaluate_features") as evaluate:
             api.g.user_id = 7
             response, status_code = api.get_audio_test.__wrapped__(11)
 
-        recommendation = response.get_json()["settings_recommendation"]
+        payload = response.get_json()
+        recommendation = payload["settings_recommendation"]
+        evaluate.assert_not_called()
         self.assertEqual(status_code, 200)
         self.assertEqual(recommendation["id"], 41)
         self.assertTrue(recommendation["persisted"])
         self.assertEqual(recommendation["recommended"]["bass"], 5.5)
+        self.assertEqual(payload["empirical_quality"]["overall_score"], 72.0)
         self.assertEqual(
             recommendation["profile_checksum"],
             load_genre_profiles().artifact_checksum,

@@ -109,6 +109,10 @@ EMPIRICAL_RESULT_STATUSES = {
     "good_but_needs_improvement": "Needs Improvement",
     "bad": "Problematic",
 }
+RESULT_EMPIRICAL_STATUSES = {
+    result_status: empirical_status
+    for empirical_status, result_status in EMPIRICAL_RESULT_STATUSES.items()
+}
 SETTINGS_RECOMMENDATION_SELECT_COLUMNS = """
     sr.recommendation_id AS settings_recommendation_id,
     sr.assessment_id AS settings_assessment_id,
@@ -575,9 +579,11 @@ def _empirical_feature_values(analysis: dict[str, Any]) -> dict[str, float | Non
     }
 
 
-def _score_analyzer_output(analysis: dict[str, Any]) -> dict[str, Any]:
+def _score_empirical_values(
+    values: dict[str, float | None],
+) -> tuple[dict[str, Any], dict[str, Any]]:
     thresholds = load_thresholds()
-    empirical = evaluate_features(_empirical_feature_values(analysis), thresholds)
+    empirical = evaluate_features(values, thresholds)
     if empirical.get("overall_score") is None:
         reason = empirical.get("reason", "Empirical audio score is unavailable")
         raise ValueError(str(reason))
@@ -598,6 +604,11 @@ def _score_analyzer_output(analysis: dict[str, Any]) -> dict[str, Any]:
         "overall": thresholds.get("overall"),
         "metrics": metrics,
     }
+    return empirical, thresholds
+
+
+def _score_analyzer_output(analysis: dict[str, Any]) -> dict[str, Any]:
+    empirical, _ = _score_empirical_values(_empirical_feature_values(analysis))
     return empirical
 
 
@@ -609,6 +620,107 @@ def _empirical_result_status(empirical: dict[str, Any]) -> str:
         raise ValueError(f"Unsupported empirical quality status: {status!r}") from error
 
 
+def _finite_stored_number(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
+
+
+def _decoded_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return dict(value)
+    if not isinstance(value, str):
+        return {}
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return dict(decoded) if isinstance(decoded, dict) else {}
+
+
+def _decoded_string_list(value: Any) -> list[str] | None:
+    decoded = value
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(decoded, list) or any(
+        not isinstance(item, str) for item in decoded
+    ):
+        return None
+    return list(decoded)
+
+
+def _stored_empirical_result(row: dict[str, Any]) -> dict[str, Any]:
+    """Reconstruct one historical empirical snapshot from typed DB fields."""
+
+    empirical = _decoded_object(row.get("empirical_details"))
+    stored_score = _finite_stored_number(row.get("score"))
+    if stored_score is not None:
+        empirical["overall_score"] = stored_score
+    else:
+        detail_score = _nested_number(empirical, "overall_score")
+        if detail_score is not None:
+            row["score"] = detail_score
+
+    fallback_status = RESULT_EMPIRICAL_STATUSES.get(str(row.get("status")))
+    detail_status = empirical.get("overall_status")
+    if detail_status not in EMPIRICAL_RESULT_STATUSES:
+        detail_status = None
+    stored_status = row.get("empirical_status")
+    if stored_status is not None and stored_status not in EMPIRICAL_RESULT_STATUSES:
+        app.logger.warning(
+            "Stored assessment has unsupported empirical_status %r; "
+            "falling back to result_status %r",
+            stored_status,
+            row.get("status"),
+        )
+        resolved_status = fallback_status
+    else:
+        resolved_status = stored_status or detail_status or fallback_status
+        if stored_status in EMPIRICAL_RESULT_STATUSES:
+            row["status"] = EMPIRICAL_RESULT_STATUSES[stored_status]
+    if resolved_status is not None:
+        empirical["overall_status"] = resolved_status
+    else:
+        empirical.pop("overall_status", None)
+
+    detail_worst_status = empirical.get("worst_feature_status")
+    if detail_worst_status not in EMPIRICAL_RESULT_STATUSES:
+        detail_worst_status = None
+    stored_worst_status = row.get("worst_feature_status")
+    if stored_worst_status in EMPIRICAL_RESULT_STATUSES:
+        resolved_worst_status = stored_worst_status
+    else:
+        resolved_worst_status = detail_worst_status or resolved_status
+    if resolved_worst_status is not None:
+        empirical["worst_feature_status"] = resolved_worst_status
+    else:
+        empirical.pop("worst_feature_status", None)
+
+    detail_worst_features = _decoded_string_list(empirical.get("worst_features"))
+    stored_worst_features = _decoded_string_list(row.get("worst_features"))
+    empirical["worst_features"] = (
+        stored_worst_features
+        if stored_worst_features is not None
+        else detail_worst_features or []
+    )
+
+    for row_field, empirical_field in (
+        ("scoring_algorithm_version", "algorithm_version"),
+        ("quality_profile_version", "quality_profile_version"),
+        ("quality_profile_checksum", "quality_profile_checksum"),
+        ("reference_recording_count", "reference_recording_count"),
+    ):
+        value = row.get(row_field)
+        if value is not None:
+            empirical[empirical_field] = value
+    empirical.setdefault("method", "stored_assessment_snapshot")
+    return empirical
+
+
 def _enrich_audio_test_row(row: dict[str, Any]) -> dict[str, Any]:
     """Attach reproducible empirical details and backfill legacy null scores."""
     stored_empirical_fields = (
@@ -617,69 +729,41 @@ def _enrich_audio_test_row(row: dict[str, Any]) -> dict[str, Any]:
         "worst_features",
         "empirical_details",
     )
-    if any(row.get(field) is not None for field in stored_empirical_fields):
-        raw_details = row.get("empirical_details")
-        if isinstance(raw_details, dict):
-            empirical = dict(raw_details)
-        else:
-            try:
-                decoded_details = json.loads(raw_details)
-            except (TypeError, json.JSONDecodeError):
-                decoded_details = {}
-            empirical = (
-                dict(decoded_details) if isinstance(decoded_details, dict) else {}
-            )
-
-        empirical_status = row.get("empirical_status")
-        if empirical_status is not None:
-            empirical["overall_status"] = str(empirical_status)
-        worst_feature_status = row.get("worst_feature_status")
-        if worst_feature_status is not None:
-            empirical["worst_feature_status"] = str(worst_feature_status)
-
-        raw_worst_features = row.get("worst_features")
-        if isinstance(raw_worst_features, list):
-            worst_features = raw_worst_features
-        else:
-            try:
-                decoded_worst_features = json.loads(raw_worst_features)
-            except (TypeError, json.JSONDecodeError):
-                decoded_worst_features = []
-            worst_features = (
-                decoded_worst_features
-                if isinstance(decoded_worst_features, list)
-                else []
-            )
-        empirical["worst_features"] = worst_features
-
-        empirical_score = _nested_number(empirical, "overall_score")
-        if empirical_score is None:
-            stored_score = row.get("score")
-            if (
-                not isinstance(stored_score, bool)
-                and isinstance(stored_score, (int, float))
-                and math.isfinite(float(stored_score))
-            ):
-                empirical_score = float(stored_score)
-                empirical["overall_score"] = empirical_score
-        row["empirical_quality"] = empirical
-        if row.get("score") is None and empirical_score is not None:
-            row["score"] = empirical_score
-        if empirical_status is not None:
-            row["status"] = _empirical_result_status(empirical)
-        return row
-
     values = {
         key: row.get(key)
         for key in ("loudness", "bass", "treble", "sharpness", "flatness")
     }
-    empirical = evaluate_features(values)
-    row["empirical_quality"] = empirical
-    empirical_score = _nested_number(empirical, "overall_score")
-    if row.get("score") is None and empirical_score is not None:
-        row["score"] = empirical_score
-    if empirical_score is not None:
+    provenance_fields = (
+        "scoring_algorithm_version",
+        "quality_profile_version",
+        "quality_profile_checksum",
+        "reference_recording_count",
+    )
+    has_stored_history = (
+        row.get("score") is not None
+        or any(row.get(field) is not None for field in stored_empirical_fields)
+        or any(row.get(field) is not None for field in provenance_fields)
+    )
+    is_legacy_backfill = (
+        not has_stored_history
+        and all(_finite_stored_number(value) is not None for value in values.values())
+    )
+    if is_legacy_backfill:
+        empirical, thresholds = _score_empirical_values(values)
+        row["score"] = empirical["overall_score"]
         row["status"] = _empirical_result_status(empirical)
+        row["scoring_algorithm_version"] = thresholds["algorithm_version"]
+        row["quality_profile_version"] = thresholds["quality_profile_version"]
+        row["quality_profile_checksum"] = thresholds["artifact_checksum"]
+        cohort = thresholds.get("cohort")
+        row["reference_recording_count"] = (
+            cohort.get("selected_recording_count")
+            if isinstance(cohort, dict)
+            else None
+        )
+    else:
+        empirical = _stored_empirical_result(row)
+    row["empirical_quality"] = empirical
     return row
 
 
@@ -688,7 +772,12 @@ def _attach_stored_recommendation(row: dict[str, Any]) -> dict[str, Any]:
         row
     )
     for key in tuple(row):
-        if key.startswith("settings_"):
+        if key.startswith("settings_") or key in {
+            "empirical_status",
+            "worst_feature_status",
+            "worst_features",
+            "empirical_details",
+        }:
             row.pop(key)
     if row.get("analysis_purpose") == "settings_suggestion":
         row["settings_recommendation"] = recommendation
@@ -1960,8 +2049,9 @@ def get_audio_tests():
                   r.distortion_level, r.bass, r.treble, r.loudness,
                   r.sharpness, r.flatness, r.empirical_status,
                   r.worst_feature_status, r.worst_features,
-                  r.empirical_details, r.quality_profile_version,
-                  r.quality_profile_checksum, a.result_status AS status,
+                  r.empirical_details, r.scoring_algorithm_version,
+                  r.quality_profile_version, r.quality_profile_checksum,
+                  r.reference_recording_count, a.result_status AS status,
                   a.assessment_status, a.analysis_purpose, a.duration_seconds,
                   a.assessment_date AS created_at,
                   {SETTINGS_RECOMMENDATION_SELECT_COLUMNS}
@@ -1996,8 +2086,9 @@ def get_audio_test(test_id: int):
                   r.distortion_level, r.bass, r.treble, r.loudness,
                   r.sharpness, r.flatness, r.empirical_status,
                   r.worst_feature_status, r.worst_features,
-                  r.empirical_details, r.quality_profile_version,
-                  r.quality_profile_checksum, a.result_status AS status,
+                  r.empirical_details, r.scoring_algorithm_version,
+                  r.quality_profile_version, r.quality_profile_checksum,
+                  r.reference_recording_count, a.result_status AS status,
                   a.assessment_status, a.analysis_purpose, a.duration_seconds,
                   a.assessment_date AS created_at,
                   {SETTINGS_RECOMMENDATION_SELECT_COLUMNS}
@@ -2598,15 +2689,27 @@ def get_audio_analysis_dump(upload_id: int):
     if upload_record["quality_score"] is None:
         return jsonify({"error": "Analysis output not found"}), 404
 
-    def decoded_json(value: Any, fallback: Any) -> Any:
-        if value is None:
-            return fallback
-        if isinstance(value, (dict, list)):
-            return value
-        try:
-            return json.loads(value)
-        except (TypeError, json.JSONDecodeError):
-            return fallback
+    stored_quality = _enrich_audio_test_row(
+        {
+            "score": upload_record["quality_score"],
+            "status": upload_record["result_status"],
+            "empirical_status": upload_record["empirical_status"],
+            "worst_feature_status": upload_record["worst_feature_status"],
+            "worst_features": upload_record["worst_features"],
+            "empirical_details": upload_record["empirical_details"],
+            "scoring_algorithm_version": upload_record[
+                "scoring_algorithm_version"
+            ],
+            "quality_profile_version": upload_record["quality_profile_version"],
+            "quality_profile_checksum": upload_record[
+                "quality_profile_checksum"
+            ],
+            "reference_recording_count": upload_record[
+                "reference_recording_count"
+            ],
+        }
+    )
+    empirical = stored_quality["empirical_quality"]
 
     response_data = {
         "dump_schema_version": 1,
@@ -2627,17 +2730,13 @@ def get_audio_analysis_dump(upload_id: int):
             "sharpness": {"normalized_score": upload_record["sharpness"]},
             "flatness": {"mean": upload_record["flatness"]},
             "quality_assessment": {
-                "status": upload_record["result_status"],
-                "empirical_status": upload_record["empirical_status"],
-                "worst_feature_status": upload_record["worst_feature_status"],
-                "worst_features": decoded_json(
-                    upload_record["worst_features"], []
-                ),
+                "status": stored_quality["status"],
+                "empirical_status": empirical.get("overall_status"),
+                "worst_feature_status": empirical.get("worst_feature_status"),
+                "worst_features": empirical["worst_features"],
             },
         },
-        "empirical_quality": decoded_json(
-            upload_record["empirical_details"], {}
-        ),
+        "empirical_quality": empirical,
         "scoring_algorithm_version": upload_record["scoring_algorithm_version"],
         "quality_profile_version": upload_record["quality_profile_version"],
         "quality_profile_checksum": upload_record["quality_profile_checksum"],
