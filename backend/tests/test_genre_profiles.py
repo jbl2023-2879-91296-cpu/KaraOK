@@ -28,6 +28,18 @@ def with_valid_checksum(payload):
 
 
 class GenreProfileTests(unittest.TestCase):
+    def _assert_schema_mutation_rejected(self, path, key, value=None, *, remove=False):
+        payload = valid_payload()
+        target = payload
+        for part in path:
+            target = target[part]
+        if remove:
+            del target[key]
+        else:
+            target[key] = value
+        with self.assertRaises(ValueError):
+            parse_genre_profile_artifact(with_valid_checksum(payload))
+
     def test_normalizes_supported_labels(self):
         self.assertEqual(normalize_genre("HipHop"), "hip-hop")
         self.assertEqual(normalize_genre("Classic"), "classical")
@@ -43,9 +55,11 @@ class GenreProfileTests(unittest.TestCase):
 
     def test_rejects_degenerate_metric_range(self):
         payload = valid_payload()
-        payload["genres"]["rock"]["metrics"]["bass"]["upper"] = payload["genres"]["rock"]["metrics"]["bass"]["preferred"]
+        payload["genres"]["rock"]["metrics"]["bass"]["upper"] = payload[
+            "genres"
+        ]["rock"]["metrics"]["bass"]["preferred"]
         with self.assertRaisesRegex(ValueError, "lower < preferred < upper"):
-            parse_genre_profile_artifact(payload)
+            parse_genre_profile_artifact(with_valid_checksum(payload))
 
     def test_rejects_bad_checksum_and_schema_version(self):
         payload = valid_payload()
@@ -118,6 +132,61 @@ class GenreProfileTests(unittest.TestCase):
         payload["genres"]["rock"]["metrics"]["bass"] = []
         with self.assertRaisesRegex(ValueError, "must be an object"):
             parse_genre_profile_artifact(with_valid_checksum(payload))
+
+    def test_rejects_unknown_and_missing_fields_at_authoritative_levels(self):
+        levels = (
+            ((), "unexpected", False),
+            ((), "generated_at", True),
+            (("genres", "rock"), "unexpected", False),
+            (("genres", "rock"), "sample_count", True),
+            (("genres", "rock", "metrics"), "unexpected", False),
+            (("genres", "rock", "metrics"), "bass", True),
+            (("genres", "rock", "metrics", "bass"), "unexpected", False),
+            (("genres", "rock", "metrics", "bass"), "lower", True),
+            (("sources",), "unexpected", False),
+            (("sources",), "license", True),
+            (("sources", "recordings", 0), "unexpected", False),
+            (("sources", "recordings", 0), "recording_id", True),
+        )
+        for path, key, remove in levels:
+            with self.subTest(path=".".join(map(str, path)), key=key, remove=remove):
+                self._assert_schema_mutation_rejected(
+                    path,
+                    key,
+                    "unexpected",
+                    remove=remove,
+                )
+
+    def test_rejects_invalid_source_and_recording_evidence_anchors(self):
+        mutations = (
+            (("sources",), "release", " "),
+            (("sources",), "license", " "),
+            (("sources",), "citation_url", "not-a-url"),
+            (("sources",), "selection_filters", {}),
+            (("sources",), "compatible_feature_notes", " "),
+            (("sources",), "calculation_method", " "),
+            (("sources", "recordings", 0), "genre", "jazz"),
+            (("sources", "recordings", 0), "instrumental_status", "confirmed"),
+            (("genres", "rock"), "corpus_status", "confirmed"),
+        )
+        for path, key, value in mutations:
+            with self.subTest(path=".".join(map(str, path)), key=key, value=value):
+                self._assert_schema_mutation_rejected(path, key, value)
+
+    def test_rejects_invalid_target_units_coerced_types_and_non_finite_values(self):
+        mutations = (
+            ((), "schema_version", 1.0),
+            (("genres", "rock"), "sample_count", 5.0),
+            (("genres", "rock", "metrics", "bass"), "lower", "20.0"),
+            (("genres", "rock", "metrics", "bass"), "preferred", True),
+            (("genres", "rock", "metrics", "bass"), "upper", "NaN"),
+            (("genres", "rock", "metrics", "bass"), "robust_scale", "Infinity"),
+            (("genres", "rock", "metrics", "bass"), "unit", "ratio"),
+            (("genres", "rock", "metrics", "loudness"), "unit", "dBFS"),
+        )
+        for path, key, value in mutations:
+            with self.subTest(path=".".join(map(str, path)), key=key, value=value):
+                self._assert_schema_mutation_rejected(path, key, value)
 
     def test_caches_artifact_for_the_same_path(self):
         path = FIXTURES / "genre_audio_profiles.valid.json"

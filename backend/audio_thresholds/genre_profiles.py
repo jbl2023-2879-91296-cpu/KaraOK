@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -14,8 +15,41 @@ from .artifact_integrity import canonical_artifact_checksum
 
 
 SUPPORTED_METRICS = ("loudness", "bass", "treble", "sharpness", "flatness")
+METRIC_UNITS = {
+    "loudness": "LUFS",
+    "bass": "percent",
+    "treble": "percent",
+    "sharpness": "normalized_score",
+    "flatness": "ratio",
+}
 INSTRUMENTAL_STATUSES = frozenset({"confirmed_instrumental", "unverified"})
 InstrumentalStatus = Literal["confirmed_instrumental", "unverified"]
+ARTIFACT_KEYS = frozenset(
+    {
+        "schema_version",
+        "profile_version",
+        "generated_at",
+        "generator_version",
+        "sources",
+        "artifact_checksum",
+        "genres",
+    }
+)
+PROFILE_KEYS = frozenset({"sample_count", "corpus_status", "metrics"})
+TARGET_KEYS = frozenset({"lower", "preferred", "upper", "robust_scale", "unit"})
+SOURCE_KEYS = frozenset(
+    {
+        "source",
+        "release",
+        "license",
+        "citation_url",
+        "selection_filters",
+        "compatible_feature_notes",
+        "calculation_method",
+        "recordings",
+    }
+)
+RECORDING_KEYS = frozenset({"recording_id", "genre", "instrumental_status"})
 GENRE_ALIASES = {
     "rock": "rock",
     "pop": "pop",
@@ -84,17 +118,46 @@ def normalize_genre(value: str) -> str:
         raise ValueError(f"Unsupported genre label: {value!r}") from error
 
 
-def _metric_target(data: Mapping[str, Any]) -> MetricTarget:
+def _exact_mapping(value: Any, keys: frozenset[str] | set[str], field: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{field} must be an object")
+    actual = set(value)
+    expected = set(keys)
+    if actual != expected:
+        raise ValueError(
+            f"{field} fields do not match the genre-profile schema; "
+            f"missing={sorted(expected - actual)}, unknown={sorted(actual - expected)}"
+        )
+    return value
+
+
+def _strict_finite(value: Any, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field} must be a finite number")
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{field} must be a finite number")
+    return number
+
+
+def _metric_target(data: Mapping[str, Any], metric: str) -> MetricTarget:
+    data = _exact_mapping(data, TARGET_KEYS, f"Genre metric {metric!r}")
+    unit = data["unit"]
+    if not isinstance(unit, str) or unit != METRIC_UNITS[metric]:
+        raise ValueError(
+            f"Genre metric {metric!r} unit must be {METRIC_UNITS[metric]!r}"
+        )
     target = MetricTarget(
-        lower=float(data["lower"]),
-        preferred=float(data["preferred"]),
-        upper=float(data["upper"]),
-        robust_scale=float(data["robust_scale"]),
-        unit=str(data["unit"]),
+        lower=_strict_finite(data["lower"], f"Genre metric {metric!r}.lower"),
+        preferred=_strict_finite(
+            data["preferred"], f"Genre metric {metric!r}.preferred"
+        ),
+        upper=_strict_finite(data["upper"], f"Genre metric {metric!r}.upper"),
+        robust_scale=_strict_finite(
+            data["robust_scale"], f"Genre metric {metric!r}.robust_scale"
+        ),
+        unit=unit,
     )
-    values = (target.lower, target.preferred, target.upper, target.robust_scale)
-    if not all(math.isfinite(value) for value in values):
-        raise ValueError("Genre metric values must be finite")
     if not target.lower < target.preferred < target.upper:
         raise ValueError("Genre metric values must satisfy lower < preferred < upper")
     if target.robust_scale <= 0:
@@ -136,27 +199,35 @@ def _validated_source_recordings(
     statuses: dict[str, list[str]] = {key: [] for key in profiles}
     recording_ids: set[str] = set()
     for source in _source_entries(sources):
+        source = _exact_mapping(source, SOURCE_KEYS, "Genre profile source")
         _required_string(source, "source")
-        if not (
-            isinstance(source.get("release"), str)
-            and source["release"].strip()
-            or isinstance(source.get("checksum"), str)
-            and source["checksum"].strip()
-        ):
-            raise ValueError("Genre profile source requires a release or checksum")
+        _required_string(source, "release")
         _required_string(source, "license")
-        _required_string(source, "citation_url")
+        citation_url = _required_string(source, "citation_url")
+        if re.fullmatch(r"https?://\S+", citation_url) is None:
+            raise ValueError("Genre profile source citation_url must be an HTTP(S) URL")
         filters = source.get("selection_filters")
         if not isinstance(filters, Mapping) or not filters:
             raise ValueError("Genre profile source requires selection_filters")
+        if any(
+            not isinstance(key, str)
+            or not key.strip()
+            or not isinstance(value, str)
+            or not value.strip()
+            for key, value in filters.items()
+        ):
+            raise ValueError(
+                "Genre profile source selection_filters require non-empty string entries"
+            )
         _required_string(source, "compatible_feature_notes")
         _required_string(source, "calculation_method")
         recordings = source.get("recordings")
         if not isinstance(recordings, list) or not recordings:
             raise ValueError("Genre profile source requires non-empty recordings")
         for recording in recordings:
-            if not isinstance(recording, Mapping):
-                raise ValueError("Genre profile source recording must be an object")
+            recording = _exact_mapping(
+                recording, RECORDING_KEYS, "Genre profile source recording"
+            )
             recording_id = _required_string(recording, "recording_id")
             if recording_id in recording_ids:
                 raise ValueError(f"Genre profile sources duplicate recording_id {recording_id!r}")
@@ -176,7 +247,8 @@ def _validated_source_recordings(
         recording_statuses = statuses[key]
         if len(recording_statuses) != profile.sample_count:
             raise ValueError(
-                f"Genre profile {key!r} licensed recording cohort has {len(recording_statuses)} recordings; "
+                f"Genre profile {key!r} licensed recording cohort has "
+                f"{len(recording_statuses)} recordings; "
                 f"expected {profile.sample_count}"
             )
         expected_status = (
@@ -193,9 +265,12 @@ def _validated_source_recordings(
 def parse_genre_profile_artifact(data: Mapping[str, Any]) -> GenreProfileArtifact:
     """Validate and parse a JSON-compatible genre profile artifact."""
 
-    if not isinstance(data, Mapping):
-        raise ValueError("Genre profile artifact must be an object")
-    if data.get("schema_version") != 1:
+    data = _exact_mapping(data, ARTIFACT_KEYS, "Genre profile artifact")
+    if (
+        isinstance(data.get("schema_version"), bool)
+        or not isinstance(data.get("schema_version"), int)
+        or data["schema_version"] != 1
+    ):
         raise ValueError("Unsupported genre profile schema_version; expected 1")
 
     profile_version = _required_string(data, "profile_version")
@@ -214,6 +289,9 @@ def parse_genre_profile_artifact(data: Mapping[str, Any]) -> GenreProfileArtifac
             raise ValueError(f"Genre profile artifact has duplicate normalized genre {key!r}")
         if not isinstance(raw_profile, Mapping):
             raise ValueError(f"Genre profile {key!r} must be an object")
+        raw_profile = _exact_mapping(
+            raw_profile, PROFILE_KEYS, f"Genre profile {key!r}"
+        )
         sample_count = raw_profile.get("sample_count")
         if isinstance(sample_count, bool) or not isinstance(sample_count, int) or sample_count < 5:
             raise ValueError(f"Genre profile {key!r} sample_count must be at least 5")
@@ -232,7 +310,7 @@ def parse_genre_profile_artifact(data: Mapping[str, Any]) -> GenreProfileArtifac
             if not isinstance(raw_target, Mapping):
                 raise ValueError(f"Genre metric {metric!r} must be an object")
             try:
-                metrics[metric] = _metric_target(raw_target)
+                metrics[metric] = _metric_target(raw_target, metric)
             except (KeyError, TypeError, ValueError) as error:
                 if isinstance(error, ValueError):
                     raise
@@ -247,6 +325,8 @@ def parse_genre_profile_artifact(data: Mapping[str, Any]) -> GenreProfileArtifac
     _validated_source_recordings(sources, profiles)
 
     checksum = _required_string(data, "artifact_checksum")
+    if re.fullmatch(r"[0-9a-f]{64}", checksum) is None:
+        raise ValueError("Genre profile artifact requires a SHA-256 artifact_checksum")
     expected_checksum = canonical_artifact_checksum(data)
     if checksum != expected_checksum:
         raise ValueError("Genre profile artifact checksum does not match canonical content")

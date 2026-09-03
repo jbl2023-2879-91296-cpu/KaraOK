@@ -5,6 +5,7 @@ import binascii
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 import json
+import math
 import mimetypes
 import os
 from pathlib import Path
@@ -610,6 +611,64 @@ def _empirical_result_status(empirical: dict[str, Any]) -> str:
 
 def _enrich_audio_test_row(row: dict[str, Any]) -> dict[str, Any]:
     """Attach reproducible empirical details and backfill legacy null scores."""
+    stored_empirical_fields = (
+        "empirical_status",
+        "worst_feature_status",
+        "worst_features",
+        "empirical_details",
+    )
+    if any(row.get(field) is not None for field in stored_empirical_fields):
+        raw_details = row.get("empirical_details")
+        if isinstance(raw_details, dict):
+            empirical = dict(raw_details)
+        else:
+            try:
+                decoded_details = json.loads(raw_details)
+            except (TypeError, json.JSONDecodeError):
+                decoded_details = {}
+            empirical = (
+                dict(decoded_details) if isinstance(decoded_details, dict) else {}
+            )
+
+        empirical_status = row.get("empirical_status")
+        if empirical_status is not None:
+            empirical["overall_status"] = str(empirical_status)
+        worst_feature_status = row.get("worst_feature_status")
+        if worst_feature_status is not None:
+            empirical["worst_feature_status"] = str(worst_feature_status)
+
+        raw_worst_features = row.get("worst_features")
+        if isinstance(raw_worst_features, list):
+            worst_features = raw_worst_features
+        else:
+            try:
+                decoded_worst_features = json.loads(raw_worst_features)
+            except (TypeError, json.JSONDecodeError):
+                decoded_worst_features = []
+            worst_features = (
+                decoded_worst_features
+                if isinstance(decoded_worst_features, list)
+                else []
+            )
+        empirical["worst_features"] = worst_features
+
+        empirical_score = _nested_number(empirical, "overall_score")
+        if empirical_score is None:
+            stored_score = row.get("score")
+            if (
+                not isinstance(stored_score, bool)
+                and isinstance(stored_score, (int, float))
+                and math.isfinite(float(stored_score))
+            ):
+                empirical_score = float(stored_score)
+                empirical["overall_score"] = empirical_score
+        row["empirical_quality"] = empirical
+        if row.get("score") is None and empirical_score is not None:
+            row["score"] = empirical_score
+        if empirical_status is not None:
+            row["status"] = _empirical_result_status(empirical)
+        return row
+
     values = {
         key: row.get(key)
         for key in ("loudness", "bass", "treble", "sharpness", "flatness")
@@ -1899,7 +1958,9 @@ def get_audio_tests():
         f"""SELECT a.assessment_id AS id, a.test_name,
                   r.quality_score AS score, r.noise_level,
                   r.distortion_level, r.bass, r.treble, r.loudness,
-                  r.sharpness, r.flatness, r.quality_profile_version,
+                  r.sharpness, r.flatness, r.empirical_status,
+                  r.worst_feature_status, r.worst_features,
+                  r.empirical_details, r.quality_profile_version,
                   r.quality_profile_checksum, a.result_status AS status,
                   a.assessment_status, a.analysis_purpose, a.duration_seconds,
                   a.assessment_date AS created_at,
@@ -1933,7 +1994,9 @@ def get_audio_test(test_id: int):
         f"""SELECT a.assessment_id AS id, a.test_name,
                   r.quality_score AS score, r.noise_level,
                   r.distortion_level, r.bass, r.treble, r.loudness,
-                  r.sharpness, r.flatness, r.quality_profile_version,
+                  r.sharpness, r.flatness, r.empirical_status,
+                  r.worst_feature_status, r.worst_features,
+                  r.empirical_details, r.quality_profile_version,
                   r.quality_profile_checksum, a.result_status AS status,
                   a.assessment_status, a.analysis_purpose, a.duration_seconds,
                   a.assessment_date AS created_at,
