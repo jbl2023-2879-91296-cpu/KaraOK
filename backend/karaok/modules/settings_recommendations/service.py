@@ -11,7 +11,12 @@ from typing import Any, Mapping
 
 import jwt
 
-from audio_thresholds import load_genre_profiles, normalize_genre
+from audio_thresholds import (
+    load_control_priors,
+    load_genre_profiles,
+    load_thresholds,
+    normalize_genre,
+)
 from settings_recommendations import (
     ALGORITHM_VERSION,
     AmplifierScale,
@@ -699,10 +704,16 @@ def _select_profile(cursor, user_id: int, profile_id: int, *, lock: bool = False
 
 
 def get_profile_metadata() -> dict[str, Any]:
-    artifact = load_genre_profiles()
+    genre = load_genre_profiles()
+    quality = load_thresholds()
+    priors = load_control_priors()
     return {
-        "profile_version": artifact.profile_version,
-        "enabled_genres": sorted(artifact.genres),
+        "profile_version": genre.profile_version,
+        "profile_checksum": genre.artifact_checksum,
+        "quality_profile_version": quality["quality_profile_version"],
+        "quality_profile_checksum": quality["artifact_checksum"],
+        "enabled_genres": sorted(genre.genres),
+        "control_priors": priors.to_metadata(),
     }
 
 

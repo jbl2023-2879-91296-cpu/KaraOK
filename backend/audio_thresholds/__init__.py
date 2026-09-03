@@ -7,6 +7,11 @@ from .genre_profiles import (
     load_genre_profiles,
     normalize_genre,
 )
+from .control_priors import (
+    ControlPriorArtifact,
+    clear_control_prior_cache,
+    load_control_priors,
+)
 from .scoring import (
     BAD,
     GOOD,
@@ -26,10 +31,13 @@ __all__ = [
     "NOT_EVALUATED",
     "MetricDefinition",
     "GenreProfileArtifact",
+    "ControlPriorArtifact",
+    "clear_control_prior_cache",
     "clear_genre_profile_cache",
     "classify_feature",
     "evaluate_features",
     "load_thresholds",
+    "load_control_priors",
     "load_genre_profiles",
     "normalize_genre",
     "score_feature",
