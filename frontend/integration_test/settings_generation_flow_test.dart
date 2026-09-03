@@ -18,19 +18,20 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    'generates, persists, reloads, and renders five amplifier targets',
+    'uses researched positions, applies five targets, and verifies them',
     (tester) async {
       final authApi = AuthApi();
       final settingsApi = SettingsApi();
       final assessmentApi = AssessmentApi();
-      File? recording;
+      final recordings = <File>[];
 
       await authApi.clearTokens();
       UserSession.instance.clear();
       addTearDown(() async {
-        final temporaryRecording = recording;
-        if (temporaryRecording != null && await temporaryRecording.exists()) {
-          await temporaryRecording.delete();
+        for (final recording in recordings) {
+          if (await recording.exists()) {
+            await recording.delete();
+          }
         }
         await authApi.clearTokens();
         UserSession.instance.clear();
@@ -70,27 +71,42 @@ void main() {
       UserSession.instance.setUserFromMap(user);
 
       final metadata = await settingsApi.getProfileMetadata();
-      final enabledGenres = List<String>.from(
-        metadata['enabled_genres'] as List,
+      expect(metadata.profileChecksum, matches(RegExp(r'^[0-9a-f]{64}$')));
+      expect(
+        metadata.qualityProfileChecksum,
+        matches(RegExp(r'^[0-9a-f]{64}$')),
       );
+      expect(
+        metadata.controlPriors.artifactChecksum,
+        matches(RegExp(r'^[0-9a-f]{64}$')),
+      );
+      expect(metadata.controlPriors.requiresPhysicalConfirmation, isTrue);
+      final enabledGenres = metadata.enabledGenres;
       expect(enabledGenres, isNotEmpty);
       final genre = enabledGenres.contains('rock')
           ? 'rock'
           : enabledGenres.first;
 
       const scale = AmplifierScale(minimum: 0, maximum: 10, step: 0.5);
-      const initialPositions = KnobSettings(
+      const savedPositions = KnobSettings(
         volume: 4,
         bass: 4.5,
         treble: 5,
         sharpness: 5.5,
         flatness: 6,
       );
+      const researchedPositions = KnobSettings(
+        volume: 4,
+        bass: 5,
+        treble: 5,
+        sharpness: 5,
+        flatness: 5,
+      );
       final profile = await settingsApi.createProfile(
         AmplifierProfile(
           name: 'Integration Amplifier $uniquePart',
           scale: scale,
-          lastPositions: initialPositions,
+          lastPositions: savedPositions,
         ),
       );
       expect(profile.id, isNotNull);
@@ -106,6 +122,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      final scaleDropdown = find.byKey(const Key('scale-preset-dropdown'));
+      await tester.ensureVisible(scaleDropdown);
+      await tester.tap(scaleDropdown);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('0–10', skipOffstage: false).last);
+      await tester.pumpAndSettle();
+
       final genreDropdown = find.byKey(const Key('genre-dropdown'));
       await tester.ensureVisible(genreDropdown);
       await tester.tap(genreDropdown);
@@ -113,12 +136,36 @@ void main() {
       await tester.tap(find.text(_genreLabel(genre), skipOffstage: false).last);
       await tester.pumpAndSettle();
 
-      for (final entry in initialPositions.toJson().entries) {
+      final startingPoint = find.byKey(
+        const Key('use-researched-starting-point'),
+      );
+      await tester.ensureVisible(startingPoint);
+      await tester.tap(startingPoint);
+      await tester.pumpAndSettle();
+      for (final entry in researchedPositions.toJson().entries) {
         final field = find.byKey(Key('knob-${entry.key}'));
-        await tester.ensureVisible(field);
-        await tester.enterText(field, _physical(entry.value, scale));
+        final input = tester.widget<TextFormField>(field);
+        expect(input.controller?.text, _physical(entry.value, scale));
       }
+
       final continueButton = find.byKey(const Key('settings-continue'));
+      await tester.ensureVisible(continueButton);
+      await tester.tap(continueButton);
+      await tester.pumpAndSettle();
+      expect(capturedInput, isNull);
+      expect(
+        find.text(
+          'Confirm that the five physical controls match these positions.',
+        ),
+        findsOneWidget,
+      );
+
+      final acknowledgement = find.byKey(
+        const Key('starting-point-acknowledgement'),
+      );
+      await tester.ensureVisible(acknowledgement);
+      await tester.tap(acknowledgement);
+      await tester.pumpAndSettle();
       await tester.ensureVisible(continueButton);
       await tester.tap(continueButton);
       await tester.pumpAndSettle();
@@ -128,9 +175,12 @@ void main() {
           (throw StateError('The setup screen did not emit its input.'));
       expect(suggestionInput.genre, genre);
       expect(suggestionInput.amplifierProfileId, profile.id);
-      expect(suggestionInput.currentSettings, initialPositions);
+      expect(suggestionInput.currentSettings, researchedPositions);
 
-      recording = await _writeDeterministicWav(uniquePart);
+      final recording = await _writeRenderedInstrumentalWav(
+        '$uniquePart-initial',
+      );
+      recordings.add(recording);
       final upload = await assessmentApi.submitAudio(
         filePath: recording.path,
         fileName: recording.uri.pathSegments.last,
@@ -140,6 +190,20 @@ void main() {
         guest: false,
         settingsSuggestion: suggestionInput,
       );
+      expect(upload['score'], isA<num>());
+      for (final feature in const {
+        'loudness',
+        'bass',
+        'treble',
+        'sharpness',
+        'flatness',
+      }) {
+        expect(
+          upload[feature],
+          isA<num>(),
+          reason: 'Missing $feature feature.',
+        );
+      }
       final rawRecommendation = Map<String, dynamic>.from(
         upload['settings_recommendation'] as Map,
       );
@@ -149,6 +213,8 @@ void main() {
       expect(generated.adjustments.keys.toSet(), amplifierKnobNames);
       expect(generated.recommended.length, 5);
       expect(generated.recommended.values, everyElement(isNotNull));
+      expect(generated.profileVersion, metadata.profileVersion);
+      expect(generated.profileChecksum, metadata.profileChecksum);
 
       final assessmentId = upload['assessment_id'];
       expect(assessmentId, isA<int>());
@@ -164,11 +230,13 @@ void main() {
       expect(stored.persisted, isTrue);
       expect(stored.adjustments.keys.toSet(), amplifierKnobNames);
 
+      SettingsSuggestionInput? verificationInput;
       await tester.pumpWidget(
         MaterialApp(
           home: SettingsRecommendationScreen(
             recommendation: stored,
             settingsApi: settingsApi,
+            onVerify: (input) => verificationInput = input,
           ),
         ),
       );
@@ -189,12 +257,71 @@ void main() {
             '${_physical(adjustment.recommended!, stored.scale)}';
         expect(find.text(expectedValues), findsWidgets);
       }
+
+      final applyButton = find.byKey(const Key('apply-settings'));
+      await tester.ensureVisible(applyButton);
+      await tester.tap(applyButton);
+      await tester.pumpAndSettle();
+
+      final reloadedProfile = (await settingsApi.listProfiles()).firstWhere(
+        (item) => item.id == profile.id,
+      );
+      expect(reloadedProfile.lastPositions?.toJson(), stored.recommended);
+
+      final verifyButton = find.byKey(const Key('verify-settings'));
+      await tester.ensureVisible(verifyButton);
+      await tester.tap(verifyButton);
+      await tester.pumpAndSettle();
+      final verificationSuggestion =
+          verificationInput ??
+          (throw StateError('The verification action did not emit its input.'));
+      expect(verificationSuggestion.verificationOf, stored.id);
+      expect(
+        verificationSuggestion.currentSettings.toJson(),
+        stored.recommended,
+      );
+
+      final verificationRecording = await _writeRenderedInstrumentalWav(
+        '$uniquePart-verification',
+      );
+      recordings.add(verificationRecording);
+      final verificationUpload = await assessmentApi.submitAudio(
+        filePath: verificationRecording.path,
+        fileName: verificationRecording.uri.pathSegments.last,
+        durationSeconds: 4,
+        genre: verificationSuggestion.genre,
+        analysisPurpose: 'settings_suggestion',
+        guest: false,
+        settingsSuggestion: verificationSuggestion,
+      );
+      final verification = SettingsRecommendation.fromJson(
+        Map<String, dynamic>.from(
+          verificationUpload['settings_recommendation'] as Map,
+        ),
+      );
+      expect(verification.parentRecommendationId, stored.id);
+      expect(verification.adjustments.keys.toSet(), amplifierKnobNames);
+      expect(verification.profileVersion, metadata.profileVersion);
+      expect(verification.profileChecksum, metadata.profileChecksum);
+      for (final entry in verification.adjustments.entries) {
+        final normalizedDelta = entry.value.deltaNormalized;
+        expect(
+          normalizedDelta,
+          isNotNull,
+          reason: '${entry.key} must have a verification delta.',
+        );
+        expect(
+          normalizedDelta!.abs(),
+          lessThanOrEqualTo(7.5),
+          reason: '${entry.key} exceeded the verification cap.',
+        );
+      }
     },
     timeout: const Timeout(Duration(minutes: 6)),
   );
 }
 
-Future<File> _writeDeterministicWav(String suffix) async {
+Future<File> _writeRenderedInstrumentalWav(String suffix) async {
   const sampleRate = 44100;
   const durationSeconds = 4;
   const channelCount = 1;
@@ -231,7 +358,7 @@ Future<File> _writeDeterministicWav(String suffix) async {
 
   final path =
       '${Directory.systemTemp.path}${Platform.pathSeparator}'
-      'karaok-settings-e2e-$suffix.wav';
+      'karaok-rendered-instrumental-e2e-$suffix.wav';
   return File(path)..writeAsBytesSync(bytes, flush: true);
 }
 

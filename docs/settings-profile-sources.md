@@ -1,7 +1,45 @@
-# Genre audio profile sources
+# Instrumental settings calibration sources
 
-This report is generated deterministically by KaraOK's genre profile derivation CLI.
-Every enabled target comes from the exact five KaraOK analyzer measurements.
+KaraOK uses three immutable, versioned JSON artifacts. They are provisional
+starting evidence for recorded or selected rendered karaoke instrumental
+playback, not universally optimal settings for every amplifier, loudspeaker,
+room, playback level, or phone position. The backend validates each artifact's
+schema, exact keys, finite values, source evidence, version, and canonical
+SHA-256 checksum before using it.
+
+The app does not analyze singers, vocal tracks, feedback, or microphone effects,
+and it does not parse symbolic `.mid` event files. A `.mid` performance must be
+rendered to supported audio before KaraOK can measure it.
+
+## Artifact provenance
+
+| Artifact | Version fields | Source provenance | Canonical artifact checksum |
+| --- | --- | --- | --- |
+| Empirical quality (`good_audio_thresholds.json`) | Schema `1`; quality profile `2026.09.1`; scoring algorithm `1.0.0` | 30 selected rows from `results/results.csv`; source CSV SHA-256 `bcc5d4c2710f1d49572a17db56c5cc23ff5e8161f17adc9d2486b0edc8adfaa5` | `e86040c27a2d346c7fda3001ca0fd6cfeabed579ea1f63ed70f8e029dfbb20be` |
+| Genre profiles (`genre_audio_profiles.json`) | Schema `1`; profile `2026.09.1`; generator `1.0.0`; generated `2026-09-02T00:00:00Z` | Licensed FMA-small manifest; manifest SHA-256 `642c6d23d4e2388f80ad5f324a31223054900f2a4d7c6639edb76d6b5e5be74d` | `8b87b9f1106bab8dab4978e4590e84c9bb294400a0d60ce5263e196f44701b61` |
+| Control priors (`amplifier_control_priors.json`) | Schema `1`; prior `2026.09.1` | Cited measurement definitions, neutral tone-control guidance, and explicit project assumptions | `22f1dde7455dd1d6d6c83c54a00d885e6bd3fecd89a8b05f6874bf88a774be71` |
+
+The metadata endpoint publishes the genre profile version/checksum, quality
+profile version/checksum, and control-prior version/checksum. Authenticated
+analysis and recommendation rows retain the applicable artifact
+versions/checksums so a result remains auditable without copying reference
+targets into MySQL.
+
+## Researched starting point
+
+The optional normalized positions are Volume `40`, Bass `50`, Treble `50`,
+Sharpness `50`, and Flatness `50`. Volume starts below midpoint to preserve
+headroom; Bass and Treble use a conventional neutral midpoint; Sharpness and
+Flatness are neutral project assumptions pending measured hardware-response
+data. These positions are provisional and must not be described as a verified
+optimum. After conversion to the selected physical scale, the user must set all
+five real controls and explicitly confirm the match before recording.
+
+## Genre profile reproducibility
+
+This part of the report is generated deterministically by KaraOK's genre profile
+derivation CLI. Every enabled target comes from the exact five KaraOK analyzer
+measurements.
 
 ## Reproducibility
 
@@ -47,7 +85,11 @@ Disabled genres: ballad, classical, r&b, general.
 - Accepted individual licenses are Public Domain, Attribution/CC Attribution, and Attribution-ShareAlike variants.
 - NonCommercial (NC), NoDerivatives (ND), and unknown/unapproved licenses cause generation to fail; they are never silently included.
 - Every selected source file was analyzed by `audio_engine.analyze_audio`; external precomputed features were not used as targets.
-- The current FMA-derived Rock, Pop, and Hip-Hop cohorts have unverified instrumental status. Their numeric targets are provisional until regenerated from licensed, genre-representative instrumental or rendered-MIDI audio.
+- The current FMA-derived Rock, Pop, and Hip-Hop cohorts contain only five
+  recordings per enabled genre, and their instrumental status is unverified.
+  Recommendations using them remain low-confidence, provisional starting
+  points until regenerated from a larger licensed, genre-representative
+  instrumental or rendered-MIDI audio corpus.
 - Ballad, Classical, R&B, and General remain disabled because the manifest contains no compatible cohort for them.
 
 ## Derived quartiles

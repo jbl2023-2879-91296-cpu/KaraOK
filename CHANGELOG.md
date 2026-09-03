@@ -2,7 +2,16 @@
 
 All notable changes to KaraOK are documented here.
 
-## 2026-09-03 - Database schema consolidation
+## 2026-09-03 - Instrumental settings calibration and schema simplification
+
+### Added
+
+- Added a versioned, checksum-validated `40/50/50/50/50` researched amplifier
+  starting point. It remains optional and provisional, and the user must
+  physically match and confirm all five controls before recording.
+- Added immutable provenance for the empirical quality, genre-profile, and
+  control-prior artifacts, plus authenticated apply/reload and verification
+  coverage for the complete five-control flow.
 
 ### Changed
 
@@ -11,6 +20,16 @@ All notable changes to KaraOK are documented here.
   migration.
 - Updated the integration harness and deployment guidance to create fresh test
   databases from that single SQL file.
+- Restricted settings guidance to recorded or selected rendered karaoke
+  instrumental playback. Singer, vocal, feedback, and microphone processing
+  remain explicitly outside the feature, and symbolic `.mid` files are rejected.
+
+### Removed
+
+- Retired `genre_preset`, `audio_quality_threshold`, and `user_genre_setting`,
+  together with the obsolete analysis-result IDs, foreign keys, policies, and
+  lookup paths. There are no replacement tables; versioned JSON artifacts are
+  the reference-data source of truth.
 
 ## 2026-09-02 - Adjusted amplifier settings generation
 

@@ -29,23 +29,32 @@ spectrogram reports.
 
 ## Adjusted amplifier settings
 
-Audio Settings Suggestion turns a controlled test recording into five physical
-targets: Volume, Bass, Treble, Sharpness, and Flatness. The user first selects a
-supported genre, identifies the amplifier's printed scale, and enters all five
-current knob positions. KaraOK analyzes the recording with the same five audio
-measurements used by its quality evaluation, compares them with the versioned
-genre profile, and displays each current position beside its adjusted target.
+KaraOK records or accepts rendered karaoke instrumental playback, measures five audio features, and recommends bounded positions for Volume, Bass, Treble, Sharpness, and Flatness. It does not analyze a singer, vocal track, feedback, or microphone effects, and it does not parse symbolic .mid files.
 
-KaraOK recommends physical positions but never controls or remotely changes the
-amplifier. After setting the knobs manually, **Record Again to Verify** repeats
-the same song section and reports whether the score improved. If verification
-worsens the score, the app tells the user to return to the previous settings.
-Users should keep the room, microphone position, playback level, singer
-distance, and song section consistent between recordings.
+The user selects a supported genre and the amplifier's `0-10`, `0-100`, or
+custom printed scale. They can enter all five real positions or choose the
+optional **Use researched starting point** action. That action converts the
+versioned `40/50/50/50/50` normalized prior to the physical scale, but it is a
+provisional starting point rather than a verified optimum. The user must
+physically match all five controls and confirm that action before continuing.
 
-The enabled Rock, Pop, and Hip-Hop profiles are derived from licensed recordings
-and protected by a canonical artifact checksum. Source selection, license
-attribution, exclusions, versions, and derived quartiles are recorded in
+KaraOK evaluates the recorded playback with the versioned quality artifact and
+compares the same five measurements with the selected genre artifact. It shows
+all five bounded recommendations and never controls the amplifier. After the
+user physically applies them, **Record Again to Verify** measures a second
+rendered-instrumental recording. Keep the room, phone position relative to the
+speakers, playback level, source, and song section unchanged between recordings.
+
+The current Rock, Pop, and Hip-Hop profiles each contain only five licensed FMA
+recordings whose instrumental status is unverified. Their confidence is
+therefore low, and their targets remain provisional until regenerated from a
+larger, genre-representative instrumental or rendered-MIDI corpus. Results also
+depend on the amplifier, loudspeakers, room, playback level, and phone placement.
+
+The settings metadata exposes the genre profile version/checksum, quality
+profile version/checksum, and control-prior version/checksum. The source dataset
+or manifest checksum, generator or algorithm version, licenses, assumptions,
+and canonical artifact checksums are documented in
 [`docs/settings-profile-sources.md`](docs/settings-profile-sources.md).
 
 The backend feature flag `SETTINGS_RECOMMENDATIONS_ENABLED` defaults to `false`.
