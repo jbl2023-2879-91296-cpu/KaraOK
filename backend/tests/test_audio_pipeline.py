@@ -630,8 +630,18 @@ class AudioPipelineTests(unittest.TestCase):
         cursor = connection.cursor.return_value
         cursor.fetchone.return_value = {
             "recommendation_id": 41,
+            "genre": "rock",
+            "original_score": 80.0,
+            "recommended_positions": json.dumps(context.current.to_dict()),
+            "algorithm_version": recommendation.algorithm_version,
             "genre_profile_version": recommendation.profile_version,
             "genre_profile_checksum": recommendation.profile_checksum,
+            "recommendation_status": "applied",
+            "child_recommendation_id": None,
+            "amplifier_last_positions": json.dumps(context.current.to_dict()),
+            "scale_min": 0.0,
+            "scale_max": 10.0,
+            "scale_step": 0.5,
         }
         cursor.lastrowid = 42
         cursor.rowcount = 1
@@ -656,8 +666,18 @@ class AudioPipelineTests(unittest.TestCase):
             if "FOR UPDATE" in call.args[0]
             and "FROM settings_recommendation" in call.args[0]
         )
+        parent_select_index = cursor.execute.call_args_list.index(parent_select)
+        analysis_insert_index = next(
+            index
+            for index, call in enumerate(cursor.execute.call_args_list)
+            if "INSERT INTO audio_analysis_result" in call.args[0]
+        )
+        self.assertLess(parent_select_index, analysis_insert_index)
         self.assertIn("sr.genre_profile_version = %s", parent_select.args[0])
         self.assertIn("sr.genre_profile_checksum = %s", parent_select.args[0])
+        self.assertIn("sr.recommended_positions", parent_select.args[0])
+        self.assertIn("sr.algorithm_version", parent_select.args[0])
+        self.assertIn("ap.last_positions", parent_select.args[0])
         self.assertEqual(
             parent_select.args[1],
             (
@@ -678,6 +698,68 @@ class AudioPipelineTests(unittest.TestCase):
             (payload["after_score"], "reverted", 41, 7),
         )
         connection.commit.assert_called_once()
+
+    def test_authenticated_verification_rechecks_amplifier_state_under_lock(self):
+        context = recommendation_service.SuggestionContext(
+            guest=False,
+            user_id=7,
+            genre="rock",
+            scale=AmplifierScale(0, 10, 0.5),
+            current=KnobSettings(5.5, 5.5, 5.5, 5, 4.5),
+            amplifier_profile_id=12,
+            verification_of=41,
+            before_score=80.0,
+        )
+        dump = {
+            "analyzer_process": {"duration_seconds": 1.25},
+            "analysis": _analyzer_result("passed"),
+            "visualizations": {
+                "waveform": "7/11/test_waveform.png",
+                "spectrogram": "7/11/test_spectrogram.png",
+            },
+        }
+        recommendation = recommendation_service.build_recommendation(
+            api.summarize_audio_analysis(dump),
+            context,
+            verification=True,
+        )
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.return_value = {
+            "recommendation_id": 41,
+            "genre": "rock",
+            "recommended_positions": json.dumps(context.current.to_dict()),
+            "algorithm_version": recommendation.algorithm_version,
+            "genre_profile_version": recommendation.profile_version,
+            "genre_profile_checksum": recommendation.profile_checksum,
+            "recommendation_status": "applied",
+            "child_recommendation_id": None,
+            "amplifier_last_positions": json.dumps(
+                {**context.current.to_dict(), "flatness": 5.0}
+            ),
+            "scale_min": 0.0,
+            "scale_max": 10.0,
+            "scale_step": 0.5,
+        }
+
+        with patch.object(api, "get_db", return_value=connection):
+            with self.assertRaisesRegex(ValueError, "last_positions"):
+                api.persist_audio_analysis(
+                    11,
+                    13,
+                    dump,
+                    recommendation=recommendation,
+                    recommendation_context=context,
+                )
+
+        statements = "\n".join(
+            call.args[0] for call in cursor.execute.call_args_list
+        )
+        self.assertIn("FOR UPDATE", statements)
+        self.assertNotIn("INSERT INTO audio_analysis_result", statements)
+        self.assertNotIn("INSERT INTO settings_recommendation", statements)
+        connection.commit.assert_not_called()
+        connection.rollback.assert_called_once()
 
     def test_legacy_null_score_is_computed_from_stored_features(self):
         row = {
@@ -1151,6 +1233,44 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertIn("r.quality_profile_version", statement)
         self.assertIn("r.quality_profile_checksum", statement)
         self.assertIn("JOIN assessment", cursor.execute.call_args.args[0])
+
+    def test_historical_null_score_dump_backfills_all_measurements_before_rejecting(self):
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.return_value = {
+            "assessment_id": 11,
+            "file_name": "legacy.wav",
+            "analysis_purpose": "quality_evaluation",
+            "assessment_status": "Completed",
+            "result_status": "Acceptable",
+            "quality_score": None,
+            "noise_level": -42.0,
+            "distortion_level": 8.0,
+            "bass": 40.0,
+            "treble": 12.0,
+            "loudness": -14.0,
+            "sharpness": 0.2,
+            "flatness": 0.03,
+            "empirical_status": None,
+            "worst_feature_status": None,
+            "worst_features": None,
+            "empirical_details": None,
+            "scoring_algorithm_version": None,
+            "quality_profile_version": None,
+            "quality_profile_checksum": None,
+            "reference_recording_count": None,
+        }
+        with api.app.test_request_context("/api/audio-uploads/13/analysis-dump"), patch.object(
+            api, "get_db", return_value=connection
+        ):
+            api.g.user_id = 7
+            response = api.get_audio_analysis_dump.__wrapped__(13)
+
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertIsInstance(payload["empirical_quality"]["overall_score"], float)
+        self.assertEqual(payload["analysis"]["bass"]["energy_percentage"], 40.0)
+        self.assertEqual(payload["analysis"]["flatness"]["mean"], 0.03)
 
     def test_historical_analysis_dump_uses_normalized_detail_only_snapshot(self):
         connection = MagicMock()

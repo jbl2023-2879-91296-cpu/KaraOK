@@ -171,6 +171,82 @@ def _same_positions(
     )
 
 
+def validate_authenticated_verification_binding(
+    parent: Mapping[str, Any],
+    profile: Mapping[str, Any],
+    *,
+    genre: str,
+    current: KnobSettings,
+    scale: AmplifierScale,
+) -> float:
+    """Bind an authenticated verification to the still-applied parent state."""
+    if parent["recommendation_status"] != "applied":
+        raise ValueError("verification_of must reference an applied recommendation")
+    if parent.get("child_recommendation_id") is not None:
+        raise ValueError("verification_of already has a verification result")
+    if normalize_genre(parent["genre"]) != genre:
+        raise ValueError("genre does not match verification_of")
+
+    artifact = load_genre_profiles()
+    if (
+        parent.get("genre_profile_version") != artifact.profile_version
+        or parent.get("genre_profile_checksum") != artifact.artifact_checksum
+    ):
+        raise ValueError(
+            "verification_of profile version or profile checksum does not match "
+            "the validated artifact"
+        )
+    if parent.get("algorithm_version") != ALGORITHM_VERSION:
+        raise ValueError("verification_of algorithm version is unsupported")
+
+    stored_scale = AmplifierScale(
+        float(profile["scale_min"]),
+        float(profile["scale_max"]),
+        float(profile["scale_step"]),
+    )
+    if stored_scale.step > stored_scale.maximum - stored_scale.minimum:
+        raise ValueError("Stored amplifier profile scale_step exceeds its range")
+    if not _same_scale(scale, stored_scale):
+        raise ValueError("amplifier profile scale changed before verification")
+
+    recommended_data = _decoded_json(
+        parent.get("recommended_positions"),
+        "recommended_positions",
+    )
+    if not isinstance(recommended_data, Mapping):
+        raise ValueError("verification_of recommended_positions are invalid")
+    recommended = _knob_settings(
+        recommended_data,
+        stored_scale,
+        "verification_of.recommended_positions",
+    )
+    if not _same_positions(current, recommended, stored_scale):
+        raise ValueError(
+            "current_settings must match verification_of recommended_positions"
+        )
+
+    last_positions_data = _decoded_json(
+        profile.get("last_positions"),
+        "last_positions",
+    )
+    if not isinstance(last_positions_data, Mapping):
+        raise ValueError(
+            "amplifier profile last_positions must match verification_of "
+            "recommended_positions"
+        )
+    last_positions = _knob_settings(
+        last_positions_data,
+        stored_scale,
+        "amplifier_profile.last_positions",
+    )
+    if not _same_positions(last_positions, recommended, stored_scale):
+        raise ValueError(
+            "amplifier profile last_positions must match verification_of "
+            "recommended_positions"
+        )
+    return _strict_number(parent["original_score"], "original_score")
+
+
 def parse_guest_verification_token(token: str) -> GuestVerificationContext:
     if not isinstance(token, str) or not token.strip():
         raise ValueError("verification_token is required")
@@ -357,6 +433,7 @@ def parse_suggestion_form(
         if verification_of is not None:
             cursor.execute(
                 """SELECT sr.recommendation_id, sr.genre, sr.original_score,
+                          sr.recommended_positions, sr.algorithm_version,
                           sr.genre_profile_version,
                           sr.genre_profile_checksum,
                           sr.recommendation_status,
@@ -371,23 +448,13 @@ def parse_suggestion_form(
             parent = cursor.fetchone()
             if parent is None:
                 raise ValueError("verification_of is not owned by this user and profile")
-            if parent["recommendation_status"] != "applied":
-                raise ValueError("verification_of must reference an applied recommendation")
-            if parent.get("child_recommendation_id") is not None:
-                raise ValueError("verification_of already has a verification result")
-            if normalize_genre(parent["genre"]) != genre:
-                raise ValueError("genre does not match verification_of")
-            artifact = load_genre_profiles()
-            if (
-                parent.get("genre_profile_version") != artifact.profile_version
-                or parent.get("genre_profile_checksum")
-                != artifact.artifact_checksum
-            ):
-                raise ValueError(
-                    "verification_of profile version or profile checksum does "
-                    "not match the validated artifact"
-                )
-            before_score = _strict_number(parent["original_score"], "original_score")
+            before_score = validate_authenticated_verification_binding(
+                parent,
+                profile,
+                genre=genre,
+                current=current,
+                scale=scale,
+            )
         return SuggestionContext(
             guest=False,
             user_id=user_id,

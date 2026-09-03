@@ -371,6 +371,19 @@ class SecurityValidationTests(unittest.TestCase):
         self.assertNotIn("FROM genre_preset", application_source)
         self.assertNotIn("threshold_id, preset_id", application_source)
 
+    def test_deploy_schema_gate_matches_authoritative_tables_and_genre_artifact(self):
+        root = Path(__file__).resolve().parents[2]
+        deploy = (root / "deploy.md").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "8b87b9f1106bab8dab4978e4590e84c9bb294400a0d60ce5263e196f44701b61",
+            deploy,
+        )
+        self.assertIn("| `table_count`               |       11 |", deploy)
+        self.assertIn("retired-table query rows", deploy)
+        self.assertNotIn("FROM audio_quality_threshold", deploy)
+        self.assertNotIn("FROM genre_preset", deploy)
+
     def test_schema_persists_owned_amplifier_recommendations(self):
         root = Path(__file__).resolve().parents[2]
         schema_path = root / "database" / "schema.sql"
