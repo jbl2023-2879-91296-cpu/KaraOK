@@ -40,6 +40,14 @@ String _requiredString(Object? value, String field) {
   return value.trim();
 }
 
+String _checksum(Object? value, String field) {
+  final checksum = _requiredString(value, field);
+  if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(checksum)) {
+    throw FormatException('$field must be a lowercase SHA-256 value.');
+  }
+  return checksum;
+}
+
 String _normalizeGenre(String value) {
   final normalized = value.trim().toLowerCase().replaceAll('_', ' ');
   if (normalized.isEmpty) throw ArgumentError.value(value, 'genre');
@@ -212,6 +220,7 @@ class SettingsRecommendation {
     required this.status,
     required this.genre,
     required this.profileVersion,
+    required this.profileChecksum,
     required this.algorithmVersion,
     required this.overallConfidence,
     required this.scale,
@@ -317,6 +326,7 @@ class SettingsRecommendation {
         json['profile_version'],
         'profile_version',
       ),
+      profileChecksum: _checksum(json['profile_checksum'], 'profile_checksum'),
       algorithmVersion: _requiredString(
         json['algorithm_version'],
         'algorithm_version',
@@ -353,6 +363,7 @@ class SettingsRecommendation {
   final String status;
   final String genre;
   final String profileVersion;
+  final String profileChecksum;
   final String algorithmVersion;
   final String overallConfidence;
   final AmplifierScale scale;
@@ -379,6 +390,7 @@ class SettingsRecommendation {
     'status': status,
     'genre': genre,
     'profile_version': profileVersion,
+    'profile_checksum': profileChecksum,
     'algorithm_version': algorithmVersion,
     'overall_confidence': overallConfidence,
     'scale': scale.toJson(),

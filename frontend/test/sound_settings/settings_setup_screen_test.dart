@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:karaok_app/features/assessments/presentation/pages/audio_test_sc
 import 'package:karaok_app/features/sound_settings/data/guest_amplifier_store.dart';
 import 'package:karaok_app/features/sound_settings/data/settings_api.dart';
 import 'package:karaok_app/features/sound_settings/domain/amplifier_profile.dart';
+import 'package:karaok_app/features/sound_settings/domain/settings_profile_metadata.dart';
 import 'package:karaok_app/features/sound_settings/domain/settings_recommendation.dart';
 import 'package:karaok_app/features/sound_settings/presentation/pages/settings_setup_screen.dart';
 
@@ -457,9 +459,17 @@ class _FakeSettingsApi extends SettingsApi {
   AmplifierProfile? created;
 
   @override
-  Future<Map<String, dynamic>> getProfileMetadata() async {
+  Future<SettingsProfileMetadata> getProfileMetadata() async {
     if (metadataError case final error?) throw error;
-    return {'profile_version': '2026.09.1', 'enabled_genres': enabledGenres};
+    final metadata = Map<String, dynamic>.from(
+      jsonDecode(
+            File(
+              'test/fixtures/settings_profile_metadata_response.json',
+            ).readAsStringSync(),
+          )
+          as Map,
+    )..['enabled_genres'] = enabledGenres;
+    return SettingsProfileMetadata.fromJson(metadata);
   }
 
   @override

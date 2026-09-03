@@ -254,6 +254,8 @@ SettingsRecommendation _sample({
     'status': status,
     'genre': 'rock',
     'profile_version': '2026.09.1',
+    'profile_checksum':
+        '8b87b9f1106bab8dab4978e4590e84c9bb294400a0d60ce5263e196f44701b61',
     'algorithm_version': '1.0.0',
     'overall_confidence': 'medium',
     'scale': {'minimum': 0.0, 'maximum': 10.0, 'step': 0.5},

@@ -1,5 +1,6 @@
 import 'package:karaok_app/core/network/api_service.dart';
 import 'package:karaok_app/features/sound_settings/domain/amplifier_profile.dart';
+import 'package:karaok_app/features/sound_settings/domain/settings_profile_metadata.dart';
 import 'package:karaok_app/features/sound_settings/domain/settings_recommendation.dart';
 
 /// Typed client for amplifier profiles and generated settings.
@@ -8,8 +9,10 @@ class SettingsApi {
 
   final ApiService _client;
 
-  Future<Map<String, dynamic>> getProfileMetadata() =>
-      _client.getSettingsProfileMetadata();
+  Future<SettingsProfileMetadata> getProfileMetadata() async =>
+      SettingsProfileMetadata.fromJson(
+        await _client.getSettingsProfileMetadata(),
+      );
 
   Future<List<AmplifierProfile>> listProfiles() async {
     final profiles = await _client.listAmplifierProfiles();
