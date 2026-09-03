@@ -653,6 +653,26 @@ def _decoded_string_list(value: Any) -> list[str] | None:
     return list(decoded)
 
 
+def _valid_detail_provenance(row_field: str, value: Any) -> Any | None:
+    if row_field in {"scoring_algorithm_version", "quality_profile_version"}:
+        if isinstance(value, str) and value.strip() and len(value) <= 30:
+            return value
+        return None
+    if row_field == "quality_profile_checksum":
+        if (
+            isinstance(value, str)
+            and len(value) == 64
+            and all(character in "0123456789abcdefABCDEF" for character in value)
+        ):
+            return value
+        return None
+    if row_field == "reference_recording_count":
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+        return None
+    raise ValueError(f"Unsupported provenance field: {row_field}")
+
+
 def _stored_empirical_result(row: dict[str, Any]) -> dict[str, Any]:
     """Reconstruct one historical empirical snapshot from typed DB fields."""
 
@@ -684,6 +704,8 @@ def _stored_empirical_result(row: dict[str, Any]) -> dict[str, Any]:
             row["status"] = EMPIRICAL_RESULT_STATUSES[stored_status]
     if resolved_status is not None:
         empirical["overall_status"] = resolved_status
+        row["empirical_status"] = resolved_status
+        row["status"] = EMPIRICAL_RESULT_STATUSES[resolved_status]
     else:
         empirical.pop("overall_status", None)
 
@@ -715,8 +737,17 @@ def _stored_empirical_result(row: dict[str, Any]) -> dict[str, Any]:
         ("reference_recording_count", "reference_recording_count"),
     ):
         value = row.get(row_field)
+        if value is None:
+            value = _valid_detail_provenance(
+                row_field,
+                empirical.get(empirical_field),
+            )
+            if value is not None:
+                row[row_field] = value
         if value is not None:
             empirical[empirical_field] = value
+        else:
+            empirical.pop(empirical_field, None)
     empirical.setdefault("method", "stored_assessment_snapshot")
     return empirical
 
@@ -2737,10 +2768,10 @@ def get_audio_analysis_dump(upload_id: int):
             },
         },
         "empirical_quality": empirical,
-        "scoring_algorithm_version": upload_record["scoring_algorithm_version"],
-        "quality_profile_version": upload_record["quality_profile_version"],
-        "quality_profile_checksum": upload_record["quality_profile_checksum"],
-        "reference_recording_count": upload_record["reference_recording_count"],
+        "scoring_algorithm_version": stored_quality["scoring_algorithm_version"],
+        "quality_profile_version": stored_quality["quality_profile_version"],
+        "quality_profile_checksum": stored_quality["quality_profile_checksum"],
+        "reference_recording_count": stored_quality["reference_recording_count"],
     }
     if upload_record["analysis_purpose"] == "settings_suggestion":
         response_data["settings_recommendation"] = (
