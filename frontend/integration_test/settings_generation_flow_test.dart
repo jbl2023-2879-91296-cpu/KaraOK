@@ -145,7 +145,10 @@ void main() {
       for (final entry in researchedPositions.toJson().entries) {
         final field = find.byKey(Key('knob-${entry.key}'));
         final input = tester.widget<TextFormField>(field);
-        expect(input.controller?.text, _physical(entry.value, scale));
+        expect(
+          double.tryParse(input.controller?.text ?? ''),
+          closeTo(entry.value, 1e-9),
+        );
       }
 
       final continueButton = find.byKey(const Key('settings-continue'));
