@@ -80,6 +80,9 @@ function Get-AffectedTestGroups {
         }
 
         if ($normalized.StartsWith('tools/')) {
+            if ($normalized -eq 'tools/run-affected-tests.ps1') {
+                $backendSettings = $true
+            }
             $powershellTools = $true
         }
     }
@@ -107,6 +110,23 @@ function Get-AffectedTestGroups {
         $groups += 'integration'
     }
     return $groups
+}
+
+function Get-BackendSettingsTestModules {
+    return @(
+        'tests.test_config'
+        'tests.test_audio_pipeline'
+        'tests.test_genre_profile_derivation'
+        'tests.test_genre_profiles'
+        'tests.test_settings_recommendation_api'
+        'tests.test_settings_recommendation_engine'
+        'tests.test_settings_trial_validation'
+        'tests.test_control_priors'
+        'tests.test_good_audio_thresholds'
+        'tests.test_audio_validation'
+        'tests.test_admin_data_api'
+        'tests.test_security'
+    )
 }
 
 function Invoke-CapturedTestGroup {
@@ -267,17 +287,11 @@ function Invoke-AffectedTestRun {
 
             $action = switch ($group) {
                 'backend-settings' {
+                    $backendSettingsModules = @(Get-BackendSettingsTestModules)
                     {
                         Push-Location $backendRoot
                         try {
-                            & $backendPython -m unittest `
-                                tests.test_config `
-                                tests.test_audio_pipeline `
-                                tests.test_genre_profile_derivation `
-                                tests.test_genre_profiles `
-                                tests.test_settings_recommendation_api `
-                                tests.test_settings_recommendation_engine `
-                                tests.test_settings_trial_validation
+                            & $backendPython -m unittest @backendSettingsModules
                             if ($LASTEXITCODE -ne 0) {
                                 throw "Backend settings tests exited with code $LASTEXITCODE."
                             }

@@ -35,6 +35,45 @@ Assert-TestGroups `
     -Actual $settingsGroups
 Write-Output 'PASS: known settings changes select focused groups'
 
+$calibrationGroups = @(Get-AffectedTestGroups -ChangedPaths @(
+        'backend/audio_thresholds/amplifier_control_priors.json'
+        'frontend/lib/features/sound_settings/domain/settings_profile_metadata.dart'
+    ))
+Assert-TestGroups `
+    -Scenario 'calibration artifacts and metadata select all focused layers' `
+    -Expected @('backend-settings', 'flutter-settings', 'flutter-analyze') `
+    -Actual $calibrationGroups
+Write-Output 'PASS: calibration artifacts and metadata select all focused layers'
+
+$backendSettingsModules = @(Get-BackendSettingsTestModules)
+Assert-TestGroups `
+    -Scenario 'backend settings runs every calibration and security module' `
+    -Expected @(
+        'tests.test_config'
+        'tests.test_audio_pipeline'
+        'tests.test_genre_profile_derivation'
+        'tests.test_genre_profiles'
+        'tests.test_settings_recommendation_api'
+        'tests.test_settings_recommendation_engine'
+        'tests.test_settings_trial_validation'
+        'tests.test_control_priors'
+        'tests.test_good_audio_thresholds'
+        'tests.test_audio_validation'
+        'tests.test_admin_data_api'
+        'tests.test_security'
+    ) `
+    -Actual $backendSettingsModules
+Write-Output 'PASS: backend settings includes calibration and security modules'
+
+$runnerGroups = @(Get-AffectedTestGroups -ChangedPaths @(
+        'tools/run-affected-tests.ps1'
+    ))
+Assert-TestGroups `
+    -Scenario 'runner changes execute the focused backend command they define' `
+    -Expected @('backend-settings', 'powershell-tools') `
+    -Actual $runnerGroups
+Write-Output 'PASS: runner changes execute backend settings and tool tests'
+
 $fallbackGroups = @(Get-AffectedTestGroups -ChangedPaths @(
         'backend/karaok/new_module.py'
         'frontend/lib/features/profile/new_screen.dart'
