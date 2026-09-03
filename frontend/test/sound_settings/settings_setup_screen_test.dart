@@ -581,10 +581,19 @@ void main() {
       )));
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(
+        find.byKey(const Key('use-researched-starting-point')),
+      );
       await tester.tap(find.byKey(const Key('use-researched-starting-point')));
       await tester.pump();
+      await tester.ensureVisible(
+        find.byKey(const Key('starting-point-acknowledgement')),
+      );
       await tester.tap(find.byKey(const Key('starting-point-acknowledgement')));
       await tester.pump();
+      await tester.ensureVisible(
+        find.byKey(const Key('amplifier-profile-dropdown')),
+      );
       await tester.tap(find.byKey(const Key('amplifier-profile-dropdown')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Empty 0-10').last);
