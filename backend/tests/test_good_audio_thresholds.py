@@ -338,14 +338,16 @@ class GoodAudioThresholdTests(unittest.TestCase):
             "strict_rule",
             "decode_status is complete",
         )
-        payload = json.loads(THRESHOLD_JSON.read_text(encoding="utf-8"))
-        recovery_metric = payload["recovery_sensitivity"]["metrics"]["bass"]
-        recovery_metric["p05_delta_from_full"] += 0.001
-        payload["artifact_checksum"] = canonical_artifact_checksum(payload)
-        with temporary_threshold_path() as artifact_path:
-            artifact_path.write_text(json.dumps(payload), encoding="utf-8")
-            with self.assertRaises(ValueError):
-                load_thresholds(artifact_path)
+        for false_delta in (0.001, 1e-13):
+            with self.subTest(false_delta=false_delta):
+                payload = json.loads(THRESHOLD_JSON.read_text(encoding="utf-8"))
+                recovery_metric = payload["recovery_sensitivity"]["metrics"]["bass"]
+                recovery_metric["p05_delta_from_full"] += false_delta
+                payload["artifact_checksum"] = canonical_artifact_checksum(payload)
+                with temporary_threshold_path() as artifact_path:
+                    artifact_path.write_text(json.dumps(payload), encoding="utf-8")
+                    with self.assertRaises(ValueError):
+                        load_thresholds(artifact_path)
 
     def test_loader_rejects_empty_limitations(self):
         self._assert_schema_mutation_rejected((), "limitations", [])
