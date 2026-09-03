@@ -7,6 +7,7 @@ import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/sound_settings/data/guest_amplifier_store.dart';
 import 'package:karaok_app/features/sound_settings/data/settings_api.dart';
 import 'package:karaok_app/features/sound_settings/domain/amplifier_profile.dart';
+import 'package:karaok_app/features/sound_settings/domain/settings_profile_metadata.dart';
 import 'package:karaok_app/features/sound_settings/domain/settings_recommendation.dart';
 
 enum _ScalePreset { zeroToTen, zeroToHundred, custom }
@@ -76,6 +77,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
   String? _genreError;
   String? _positionError;
   String? _scaleError;
+  SettingsProfileMetadata? _metadata;
   List<String> _enabledGenres = const [];
   List<AmplifierProfile> _profiles = const [];
   AmplifierProfile? _selectedProfile;
@@ -107,18 +109,6 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
   Future<void> _load() async {
     try {
       final metadata = await _settingsApi.getProfileMetadata();
-      final rawGenres = metadata['enabled_genres'];
-      if (rawGenres is! List || rawGenres.any((value) => value is! String)) {
-        throw const FormatException('Invalid settings profile metadata.');
-      }
-      final genres = rawGenres
-          .cast<String>()
-          .map((value) => value.trim())
-          .where((value) => value.isNotEmpty)
-          .toList(growable: false);
-      if (genres.isEmpty) {
-        throw const FormatException('No settings genres are enabled.');
-      }
 
       if (_isGuest) {
         final stored = await _guestStore.read();
@@ -139,7 +129,8 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
       }
       if (!mounted) return;
       setState(() {
-        _enabledGenres = genres;
+        _metadata = metadata;
+        _enabledGenres = metadata.enabledGenres;
         _loading = false;
       });
     } on ApiException catch (error) {
@@ -397,7 +388,11 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final canContinue =
-        !_loading && !_featureDisabled && _loadError == null && !_submitting;
+        !_loading &&
+        !_featureDisabled &&
+        _loadError == null &&
+        _metadata != null &&
+        !_submitting;
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
       appBar: AppBar(

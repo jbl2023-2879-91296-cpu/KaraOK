@@ -25,6 +25,7 @@ void main() {
       'status',
       'genre',
       'profile_version',
+      'profile_checksum',
       'algorithm_version',
       'overall_confidence',
       'scale',
@@ -50,6 +51,10 @@ void main() {
     expect(recommendation.status, 'reverted');
     expect(recommendation.genre, 'rock');
     expect(recommendation.profileVersion, '2026.09.1');
+    expect(
+      recommendation.profileChecksum,
+      '8b87b9f1106bab8dab4978e4590e84c9bb294400a0d60ce5263e196f44701b61',
+    );
     expect(recommendation.algorithmVersion, '1.0.0');
     expect(recommendation.overallConfidence, 'medium');
     expect(recommendation.scale.minimum, 0);
