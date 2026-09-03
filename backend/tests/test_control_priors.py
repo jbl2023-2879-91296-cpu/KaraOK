@@ -58,6 +58,13 @@ class ControlPriorTests(unittest.TestCase):
             parse_control_priors(with_valid_checksum(payload))
 
     def test_rejects_non_finite_or_out_of_range_positions(self):
+        for value in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(value=value):
+                payload = valid_payload()
+                payload["positions"]["volume"] = value
+                with self.assertRaises(ValueError):
+                    parse_control_priors(payload)
+
         for value in ("NaN", "Infinity", -0.1, 100.1, True):
             with self.subTest(value=value):
                 payload = valid_payload()
