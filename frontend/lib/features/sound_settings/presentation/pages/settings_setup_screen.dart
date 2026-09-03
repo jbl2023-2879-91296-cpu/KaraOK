@@ -72,6 +72,8 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
   bool _loading = true;
   bool _submitting = false;
   bool _featureDisabled = false;
+  bool _usingResearchedStartingPoint = false;
+  bool _startingPointAcknowledged = false;
   String? _loadError;
   String? _profilesLoadError;
   String? _genreError;
@@ -164,6 +166,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
   }
 
   void _useProfile(AmplifierProfile profile) {
+    _clearStartingPoint();
     _scale = profile.scale;
     _preset = _presetFor(profile.scale);
     _minimumController.text = _formatNumber(profile.scale.minimum);
@@ -188,6 +191,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     if (id == _newProfileSelection) {
       setState(() {
         _selectedProfile = null;
+        _clearStartingPoint();
         _scale = _zeroToTen;
         _preset = _ScalePreset.zeroToTen;
         _minimumController.text = '0';
@@ -252,6 +256,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     }
 
     setState(() {
+      _clearStartingPoint();
       _preset = next;
       _scale = newScale;
       _minimumController.text = _formatNumber(newScale.minimum);
@@ -298,6 +303,26 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     _scaleError = null;
   }
 
+  void _clearStartingPoint() {
+    _usingResearchedStartingPoint = false;
+    _startingPointAcknowledged = false;
+  }
+
+  void _applyResearchedStartingPoint() {
+    final scale = _effectiveScaleOrNull();
+    final metadata = _metadata;
+    if (scale == null || metadata == null) return;
+    final positions = metadata.controlPriors.toScale(scale).toJson();
+    setState(() {
+      for (final entry in positions.entries) {
+        _positionControllers[entry.key]!.text = _formatNumber(entry.value);
+      }
+      _usingResearchedStartingPoint = true;
+      _startingPointAcknowledged = false;
+      _positionError = null;
+    });
+  }
+
   KnobSettings? _readPositions(AmplifierScale scale) {
     final values = <String, double>{};
     if (_positionControllers.values.any(
@@ -339,9 +364,16 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     _scaleError = scale == null ? 'Enter a valid amplifier scale.' : null;
     _positionError = null;
     final positions = scale == null ? null : _readPositions(scale);
+    if (positions != null &&
+        _usingResearchedStartingPoint &&
+        !_startingPointAcknowledged) {
+      _positionError =
+          'Confirm that the five physical controls match these positions.';
+    }
     setState(() {});
     if (_genreError != null ||
         _scaleError != null ||
+        _positionError != null ||
         positions == null ||
         scale == null) {
       return;
@@ -553,29 +585,55 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                     const SizedBox(height: 24),
                     _sectionTitle('3. Current knob positions'),
                     Text(
-                      'Enter every current position before recording.',
+                      'Enter every current position before recording karaoke instrumental playback.',
                       style: Theme.of(
                         context,
                       ).textTheme.bodyMedium?.copyWith(color: Colors.white60),
                     ),
                     const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      key: const Key('use-researched-starting-point'),
+                      onPressed: canContinue
+                          ? _applyResearchedStartingPoint
+                          : null,
+                      icon: const Icon(Icons.auto_awesome),
+                      label: const Text('Use researched starting point'),
+                    ),
+                    const SizedBox(height: 12),
                     for (final name in amplifierKnobNames) _knobControl(name),
+                    if (_usingResearchedStartingPoint)
+                      CheckboxListTile(
+                        key: const Key('starting-point-acknowledgement'),
+                        value: _startingPointAcknowledged,
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        title: const Text(
+                          'I set all five physical controls to these positions.',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        onChanged: _submitting
+                            ? null
+                            : (value) => setState(() {
+                                _startingPointAcknowledged = value ?? false;
+                                _positionError = null;
+                              }),
+                      ),
                     if (_positionError case final error?) _errorText(error),
                     const SizedBox(height: 20),
                     _sectionTitle('4. Keep the comparison controlled'),
                     const _GuidanceItem(
-                      text: 'Use the same song section for both recordings.',
+                      text:
+                          'Play the same karaoke instrumental song section for both recordings.',
+                    ),
+                    const _GuidanceItem(
+                      text: 'Play only the instrumental or MIDI accompaniment.',
                     ),
                     const _GuidanceItem(
                       text:
-                          'Record in the same room with similar background noise.',
+                          'Keep the phone in the same position relative to the speakers.',
                     ),
                     const _GuidanceItem(
-                      text:
-                          'Keep the same phone position and microphone direction.',
-                    ),
-                    const _GuidanceItem(
-                      text: 'Keep the same playback level and singer distance.',
+                      text: 'Keep the room and playback source unchanged.',
                     ),
                     const SizedBox(height: 24),
                     FilledButton.icon(
@@ -612,6 +670,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     style: const TextStyle(color: Colors.white),
     decoration: _decoration(label),
     onChanged: (_) => setState(() {
+      _clearStartingPoint();
       _scaleError = null;
       final scale = _effectiveScaleOrNull();
       if (scale != null) _scale = scale;
@@ -651,6 +710,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                   onChanged: _submitting
                       ? null
                       : (value) => setState(() {
+                          _clearStartingPoint();
                           controller.text = _formatNumber(value);
                           _positionError = null;
                         }),
@@ -666,7 +726,10 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                   ),
                   style: const TextStyle(color: Colors.white),
                   decoration: _decoration('Position'),
-                  onChanged: (_) => setState(() => _positionError = null),
+                  onChanged: (_) => setState(() {
+                    _clearStartingPoint();
+                    _positionError = null;
+                  }),
                 ),
               ),
             ],

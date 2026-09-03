@@ -8,6 +8,9 @@ import 'package:path_provider/path_provider.dart';
 
 enum AudioSourceType { recording, selectedFile }
 
+const midiRenderedAudioMessage =
+    'MIDI event files are not rendered audio. Record the karaoke machine playback or select WAV, MP3, M4A, AAC, OGG, or FLAC.';
+
 class StagedAudio {
   const StagedAudio({
     required this.fileName,
@@ -89,6 +92,9 @@ class AudioStagingService {
   }) async {
     final fileName = selectedFile.name;
     final extension = p.extension(fileName).replaceFirst('.', '').toLowerCase();
+    if (extension == 'mid' || extension == 'midi') {
+      throw const AudioStagingException(midiRenderedAudioMessage);
+    }
     if (!supportedExtensions.contains(extension)) {
       throw const AudioStagingException('This audio format is not supported.');
     }
@@ -161,6 +167,9 @@ class AudioStagingService {
       );
     }
     final extension = p.extension(path).replaceFirst('.', '').toLowerCase();
+    if (extension == 'mid' || extension == 'midi') {
+      throw const AudioStagingException(midiRenderedAudioMessage);
+    }
     if (!supportedExtensions.contains(extension)) {
       throw const AudioStagingException('This audio format is not supported.');
     }
