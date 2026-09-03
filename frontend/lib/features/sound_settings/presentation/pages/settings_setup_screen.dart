@@ -177,6 +177,12 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
       for (final entry in positions.entries) {
         _positionControllers[entry.key]!.text = _formatNumber(entry.value);
       }
+    } else {
+      // A saved profile without positions must not inherit values (or an
+      // acknowledgement) from the previously selected profile.
+      for (final controller in _positionControllers.values) {
+        controller.clear();
+      }
     }
   }
 

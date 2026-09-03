@@ -78,6 +78,14 @@ class ControlPriorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "checksum"):
             parse_control_priors(payload)
 
+    def test_requires_schema_version_to_be_exact_integer_one(self):
+        for value in (True, 1.0):
+            with self.subTest(value=value):
+                payload = valid_payload()
+                payload["schema_version"] = value
+                with self.assertRaisesRegex(ValueError, "schema_version"):
+                    parse_control_priors(with_valid_checksum(payload))
+
     def test_rejects_missing_or_invalid_research_citations(self):
         payload = valid_payload()
         payload["sources"] = []

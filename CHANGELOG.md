@@ -15,6 +15,10 @@ All notable changes to KaraOK are documented here.
 
 ### Changed
 
+- Corrected the deployment rollout gate to verify the canonical genre-profile
+  checksum `8b87b9f1106bab8dab4978e4590e84c9bb294400a0d60ce5263e196f44701b61`
+  and the authoritative 11-table bootstrap, including explicit absence of the
+  retired lookup tables.
 - Consolidated the settings-recommendation tables into the authoritative
   `database/schema.sql` bootstrap and removed the redundant standalone SQL
   migration.

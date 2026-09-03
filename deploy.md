@@ -274,7 +274,7 @@ its canonical content checksum:
 cd /opt/karaok/app/backend
 
 sudo -u karaok ./.venv/bin/python -c \
-  "from audio_thresholds import load_genre_profiles; p=load_genre_profiles(); assert p.artifact_checksum == '125800de3f963adf02e20a8edb2a4a492f750ae7814a1ac3272ecfdf222e6ec2'; print(p.artifact_checksum)"
+  "from audio_thresholds import load_genre_profiles; p=load_genre_profiles(); assert p.artifact_checksum == '8b87b9f1106bab8dab4978e4590e84c9bb294400a0d60ce5263e196f44701b61'; print(p.artifact_checksum)"
 ```
 
 Review `docs/settings-profile-sources.md` for source attribution, licenses,
@@ -343,13 +343,13 @@ Verify the schema and seed data before restarting the API:
 sudo mysql -D karaok_db -e "
 SELECT COUNT(*) AS table_count
 FROM information_schema.tables
-WHERE table_schema = 'karaok_db';
+WHERE table_schema = 'karaok_db'
+  AND table_type = 'BASE TABLE';
 
-SELECT COUNT(*) AS threshold_count
-FROM audio_quality_threshold;
-
-SELECT COUNT(*) AS preset_count
-FROM genre_preset;
+SELECT table_name
+FROM information_schema.tables
+WHERE table_schema = 'karaok_db'
+  AND table_name IN ('genre_preset', 'audio_quality_threshold', 'user_genre_setting');
 "
 ```
 
@@ -357,9 +357,8 @@ Expected values:
 
 | Check                       | Expected |
 | --------------------------- | -------: |
-| `table_count`               |       12 |
-| `threshold_count`           |        1 |
-| `preset_count`              |        4 |
+| `table_count`               |       11 |
+| retired-table query rows     |        0 |
 
 Confirm the non-secret database connection identity configured for the service:
 

@@ -65,7 +65,11 @@ def parse_control_priors(data: Mapping[str, Any]) -> ControlPriorArtifact:
 
     if set(data) != ARTIFACT_KEYS:
         raise ValueError("Control-prior artifact fields do not match schema")
-    if data.get("schema_version") != 1:
+    if (
+        isinstance(data.get("schema_version"), bool)
+        or not isinstance(data.get("schema_version"), int)
+        or data["schema_version"] != 1
+    ):
         raise ValueError("Unsupported control-prior schema_version; expected 1")
 
     version = data.get("prior_version")

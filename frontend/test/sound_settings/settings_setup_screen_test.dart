@@ -547,6 +547,57 @@ void main() {
   );
 
   _tallTestWidgets(
+    'switching to a profile without positions clears every inherited knob and acknowledgement',
+    (tester) async {
+      UserSession.instance.setUser(
+        id: 7,
+        name: 'Singer',
+        email: 'singer@example.com',
+        userType: 'user',
+      );
+      settingsApi.profiles = const [
+        AmplifierProfile(
+          id: 9,
+          name: 'Populated 0-100',
+          scale: AmplifierScale(minimum: 0, maximum: 100, step: 1),
+          lastPositions: KnobSettings(
+            volume: 40,
+            bass: 50,
+            treble: 60,
+            sharpness: 70,
+            flatness: 80,
+          ),
+        ),
+        AmplifierProfile(
+          id: 10,
+          name: 'Empty 0-10',
+          scale: AmplifierScale(minimum: 0, maximum: 10, step: 0.5),
+        ),
+      ];
+      await tester.pumpWidget(_testApp(SettingsSetupScreen(
+        settingsApi: settingsApi,
+        guestStore: guestStore,
+        onContinue: (_) {},
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('use-researched-starting-point')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('starting-point-acknowledgement')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('amplifier-profile-dropdown')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Empty 0-10').last);
+      await tester.pumpAndSettle();
+
+      for (final name in ['volume', 'bass', 'treble', 'sharpness', 'flatness']) {
+        expect(_knobText(tester, name), isEmpty);
+      }
+      expect(find.byKey(const Key('starting-point-acknowledgement')), findsNothing);
+    },
+  );
+
+  _tallTestWidgets(
     'researched positions require physical acknowledgement before continuing',
     (tester) async {
       SettingsSuggestionInput? submitted;

@@ -941,10 +941,67 @@ def persist_audio_analysis(
         raise RuntimeError("Analyzer visualizations are incomplete")
 
     conn = get_db()
-    cursor = conn.cursor()
+    # The verification re-check needs named columns while holding the same
+    # transaction that writes the child result.  The default connector cursor
+    # returns tuples, which would make this security check silently unusable.
+    cursor = conn.cursor(dictionary=True)
     recommendation_id = None
     recommendation_response = None
     try:
+        if recommendation is not None and recommendation_context.verification:
+            context = recommendation_context
+            if context.guest or context.user_id is None:
+                raise ValueError("Authenticated persistence requires an owned context")
+            if context.amplifier_profile_id is None:
+                raise ValueError(
+                    "Authenticated persistence requires an amplifier profile"
+                )
+            cursor.execute(
+                """SELECT sr.recommendation_id, sr.genre, sr.original_score,
+                          sr.recommended_positions, sr.algorithm_version,
+                          sr.genre_profile_version, sr.genre_profile_checksum,
+                          sr.recommendation_status,
+                          child.recommendation_id AS child_recommendation_id,
+                          ap.last_positions AS amplifier_last_positions,
+                          ap.scale_min, ap.scale_max, ap.scale_step
+                   FROM settings_recommendation sr
+                   JOIN amplifier_profile ap
+                     ON ap.amplifier_profile_id = sr.amplifier_profile_id
+                    AND ap.user_id = sr.user_id
+                   LEFT JOIN settings_recommendation child
+                     ON child.parent_recommendation_id = sr.recommendation_id
+                   WHERE sr.recommendation_id = %s AND sr.user_id = %s
+                     AND sr.amplifier_profile_id = %s
+                     AND sr.genre_profile_version = %s
+                     AND sr.genre_profile_checksum = %s
+                   FOR UPDATE""",
+                (
+                    context.verification_of,
+                    context.user_id,
+                    context.amplifier_profile_id,
+                    recommendation.profile_version,
+                    recommendation.profile_checksum,
+                ),
+            )
+            parent = cursor.fetchone()
+            if parent is None:
+                raise ValueError(
+                    "verification_of is no longer eligible for verification "
+                    "with this profile version and checksum"
+                )
+            settings_recommendation_service.validate_authenticated_verification_binding(
+                parent,
+                {
+                    "last_positions": parent.get("amplifier_last_positions"),
+                    "scale_min": parent["scale_min"],
+                    "scale_max": parent["scale_max"],
+                    "scale_step": parent["scale_step"],
+                },
+                genre=context.genre,
+                current=context.current,
+                scale=context.scale,
+            )
+
         cursor.execute(
             """INSERT INTO audio_analysis_result
                (assessment_id, quality_score, noise_level, distortion_level,
@@ -983,33 +1040,6 @@ def persist_audio_analysis(
                 raise ValueError("Authenticated persistence requires an owned context")
             if context.amplifier_profile_id is None:
                 raise ValueError("Authenticated persistence requires an amplifier profile")
-            if context.verification:
-                cursor.execute(
-                    """SELECT sr.recommendation_id
-                       FROM settings_recommendation sr
-                       LEFT JOIN settings_recommendation child
-                         ON child.parent_recommendation_id = sr.recommendation_id
-                       WHERE sr.recommendation_id = %s AND sr.user_id = %s
-                         AND sr.amplifier_profile_id = %s
-                         AND sr.genre_profile_version = %s
-                         AND sr.genre_profile_checksum = %s
-                         AND sr.recommendation_status = 'applied'
-                         AND child.recommendation_id IS NULL
-                       FOR UPDATE""",
-                    (
-                        context.verification_of,
-                        context.user_id,
-                        context.amplifier_profile_id,
-                        recommendation.profile_version,
-                        recommendation.profile_checksum,
-                    ),
-                )
-                if cursor.fetchone() is None:
-                    raise ValueError(
-                        "verification_of is no longer eligible for verification "
-                        "with this profile version and checksum"
-                    )
-
             recommendation_data = recommendation.to_dict()
             original_score = (
                 context.before_score if context.verification else quality_score
@@ -2717,13 +2747,15 @@ def get_audio_analysis_dump(upload_id: int):
     conn.close()
     if not upload_record or upload_record["assessment_id"] is None:
         return jsonify({"error": "Analysis output not found"}), 404
-    if upload_record["quality_score"] is None:
-        return jsonify({"error": "Analysis output not found"}), 404
-
     stored_quality = _enrich_audio_test_row(
         {
             "score": upload_record["quality_score"],
             "status": upload_record["result_status"],
+            "loudness": upload_record["loudness"],
+            "bass": upload_record["bass"],
+            "treble": upload_record["treble"],
+            "sharpness": upload_record["sharpness"],
+            "flatness": upload_record["flatness"],
             "empirical_status": upload_record["empirical_status"],
             "worst_feature_status": upload_record["worst_feature_status"],
             "worst_features": upload_record["worst_features"],
@@ -2740,6 +2772,8 @@ def get_audio_analysis_dump(upload_id: int):
             ],
         }
     )
+    if stored_quality["score"] is None:
+        return jsonify({"error": "Analysis output not found"}), 404
     empirical = stored_quality["empirical_quality"]
 
     response_data = {

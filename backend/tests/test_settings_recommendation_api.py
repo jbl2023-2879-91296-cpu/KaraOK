@@ -157,6 +157,28 @@ def recommendation_row(**overrides):
     return row
 
 
+def applied_positions():
+    return {
+        "volume": 5.5,
+        "bass": 5.5,
+        "treble": 5.5,
+        "sharpness": 5.0,
+        "flatness": 4.5,
+    }
+
+
+def authenticated_verification_form(**overrides):
+    form = {
+        "analysis_purpose": "settings_suggestion",
+        "genre": "rock",
+        "amplifier_profile_id": "12",
+        "verification_of": "41",
+        "current_settings": json.dumps(applied_positions()),
+    }
+    form.update(overrides)
+    return form
+
+
 class SettingsRecommendationApiTests(unittest.TestCase):
     def setUp(self):
         self.client = api.app.test_client()
@@ -350,6 +372,103 @@ class SettingsRecommendationApiTests(unittest.TestCase):
                     guest=False,
                     user_id=7,
                 )
+
+    def test_authenticated_verification_rejects_current_settings_not_from_parent(self):
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.side_effect = [
+            profile_row(last_positions=json.dumps(applied_positions())),
+            recommendation_row(
+                recommendation_status="applied",
+                recommended_positions=json.dumps(applied_positions()),
+            ),
+        ]
+        form = authenticated_verification_form(
+            current_settings=json.dumps(
+                {**applied_positions(), "volume": 6.0}
+            )
+        )
+
+        with patch.object(api, "get_db", return_value=connection):
+            with self.assertRaisesRegex(ValueError, "current_settings"):
+                recommendation_service.parse_suggestion_form(
+                    form,
+                    guest=False,
+                    user_id=7,
+                )
+
+        parent_query = cursor.execute.call_args_list[1].args[0]
+        self.assertIn("sr.recommended_positions", parent_query)
+        self.assertIn("sr.algorithm_version", parent_query)
+
+    def test_authenticated_verification_rejects_stale_amplifier_positions(self):
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.side_effect = [
+            profile_row(
+                last_positions=json.dumps(
+                    {**applied_positions(), "bass": 6.0}
+                )
+            ),
+            recommendation_row(
+                recommendation_status="applied",
+                recommended_positions=json.dumps(applied_positions()),
+            ),
+        ]
+
+        with patch.object(api, "get_db", return_value=connection):
+            with self.assertRaisesRegex(ValueError, "last_positions"):
+                recommendation_service.parse_suggestion_form(
+                    authenticated_verification_form(),
+                    guest=False,
+                    user_id=7,
+                )
+
+    def test_authenticated_verification_rejects_obsolete_parent_algorithm(self):
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.side_effect = [
+            profile_row(last_positions=json.dumps(applied_positions())),
+            recommendation_row(
+                recommendation_status="applied",
+                recommended_positions=json.dumps(applied_positions()),
+                algorithm_version="0.9.0",
+            ),
+        ]
+
+        with patch.object(api, "get_db", return_value=connection):
+            with self.assertRaisesRegex(ValueError, "algorithm version"):
+                recommendation_service.parse_suggestion_form(
+                    authenticated_verification_form(),
+                    guest=False,
+                    user_id=7,
+                )
+
+    def test_authenticated_verification_accepts_applied_parent_state(self):
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.side_effect = [
+            profile_row(last_positions=json.dumps(applied_positions())),
+            recommendation_row(
+                recommendation_status="applied",
+                recommended_positions=json.dumps(applied_positions()),
+            ),
+        ]
+
+        with patch.object(api, "get_db", return_value=connection):
+            context = recommendation_service.parse_suggestion_form(
+                authenticated_verification_form(
+                    current_settings=json.dumps(
+                        {**applied_positions(), "volume": 5.49}
+                    )
+                ),
+                guest=False,
+                user_id=7,
+            )
+
+        self.assertTrue(context.verification)
+        self.assertEqual(context.verification_of, 41)
+        self.assertEqual(context.before_score, 72.4)
 
     def test_suggestion_verification_fields_are_mutually_exclusive(self):
         with self.assertRaisesRegex(ValueError, "mutually exclusive"):
