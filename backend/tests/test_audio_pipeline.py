@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 os.environ.setdefault("JWT_SECRET", "test-only-secret-that-is-at-least-32-characters")
 
 import app as api
-from audio_thresholds import load_genre_profiles
+from audio_thresholds import load_genre_profiles, load_thresholds
 from karaok.modules.settings_recommendations import service as recommendation_service
 from settings_recommendations import ALGORITHM_VERSION, AmplifierScale, KnobSettings
 
@@ -74,6 +74,7 @@ def _stored_settings_columns() -> dict:
         "settings_overall_confidence": "medium",
         "settings_algorithm_version": "1.0.0",
         "settings_genre_profile_version": "2026.09.1",
+        "settings_genre_profile_checksum": load_genre_profiles().artifact_checksum,
         "settings_recommendation_status": "generated",
         "settings_created_at": datetime(2026, 9, 2, tzinfo=timezone.utc),
         "settings_applied_at": None,
@@ -325,19 +326,25 @@ class AudioPipelineTests(unittest.TestCase):
             for call in cursor.execute.call_args_list
             if "INSERT INTO audio_analysis_result" in call.args[0]
         )
+        thresholds = load_thresholds()
+        statement = insert_result.args[0]
         values = insert_result.args[1]
-        self.assertEqual(values[:3], (11, None, 4))
-        self.assertAlmostEqual(values[3], 31.51069476184425)
+        self.assertIn("quality_profile_version", statement)
+        self.assertIn("quality_profile_checksum", statement)
+        self.assertEqual(values[0], 11)
+        self.assertAlmostEqual(values[1], 31.51069476184425)
         self.assertEqual(
-            values[4:11],
+            values[2:9],
             (-42.0, 8.0, 40.0, 12.0, -14.0, 0.2, 0.03),
         )
-        self.assertEqual(values[11:14], ("bad", "bad", '["bass", "treble", "sharpness", "flatness"]'))
-        self.assertIn('"overall_score": 31.51069476184425', values[14])
+        self.assertEqual(values[9:12], ("bad", "bad", '["bass", "treble", "sharpness", "flatness"]'))
+        self.assertIn('"overall_score": 31.51069476184425', values[12])
         self.assertEqual(
-            values[15:],
+            values[13:],
             (
                 "1.0.0",
+                thresholds["quality_profile_version"],
+                thresholds["artifact_checksum"],
                 30,
                 "7/11/test_waveform.png",
                 "7/11/test_spectrogram.png",
@@ -346,6 +353,49 @@ class AudioPipelineTests(unittest.TestCase):
         statements = "\n".join(call.args[0] for call in cursor.execute.call_args_list)
         self.assertIn("assessment_status = 'Completed'", statements)
         self.assertIn("UPDATE audio_upload SET score", statements)
+        connection.commit.assert_called_once()
+
+    def test_manual_audio_test_persists_validated_quality_provenance(self):
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.lastrowid = 51
+        thresholds = load_thresholds()
+
+        with api.app.test_request_context(
+            "/api/audio-tests",
+            method="POST",
+            json={
+                "test_name": "Manual instrumental result",
+                "score": 88,
+                "noise_level": -42,
+                "distortion_level": 4,
+            },
+        ), patch.object(api, "get_db", return_value=connection), patch.object(
+            api, "audit"
+        ):
+            api.g.user_id = 7
+            _, status_code = api.create_audio_test.__wrapped__()
+
+        self.assertEqual(status_code, 201)
+        insert_result = next(
+            call
+            for call in cursor.execute.call_args_list
+            if "INSERT INTO audio_analysis_result" in call.args[0]
+        )
+        self.assertNotIn("threshold_id", insert_result.args[0])
+        self.assertNotIn("preset_id", insert_result.args[0])
+        self.assertEqual(
+            insert_result.args[1],
+            (
+                51,
+                88,
+                -42.0,
+                4.0,
+                thresholds["algorithm_version"],
+                thresholds["quality_profile_version"],
+                thresholds["artifact_checksum"],
+            ),
+        )
         connection.commit.assert_called_once()
 
     def test_analysis_and_recommendation_share_one_commit(self):
@@ -403,6 +453,12 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertLess(analysis_index, recommendation_index)
         self.assertLess(recommendation_index, assessment_index)
         self.assertFalse(any("genre_preset" in statement for statement in statements))
+        recommendation_insert = cursor.execute.call_args_list[recommendation_index]
+        self.assertIn("genre_profile_checksum", recommendation_insert.args[0])
+        self.assertEqual(
+            recommendation_insert.args[1][13],
+            recommendation.profile_checksum,
+        )
         self.assertEqual(result["settings_recommendation"]["id"], 41)
         connection.commit.assert_called_once()
 
@@ -572,7 +628,11 @@ class AudioPipelineTests(unittest.TestCase):
         )
         connection = MagicMock()
         cursor = connection.cursor.return_value
-        cursor.fetchone.return_value = {"recommendation_id": 41}
+        cursor.fetchone.return_value = {
+            "recommendation_id": 41,
+            "genre_profile_version": recommendation.profile_version,
+            "genre_profile_checksum": recommendation.profile_checksum,
+        }
         cursor.lastrowid = 42
         cursor.rowcount = 1
 
@@ -590,6 +650,24 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertLess(payload["after_score"], payload["before_score"])
         self.assertEqual(payload["verification_status"], "worsened")
         self.assertTrue(payload["rollback_recommended"])
+        parent_select = next(
+            call
+            for call in cursor.execute.call_args_list
+            if "FOR UPDATE" in call.args[0]
+            and "FROM settings_recommendation" in call.args[0]
+        )
+        self.assertIn("sr.genre_profile_version = %s", parent_select.args[0])
+        self.assertIn("sr.genre_profile_checksum = %s", parent_select.args[0])
+        self.assertEqual(
+            parent_select.args[1],
+            (
+                41,
+                7,
+                12,
+                recommendation.profile_version,
+                recommendation.profile_checksum,
+            ),
+        )
         parent_update = next(
             call
             for call in cursor.execute.call_args_list
@@ -619,10 +697,9 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertEqual(enriched["status"], "Acceptable")
         self.assertEqual(len(enriched["empirical_quality"]["features"]), 5)
 
-    def test_analysis_without_matching_genre_does_not_invent_preset(self):
+    def test_analysis_persistence_has_no_genre_lookup(self):
         connection = MagicMock()
         cursor = connection.cursor.return_value
-        cursor.fetchone.return_value = None
         dump = {
             "analyzer_process": {"duration_seconds": 1.25},
             "analysis": _analyzer_result("passed"),
@@ -640,7 +717,9 @@ class AudioPipelineTests(unittest.TestCase):
             for call in cursor.execute.call_args_list
             if "INSERT INTO audio_analysis_result" in call.args[0]
         )
-        self.assertIsNone(insert_result.args[1][2])
+        statements = [call.args[0] for call in cursor.execute.call_args_list]
+        self.assertFalse(any("genre_preset" in statement for statement in statements))
+        self.assertNotIn("preset_id", insert_result.args[0])
 
     def test_historical_analysis_dump_is_rebuilt_from_database(self):
         connection = MagicMock()
@@ -664,6 +743,8 @@ class AudioPipelineTests(unittest.TestCase):
             "worst_features": '["treble"]',
             "empirical_details": '{"overall_score": 91.5}',
             "scoring_algorithm_version": "1.0.0",
+            "quality_profile_version": "2026.09.1",
+            "quality_profile_checksum": "b" * 64,
             "reference_recording_count": 30,
         }
         with api.app.test_request_context(
@@ -676,6 +757,11 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertEqual(payload["analysis_status"], "completed")
         self.assertEqual(payload["analysis"]["bass"]["energy_percentage"], 40.0)
         self.assertEqual(payload["empirical_quality"]["overall_score"], 91.5)
+        self.assertEqual(payload["quality_profile_version"], "2026.09.1")
+        self.assertEqual(payload["quality_profile_checksum"], "b" * 64)
+        statement = cursor.execute.call_args.args[0]
+        self.assertIn("r.quality_profile_version", statement)
+        self.assertIn("r.quality_profile_checksum", statement)
         self.assertIn("JOIN assessment", cursor.execute.call_args.args[0])
 
     def test_settings_assessment_detail_rebuilds_persisted_recommendation(self):
@@ -697,6 +783,8 @@ class AudioPipelineTests(unittest.TestCase):
             "analysis_purpose": "settings_suggestion",
             "duration_seconds": 2,
             "created_at": datetime(2026, 9, 2, tzinfo=timezone.utc),
+            "quality_profile_version": "2026.09.1",
+            "quality_profile_checksum": "b" * 64,
             **_stored_settings_columns(),
         }
 
@@ -711,10 +799,18 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertEqual(recommendation["id"], 41)
         self.assertTrue(recommendation["persisted"])
         self.assertEqual(recommendation["recommended"]["bass"], 5.5)
+        self.assertEqual(
+            recommendation["profile_checksum"],
+            load_genre_profiles().artifact_checksum,
+        )
+        self.assertEqual(response.get_json()["quality_profile_version"], "2026.09.1")
+        self.assertEqual(response.get_json()["quality_profile_checksum"], "b" * 64)
         self.assertNotIn("settings_current_positions", response.get_json())
         statement = cursor.execute.call_args.args[0]
         self.assertIn("LEFT JOIN settings_recommendation", statement)
         self.assertIn("sr.user_id = a.user_id", statement)
+        self.assertIn("r.quality_profile_version", statement)
+        self.assertIn("r.quality_profile_checksum", statement)
 
     def test_visualization_is_served_from_owned_assessment_path(self):
         temporary = tempfile.TemporaryDirectory()

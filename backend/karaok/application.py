@@ -117,6 +117,7 @@ SETTINGS_RECOMMENDATION_SELECT_COLUMNS = """
     sr.overall_confidence AS settings_overall_confidence,
     sr.algorithm_version AS settings_algorithm_version,
     sr.genre_profile_version AS settings_genre_profile_version,
+    sr.genre_profile_checksum AS settings_genre_profile_checksum,
     sr.recommendation_status AS settings_recommendation_status,
     sr.created_at AS settings_created_at,
     sr.applied_at AS settings_applied_at,
@@ -580,6 +581,8 @@ def _score_analyzer_output(analysis: dict[str, Any]) -> dict[str, Any]:
         cohort.get("selected_recording_count") if isinstance(cohort, dict) else None
     )
     empirical["algorithm_version"] = thresholds.get("algorithm_version")
+    empirical["quality_profile_version"] = thresholds["quality_profile_version"]
+    empirical["quality_profile_checksum"] = thresholds["artifact_checksum"]
     source = thresholds.get("source")
     metrics = thresholds.get("metrics")
     empirical["reference"] = {
@@ -741,7 +744,9 @@ def persist_audio_analysis(
         ensure_ascii=False,
         allow_nan=False,
     )
-    algorithm_version = empirical.get("algorithm_version")
+    algorithm_version = str(empirical["algorithm_version"])
+    quality_profile_version = str(empirical["quality_profile_version"])
+    quality_profile_checksum = str(empirical["quality_profile_checksum"])
     reference_recording_count = empirical.get("reference_recording_count")
     visualizations = dump.get("visualizations")
     if not isinstance(visualizations, dict):
@@ -756,33 +761,18 @@ def persist_audio_analysis(
     recommendation_id = None
     recommendation_response = None
     try:
-        preset = None
-        if recommendation is None:
-            cursor.execute(
-                """SELECT gp.preset_id
-                   FROM genre_preset gp
-                   JOIN audio_upload au
-                     ON au.upload_id = %s
-                    AND au.genre_name IS NOT NULL
-                    AND LOWER(gp.genre_name) = LOWER(au.genre_name)
-                   LIMIT 1""",
-                (upload_id,),
-            )
-            preset = cursor.fetchone()
         cursor.execute(
             """INSERT INTO audio_analysis_result
-               (assessment_id, threshold_id, preset_id, quality_score,
-                noise_level, distortion_level, bass, treble, loudness,
-                sharpness, flatness, empirical_status,
+               (assessment_id, quality_score, noise_level, distortion_level,
+                bass, treble, loudness, sharpness, flatness, empirical_status,
                 worst_feature_status, worst_features, empirical_details,
-                scoring_algorithm_version, reference_recording_count,
+                scoring_algorithm_version, quality_profile_version,
+                quality_profile_checksum, reference_recording_count,
                 waveform_path, spectrogram_path)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                       %s, %s, %s, %s, %s, %s, %s, %s)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                       %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (
                 assessment_id,
-                None,
-                preset[0] if preset else None,
                 quality_score,
                 noise_level,
                 distortion_level,
@@ -796,6 +786,8 @@ def persist_audio_analysis(
                 worst_features_json,
                 empirical_details_json,
                 algorithm_version,
+                quality_profile_version,
+                quality_profile_checksum,
                 reference_recording_count,
                 waveform_path,
                 spectrogram_path,
@@ -815,6 +807,8 @@ def persist_audio_analysis(
                          ON child.parent_recommendation_id = sr.recommendation_id
                        WHERE sr.recommendation_id = %s AND sr.user_id = %s
                          AND sr.amplifier_profile_id = %s
+                         AND sr.genre_profile_version = %s
+                         AND sr.genre_profile_checksum = %s
                          AND sr.recommendation_status = 'applied'
                          AND child.recommendation_id IS NULL
                        FOR UPDATE""",
@@ -822,11 +816,14 @@ def persist_audio_analysis(
                         context.verification_of,
                         context.user_id,
                         context.amplifier_profile_id,
+                        recommendation.profile_version,
+                        recommendation.profile_checksum,
                     ),
                 )
                 if cursor.fetchone() is None:
                     raise ValueError(
-                        "verification_of is no longer eligible for verification"
+                        "verification_of is no longer eligible for verification "
+                        "with this profile version and checksum"
                     )
 
             recommendation_data = recommendation.to_dict()
@@ -840,9 +837,10 @@ def persist_audio_analysis(
                     parent_recommendation_id, genre, current_positions,
                     recommended_positions, adjustments, original_score,
                     verification_score, overall_confidence, algorithm_version,
-                    genre_profile_version, recommendation_status)
+                    genre_profile_version, genre_profile_checksum,
+                    recommendation_status)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                           %s, %s, %s, %s)""",
+                           %s, %s, %s, %s, %s)""",
                 (
                     context.user_id,
                     assessment_id,
@@ -872,6 +870,7 @@ def persist_audio_analysis(
                     recommendation.overall_confidence,
                     recommendation.algorithm_version,
                     recommendation.profile_version,
+                    recommendation.profile_checksum,
                     recommendation.status,
                 ),
             )
@@ -1895,7 +1894,8 @@ def get_audio_tests():
         f"""SELECT a.assessment_id AS id, a.test_name,
                   r.quality_score AS score, r.noise_level,
                   r.distortion_level, r.bass, r.treble, r.loudness,
-                  r.sharpness, r.flatness, a.result_status AS status,
+                  r.sharpness, r.flatness, r.quality_profile_version,
+                  r.quality_profile_checksum, a.result_status AS status,
                   a.assessment_status, a.analysis_purpose, a.duration_seconds,
                   a.assessment_date AS created_at,
                   {SETTINGS_RECOMMENDATION_SELECT_COLUMNS}
@@ -1928,7 +1928,8 @@ def get_audio_test(test_id: int):
         f"""SELECT a.assessment_id AS id, a.test_name,
                   r.quality_score AS score, r.noise_level,
                   r.distortion_level, r.bass, r.treble, r.loudness,
-                  r.sharpness, r.flatness, a.result_status AS status,
+                  r.sharpness, r.flatness, r.quality_profile_version,
+                  r.quality_profile_checksum, a.result_status AS status,
                   a.assessment_status, a.analysis_purpose, a.duration_seconds,
                   a.assessment_date AS created_at,
                   {SETTINGS_RECOMMENDATION_SELECT_COLUMNS}
@@ -1965,6 +1966,7 @@ def create_audio_test():
         raise ValueError("analysis_purpose is invalid")
     if status not in VALID_STATUSES:
         raise ValueError("status is invalid")
+    thresholds = load_thresholds()
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute(
@@ -1977,9 +1979,19 @@ def create_audio_test():
     test_id = cursor.lastrowid
     cursor.execute(
         """INSERT INTO audio_analysis_result
-           (assessment_id, threshold_id, preset_id, quality_score, noise_level, distortion_level)
-           VALUES (%s, %s, %s, %s, %s, %s)""",
-        (test_id, None, None, score, noise, distortion),
+           (assessment_id, quality_score, noise_level, distortion_level,
+            scoring_algorithm_version, quality_profile_version,
+            quality_profile_checksum)
+           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+        (
+            test_id,
+            score,
+            noise,
+            distortion,
+            thresholds["algorithm_version"],
+            thresholds["quality_profile_version"],
+            thresholds["artifact_checksum"],
+        ),
     )
     conn.commit()
     cursor.close()
@@ -2027,9 +2039,12 @@ def get_audio_uploads():
                   au.genre_name AS genre, au.score, au.status,
                   au.size_bytes, au.mime_type, a.duration_seconds,
                   a.analysis_purpose, au.created_at,
+                  r.quality_profile_version, r.quality_profile_checksum,
                   {SETTINGS_RECOMMENDATION_SELECT_COLUMNS}
            FROM audio_upload au
            JOIN assessment a ON a.assessment_id = au.assessment_id
+           LEFT JOIN audio_analysis_result r
+             ON r.assessment_id = a.assessment_id
            LEFT JOIN settings_recommendation sr
              ON sr.assessment_id = a.assessment_id AND sr.user_id = a.user_id
            LEFT JOIN amplifier_profile ap
@@ -2488,7 +2503,8 @@ def get_audio_analysis_dump(upload_id: int):
                   r.bass, r.treble, r.loudness, r.sharpness, r.flatness,
                   r.empirical_status, r.worst_feature_status,
                   r.worst_features, r.empirical_details,
-                  r.scoring_algorithm_version, r.reference_recording_count,
+                  r.scoring_algorithm_version, r.quality_profile_version,
+                  r.quality_profile_checksum, r.reference_recording_count,
                   {SETTINGS_RECOMMENDATION_SELECT_COLUMNS}
            FROM audio_upload au
            JOIN assessment a ON a.assessment_id = au.assessment_id
@@ -2551,6 +2567,8 @@ def get_audio_analysis_dump(upload_id: int):
             upload_record["empirical_details"], {}
         ),
         "scoring_algorithm_version": upload_record["scoring_algorithm_version"],
+        "quality_profile_version": upload_record["quality_profile_version"],
+        "quality_profile_checksum": upload_record["quality_profile_checksum"],
         "reference_recording_count": upload_record["reference_recording_count"],
     }
     if upload_record["analysis_purpose"] == "settings_suggestion":

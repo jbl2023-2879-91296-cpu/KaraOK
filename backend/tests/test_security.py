@@ -328,6 +328,49 @@ class SecurityValidationTests(unittest.TestCase):
         self.assertIn("ON DELETE CASCADE", upload_table)
         self.assertNotIn("CREATE TABLE IF NOT EXISTS password_reset_token", schema)
 
+    def test_schema_retires_lookup_tables_and_requires_artifact_provenance(self):
+        root = Path(__file__).resolve().parents[2]
+        schema = (root / "database" / "schema.sql").read_text(encoding="utf-8")
+
+        for retired_table in (
+            "genre_preset",
+            "audio_quality_threshold",
+            "user_genre_setting",
+        ):
+            self.assertNotIn(
+                f"CREATE TABLE IF NOT EXISTS {retired_table}",
+                schema,
+            )
+        self.assertEqual(schema.count("CREATE TABLE IF NOT EXISTS "), 11)
+
+        analysis_table = schema.split(
+            "CREATE TABLE IF NOT EXISTS audio_analysis_result", 1
+        )[1].split("CREATE TABLE IF NOT EXISTS amplifier_profile", 1)[0]
+        self.assertNotIn("preset_id", analysis_table)
+        self.assertNotIn("threshold_id", analysis_table)
+        self.assertIn(
+            "quality_profile_version VARCHAR(30) NOT NULL",
+            analysis_table,
+        )
+        self.assertIn(
+            "quality_profile_checksum CHAR(64) NOT NULL",
+            analysis_table,
+        )
+
+        recommendation_table = schema.split(
+            "CREATE TABLE IF NOT EXISTS settings_recommendation", 1
+        )[1].split("CREATE TABLE IF NOT EXISTS refresh_token", 1)[0]
+        self.assertIn(
+            "genre_profile_checksum CHAR(64) NOT NULL",
+            recommendation_table,
+        )
+
+        application_source = (
+            Path(__file__).resolve().parents[1] / "karaok" / "application.py"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("FROM genre_preset", application_source)
+        self.assertNotIn("threshold_id, preset_id", application_source)
+
     def test_schema_persists_owned_amplifier_recommendations(self):
         root = Path(__file__).resolve().parents[2]
         schema_path = root / "database" / "schema.sql"
@@ -414,6 +457,23 @@ class SecurityValidationTests(unittest.TestCase):
             "settings_recommendation(recommendation_id) ON DELETE SET NULL",
             normalized,
         )
+        for constraint in (
+            "CONSTRAINT fk_assessment_user FOREIGN KEY (user_id) "
+            "REFERENCES user(user_id) ON DELETE CASCADE",
+            "CONSTRAINT fk_amplifier_profile_user FOREIGN KEY (user_id) "
+            "REFERENCES user(user_id) ON DELETE CASCADE",
+            "CONSTRAINT fk_result_assessment FOREIGN KEY (assessment_id) "
+            "REFERENCES assessment(assessment_id) ON DELETE CASCADE",
+            "CONSTRAINT fk_audio_upload_assessment FOREIGN KEY (assessment_id) "
+            "REFERENCES assessment(assessment_id) ON DELETE CASCADE",
+            "CONSTRAINT fk_settings_recommendation_assessment "
+            "FOREIGN KEY (assessment_id) REFERENCES assessment(assessment_id) "
+            "ON DELETE CASCADE",
+            "CONSTRAINT fk_settings_recommendation_amplifier "
+            "FOREIGN KEY (amplifier_profile_id) REFERENCES "
+            "amplifier_profile(amplifier_profile_id) ON DELETE CASCADE",
+        ):
+            self.assertIn(constraint, normalized)
         self.assertIn(
             "recommendation_status "
             "ENUM('generated','applied','verified','reverted','unavailable') "

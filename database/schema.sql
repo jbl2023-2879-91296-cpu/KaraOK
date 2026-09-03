@@ -53,38 +53,6 @@ CREATE TABLE IF NOT EXISTS user (
 );
 
 -- ==========================================
--- GENRE PRESET
--- Stores the recommended sound settings
--- ==========================================
-
-CREATE TABLE IF NOT EXISTS genre_preset (
-    preset_id INT AUTO_INCREMENT PRIMARY KEY,
-
-    genre_name VARCHAR(50) NOT NULL UNIQUE,
-
-    bass FLOAT NOT NULL,
-    treble FLOAT NOT NULL,
-    loudness FLOAT NOT NULL,
-    sharpness FLOAT NOT NULL,
-    flatness FLOAT NOT NULL
-);
-
--- ==========================================
--- AUDIO QUALITY THRESHOLD
--- Stores empirical threshold values
--- ==========================================
-
-CREATE TABLE IF NOT EXISTS audio_quality_threshold (
-    threshold_id INT AUTO_INCREMENT PRIMARY KEY,
-
-    threshold_name VARCHAR(100) NOT NULL,
-
-    max_allowable_noise FLOAT NOT NULL,
-    max_allowable_distortion FLOAT NOT NULL,
-    min_quality_score FLOAT NOT NULL
-);
-
--- ==========================================
 -- ASSESSMENT
 -- One uploaded audio per assessment
 -- ==========================================
@@ -128,10 +96,6 @@ CREATE TABLE IF NOT EXISTS audio_analysis_result (
 
     assessment_id INT NOT NULL UNIQUE,
 
-    threshold_id INT NULL,
-
-    preset_id INT NULL,
-
     quality_score FLOAT,
 
     noise_level FLOAT,
@@ -158,6 +122,10 @@ CREATE TABLE IF NOT EXISTS audio_analysis_result (
 
     scoring_algorithm_version VARCHAR(30),
 
+    quality_profile_version VARCHAR(30) NOT NULL,
+
+    quality_profile_checksum CHAR(64) NOT NULL,
+
     reference_recording_count INT,
 
     waveform_path VARCHAR(255),
@@ -167,15 +135,7 @@ CREATE TABLE IF NOT EXISTS audio_analysis_result (
     CONSTRAINT fk_result_assessment
         FOREIGN KEY (assessment_id)
         REFERENCES assessment(assessment_id)
-        ON DELETE CASCADE,
-
-    CONSTRAINT fk_result_threshold
-        FOREIGN KEY (threshold_id)
-        REFERENCES audio_quality_threshold(threshold_id),
-
-    CONSTRAINT fk_result_preset
-        FOREIGN KEY (preset_id)
-        REFERENCES genre_preset(preset_id)
+        ON DELETE CASCADE
 );
 
 -- ==========================================
@@ -222,6 +182,7 @@ CREATE TABLE IF NOT EXISTS settings_recommendation (
     overall_confidence VARCHAR(20) NOT NULL,
     algorithm_version VARCHAR(30) NOT NULL,
     genre_profile_version VARCHAR(30) NOT NULL,
+    genre_profile_checksum CHAR(64) NOT NULL,
     recommendation_status
         ENUM('generated','applied','verified','reverted','unavailable')
         NOT NULL DEFAULT 'generated',
@@ -295,30 +256,6 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 
 -- ==========================================
--- USER GENRE SETTINGS
--- Preserves genre_preset as the shared preset foundation while allowing
--- user-specific saved settings.
--- ==========================================
-
-CREATE TABLE IF NOT EXISTS user_genre_setting (
-    setting_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    preset_id INT NULL,
-    genre_name VARCHAR(50) NOT NULL,
-    volume FLOAT NOT NULL,
-    bass FLOAT NOT NULL,
-    treble FLOAT NOT NULL,
-    flatness FLOAT NOT NULL,
-    sharpness FLOAT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT fk_user_genre_setting_user
-        FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE CASCADE,
-    CONSTRAINT fk_user_genre_setting_preset
-        FOREIGN KEY (preset_id) REFERENCES genre_preset(preset_id) ON DELETE SET NULL
-);
-
--- ==========================================
 -- AUDIO UPLOAD RECORD
 -- ==========================================
 
@@ -376,26 +313,4 @@ CREATE TABLE IF NOT EXISTS registration_otp (
     UNIQUE KEY uq_registration_otp_user (user_id),
     CONSTRAINT fk_registration_otp_user
         FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE CASCADE
-);
-
--- ==========================================
--- SEED DATA
--- Safe to run repeatedly after the tables exist.
--- ==========================================
-
-INSERT IGNORE INTO genre_preset
-    (genre_name, bass, treble, loudness, sharpness, flatness)
-VALUES
-    ('Ballad', 55, 50, 60, 45, 50),
-    ('Pop', 60, 60, 65, 55, 50),
-    ('Rock', 70, 65, 70, 60, 45),
-    ('Acoustic', 45, 65, 55, 60, 65);
-
-INSERT INTO audio_quality_threshold
-    (threshold_name, max_allowable_noise, max_allowable_distortion, min_quality_score)
-SELECT 'Default', 10, 5, 60
-WHERE NOT EXISTS (
-    SELECT 1
-      FROM audio_quality_threshold
-     WHERE threshold_name = 'Default'
 );
