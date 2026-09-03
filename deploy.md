@@ -166,12 +166,34 @@ Expected output:
 Librosa and Numba cache: OK
 ```
 
-## 7. Run the correct live-server test suite
+## 7. Run the complete release test suites
 
-The live server intentionally does not contain the private
-`results/results.csv` threshold-derivation dataset. Run the 58 deployment tests
-below. The complete 66-test suite, including the eight dataset derivation
-tests, is run on the development computer.
+First verify the exact release commit from a fresh clone on the development
+computer. From that clone's repository root, run the repository release runner:
+
+```powershell
+./tools/run-affected-tests.ps1 -All
+```
+
+`-All` must select and pass `backend-full`, `flutter-full`,
+`flutter-analyze`, and `powershell-tools`. Do not substitute a hand-maintained
+module list. The backend derivation fixture is repository-owned at
+`backend/tests/fixtures/good_audio_results.csv`, so a clean clone has everything
+needed for full discovery.
+
+The full backend discovery includes the principal calibration suites:
+
+- `tests.test_audio_pipeline`
+- `tests.test_genre_profile_derivation`
+- `tests.test_genre_profiles`
+- `tests.test_settings_recommendation_api`
+- `tests.test_settings_recommendation_engine`
+- `tests.test_settings_trial_validation`
+- `tests.test_control_priors`
+- `tests.test_good_audio_thresholds`
+
+After pulling the same verified commit on the live server, run full backend
+discovery there as the service account:
 
 ```bash
 cd /opt/karaok/app/backend
@@ -183,23 +205,11 @@ sudo -u karaok env \
   NUMBA_CACHE_DIR="$CACHE_ROOT/numba" \
   MPLCONFIGDIR="$CACHE_ROOT/matplotlib" \
   XDG_CACHE_HOME="$CACHE_ROOT/xdg" \
-  ./.venv/bin/python -m unittest \
-  tests.test_admin_data_api \
-  tests.test_audio_analyzer_safety \
-  tests.test_audio_pipeline \
-  tests.test_audio_validation \
-  tests.test_modular_structure \
-  tests.test_security \
-  -v
+  ./.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 ```
 
-Expected final result:
-
-```text
-Ran 58 tests
-
-OK
-```
+The command must exit with status zero and end in `OK`. The reported test count
+is intentionally not fixed because full discovery grows with the release.
 
 Do not rebuild the database or restart the API if any test fails.
 
@@ -497,13 +507,15 @@ restricted to the `karaok` service account.
 Resolution: run backend imports and tests through `sudo -u karaok`. Do not make
 `.env` world-readable and do not copy its contents into the shell history.
 
-### `results/results.csv` does not exist
+### Calibration fixture is missing
 
-Cause: the private threshold-derivation dataset is intentionally absent from
-the live Git checkout.
+Cause: the release checkout is incomplete or is not the clean commit that
+passed section 7. Full discovery requires the tracked fixture
+`backend/tests/fixtures/good_audio_results.csv`.
 
-Resolution: run the 58-test deployment suite in section 7. Do not upload the
-private dataset merely to run production deployment tests.
+Resolution: stop the deployment and restore the exact reviewed release commit
+from source control. Do not bypass calibration suites or copy unreviewed data
+onto the server.
 
 ### `cannot cache function ... no locator available`
 

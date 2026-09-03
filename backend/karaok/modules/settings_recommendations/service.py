@@ -56,6 +56,14 @@ GUEST_TOKEN_CLAIMS = {
     "iat",
     "exp",
 }
+GENRE_ARTIFACT_UNAVAILABLE_MESSAGE = (
+    "Genre calibration data is temporarily unavailable. Please try again later; "
+    "your audio quality result is still available."
+)
+MISSING_GENRE_PROFILE_MESSAGE = (
+    "No supported genre calibration profile is available. Choose a supported "
+    "genre and record again."
+)
 
 
 class ConflictError(RuntimeError):
@@ -178,6 +186,25 @@ def _same_positions(
     )
 
 
+def _stored_scale(row: Mapping[str, Any], *, prefix: str = "") -> AmplifierScale:
+    scale = AmplifierScale(
+        float(row[f"{prefix}scale_min"]),
+        float(row[f"{prefix}scale_max"]),
+        float(row[f"{prefix}scale_step"]),
+    )
+    if scale.step > scale.maximum - scale.minimum:
+        raise ValueError("Stored amplifier profile scale_step exceeds its range")
+    return scale
+
+
+def validate_profile_scale_snapshot(
+    profile: Mapping[str, Any],
+    snapshot: AmplifierScale,
+) -> None:
+    if not _same_scale(_stored_scale(profile), snapshot):
+        raise ValueError("amplifier profile scale changed before recommendation was saved")
+
+
 def validate_authenticated_verification_binding(
     parent: Mapping[str, Any],
     profile: Mapping[str, Any],
@@ -185,6 +212,7 @@ def validate_authenticated_verification_binding(
     genre: str,
     current: KnobSettings,
     scale: AmplifierScale,
+    require_current_artifact: bool = True,
 ) -> float:
     """Bind an authenticated verification to the still-applied parent state."""
     if parent["recommendation_status"] != "applied":
@@ -194,27 +222,25 @@ def validate_authenticated_verification_binding(
     if normalize_genre(parent["genre"]) != genre:
         raise ValueError("genre does not match verification_of")
 
-    artifact = load_genre_profiles()
-    if (
-        parent.get("genre_profile_version") != artifact.profile_version
-        or parent.get("genre_profile_checksum") != artifact.artifact_checksum
-    ):
-        raise ValueError(
-            "verification_of profile version or profile checksum does not match "
-            "the validated artifact"
-        )
+    if require_current_artifact:
+        artifact = load_genre_profiles()
+        if (
+            parent.get("genre_profile_version") != artifact.profile_version
+            or parent.get("genre_profile_checksum") != artifact.artifact_checksum
+        ):
+            raise ValueError(
+                "verification_of profile version or profile checksum does not match "
+                "the validated artifact"
+            )
     if parent.get("algorithm_version") != ALGORITHM_VERSION:
         raise ValueError("verification_of algorithm version is unsupported")
 
-    stored_scale = AmplifierScale(
-        float(profile["scale_min"]),
-        float(profile["scale_max"]),
-        float(profile["scale_step"]),
-    )
-    if stored_scale.step > stored_scale.maximum - stored_scale.minimum:
-        raise ValueError("Stored amplifier profile scale_step exceeds its range")
-    if not _same_scale(scale, stored_scale):
+    parent_scale = _stored_scale(parent)
+    profile_scale = _stored_scale(profile)
+    if not _same_scale(parent_scale, profile_scale):
         raise ValueError("amplifier profile scale changed before verification")
+    if not _same_scale(scale, parent_scale):
+        raise ValueError("amplifier scale does not match verification_of snapshot")
 
     recommended_data = _decoded_json(
         parent.get("recommended_positions"),
@@ -224,10 +250,10 @@ def validate_authenticated_verification_binding(
         raise ValueError("verification_of recommended_positions are invalid")
     recommended = _knob_settings(
         recommended_data,
-        stored_scale,
+        parent_scale,
         "verification_of.recommended_positions",
     )
-    if not _same_positions(current, recommended, stored_scale):
+    if not _same_positions(current, recommended, parent_scale):
         raise ValueError(
             "current_settings must match verification_of recommended_positions"
         )
@@ -243,10 +269,10 @@ def validate_authenticated_verification_binding(
         )
     last_positions = _knob_settings(
         last_positions_data,
-        stored_scale,
+        parent_scale,
         "amplifier_profile.last_positions",
     )
-    if not _same_positions(last_positions, recommended, stored_scale):
+    if not _same_positions(last_positions, recommended, parent_scale):
         raise ValueError(
             "amplifier profile last_positions must match verification_of "
             "recommended_positions"
@@ -443,6 +469,7 @@ def parse_suggestion_form(
                           sr.recommended_positions, sr.algorithm_version,
                           sr.genre_profile_version,
                           sr.genre_profile_checksum,
+                          sr.scale_min, sr.scale_max, sr.scale_step,
                           sr.recommendation_status,
                           child.recommendation_id AS child_recommendation_id
                    FROM settings_recommendation sr
@@ -479,8 +506,10 @@ def parse_suggestion_form(
 
 def _unavailable_recommendation(
     context: SuggestionContext,
-    profile_version: str,
-    profile_checksum: str,
+    profile_version: str | None,
+    profile_checksum: str | None,
+    *,
+    message: str,
 ) -> SettingsRecommendation:
     adjustments = {
         name: KnobAdjustment(
@@ -503,6 +532,7 @@ def _unavailable_recommendation(
         current=context.current,
         adjustments=adjustments,
         overall_confidence="unavailable",
+        message=message,
     )
 
 
@@ -516,7 +546,15 @@ def build_recommendation(
         raise ValueError("context must be a SuggestionContext")
     if verification != context.verification:
         raise ValueError("verification flag does not match suggestion context")
-    artifact = load_genre_profiles()
+    try:
+        artifact = load_genre_profiles()
+    except (OSError, TypeError, ValueError):
+        return _unavailable_recommendation(
+            context,
+            None,
+            None,
+            message=GENRE_ARTIFACT_UNAVAILABLE_MESSAGE,
+        )
     try:
         profile = artifact.profile_for(context.genre)
     except ValueError:
@@ -524,6 +562,7 @@ def build_recommendation(
             context,
             artifact.profile_version,
             artifact.artifact_checksum,
+            message=MISSING_GENRE_PROFILE_MESSAGE,
         )
     safety_data = summary.get("safety_signals", {})
     if not isinstance(safety_data, Mapping):
@@ -712,6 +751,14 @@ def _recommendation_response(row: Mapping[str, Any]) -> dict[str, Any]:
         if row.get("verification_score") is not None
         else None
     )
+    status = str(row["recommendation_status"])
+    profile_version = row.get("genre_profile_version")
+    profile_checksum = row.get("genre_profile_checksum")
+    if status != "unavailable" and (
+        not isinstance(profile_version, str) or not isinstance(profile_checksum, str)
+    ):
+        raise ValueError("Stored available recommendation is missing profile provenance")
+    message = row.get("unavailable_message")
     response = {
         "id": int(row["recommendation_id"]),
         "persisted": True,
@@ -737,13 +784,15 @@ def _recommendation_response(row: Mapping[str, Any]) -> dict[str, Any]:
         "verification_score": verification_score,
         "overall_confidence": str(row["overall_confidence"]),
         "algorithm_version": str(row["algorithm_version"]),
-        "profile_version": str(row["genre_profile_version"]),
-        "profile_checksum": str(row["genre_profile_checksum"]),
-        "status": str(row["recommendation_status"]),
+        "profile_version": str(profile_version) if profile_version is not None else None,
+        "profile_checksum": str(profile_checksum) if profile_checksum is not None else None,
+        "status": status,
         "created_at": _json_safe(row.get("created_at")),
         "applied_at": _json_safe(row.get("applied_at")),
         "verification_token": None,
     }
+    if message is not None:
+        response["message"] = str(message)
     response.update(_score_comparison(original_score, verification_score))
     return response
 
@@ -766,6 +815,7 @@ def stored_recommendation_payload(row: Mapping[str, Any]) -> dict[str, Any] | No
         "algorithm_version",
         "genre_profile_version",
         "genre_profile_checksum",
+        "unavailable_message",
         "recommendation_status",
         "created_at",
         "applied_at",
@@ -981,9 +1031,13 @@ def _recommendation_select(*, lock: bool) -> str:
                   sr.adjustments, sr.original_score, sr.verification_score,
                   sr.overall_confidence, sr.algorithm_version,
                   sr.genre_profile_version, sr.genre_profile_checksum,
+                  sr.unavailable_message,
                   sr.recommendation_status,
                   sr.created_at, sr.applied_at,
-                  ap.scale_min, ap.scale_max, ap.scale_step
+                  sr.scale_min, sr.scale_max, sr.scale_step,
+                  ap.scale_min AS profile_scale_min,
+                  ap.scale_max AS profile_scale_max,
+                  ap.scale_step AS profile_scale_step
            FROM settings_recommendation sr
            JOIN amplifier_profile ap
              ON ap.amplifier_profile_id = sr.amplifier_profile_id
@@ -1034,16 +1088,25 @@ def mark_recommendation_applied(
             rolled_back = True
             raise ConflictError("Only a generated recommendation can be applied")
 
+        snapshot_scale = _stored_scale(row)
+        profile_scale = _stored_scale(row, prefix="profile_")
+        if not _same_scale(snapshot_scale, profile_scale):
+            connection.rollback()
+            rolled_back = True
+            raise ConflictError(
+                "Amplifier profile scale changed after this recommendation was generated"
+            )
+
         recommended = _decoded_json(
             row["recommended_positions"], "recommended_positions"
         )
-        positions = _positions(
+        parsed_positions = _knob_settings(
             recommended,
-            minimum=float(row["scale_min"]),
-            maximum=float(row["scale_max"]),
+            snapshot_scale,
+            "recommended_positions",
         )
         encoded_positions = json.dumps(
-            positions,
+            parsed_positions.to_dict(),
             sort_keys=True,
             separators=(",", ":"),
         )

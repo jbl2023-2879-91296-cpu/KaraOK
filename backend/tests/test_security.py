@@ -363,7 +363,7 @@ class SecurityValidationTests(unittest.TestCase):
             "CREATE TABLE IF NOT EXISTS settings_recommendation", 1
         )[1].split("CREATE TABLE IF NOT EXISTS refresh_token", 1)[0]
         self.assertIn(
-            "genre_profile_checksum CHAR(64) NOT NULL",
+            "genre_profile_checksum CHAR(64) NULL",
             recommendation_table,
         )
 
@@ -417,11 +417,48 @@ class SecurityValidationTests(unittest.TestCase):
         self.assertIsNotNone(documented_retired_rows)
         self.assertEqual(int(documented_retired_rows.group(1)), 0)
 
+    def test_deploy_release_gate_matches_full_discovery_runner(self):
+        root = Path(__file__).resolve().parents[2]
+        deploy = (root / "deploy.md").read_text(encoding="utf-8")
+        runner = (root / "tools" / "run-affected-tests.ps1").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertRegex(
+            deploy,
+            r"tools/run-affected-tests\.ps1(?:'|\")?\s+-All",
+        )
+        discovery = "-m unittest discover -s tests -p 'test_*.py'"
+        self.assertIn(discovery, " ".join(deploy.split()))
+        compact_runner = " ".join(runner.replace("`", "").split())
+        self.assertIn("-m unittest discover -s tests -p 'test_*.py'", compact_runner)
+        self.assertIn("'backend-full'", runner)
+
+        principal_modules = {
+            "tests.test_audio_pipeline",
+            "tests.test_genre_profile_derivation",
+            "tests.test_genre_profiles",
+            "tests.test_settings_recommendation_api",
+            "tests.test_settings_recommendation_engine",
+            "tests.test_settings_trial_validation",
+            "tests.test_control_priors",
+            "tests.test_good_audio_thresholds",
+        }
+        documented_modules = set(re.findall(r"`(tests\.test_[a-z_]+)`", deploy))
+        runner_modules = set(re.findall(r"'(tests\.test_[a-z_]+)'", runner))
+        self.assertTrue(principal_modules.issubset(documented_modules))
+        self.assertTrue(principal_modules.issubset(runner_modules))
+        self.assertIn("backend/tests/fixtures/good_audio_results.csv", deploy)
+
     def test_schema_persists_owned_amplifier_recommendations(self):
         root = Path(__file__).resolve().parents[2]
         schema_path = root / "database" / "schema.sql"
         schema = schema_path.read_text(encoding="utf-8")
         normalized = " ".join(schema.split())
+        recommendation_schema = normalized.split(
+            "CREATE TABLE IF NOT EXISTS settings_recommendation",
+            1,
+        )[1].split("CREATE TABLE IF NOT EXISTS refresh_token", 1)[0]
 
         self.assertIn("CREATE TABLE IF NOT EXISTS amplifier_profile", schema)
         self.assertIn("CREATE TABLE IF NOT EXISTS settings_recommendation", schema)
@@ -455,10 +492,31 @@ class SecurityValidationTests(unittest.TestCase):
             "verification_score FLOAT NULL",
             "overall_confidence VARCHAR(20) NOT NULL",
             "algorithm_version VARCHAR(30) NOT NULL",
-            "genre_profile_version VARCHAR(30) NOT NULL",
+            "genre_profile_version VARCHAR(30) NULL",
+            "genre_profile_checksum CHAR(64) NULL",
+            "unavailable_message VARCHAR(255) NULL",
             "applied_at TIMESTAMP NULL",
         ):
             self.assertIn(column, normalized)
+        for snapshot_column in (
+            "scale_min DECIMAL(10,3) NOT NULL",
+            "scale_max DECIMAL(10,3) NOT NULL",
+            "scale_step DECIMAL(10,3) NOT NULL",
+        ):
+            self.assertIn(snapshot_column, recommendation_schema)
+        self.assertIn(
+            "CONSTRAINT chk_settings_recommendation_scale CHECK "
+            "(scale_min < scale_max AND scale_step > 0)",
+            recommendation_schema,
+        )
+        self.assertIn(
+            "CONSTRAINT chk_settings_recommendation_profile_pair CHECK",
+            recommendation_schema,
+        )
+        self.assertIn(
+            "CONSTRAINT chk_settings_recommendation_available_profile CHECK",
+            recommendation_schema,
+        )
         self.assertIn(
             "CONSTRAINT chk_amplifier_profile_scale CHECK "
             "(scale_min < scale_max AND scale_step > 0)",

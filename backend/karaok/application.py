@@ -128,12 +128,13 @@ SETTINGS_RECOMMENDATION_SELECT_COLUMNS = """
     sr.algorithm_version AS settings_algorithm_version,
     sr.genre_profile_version AS settings_genre_profile_version,
     sr.genre_profile_checksum AS settings_genre_profile_checksum,
+    sr.unavailable_message AS settings_unavailable_message,
     sr.recommendation_status AS settings_recommendation_status,
     sr.created_at AS settings_created_at,
     sr.applied_at AS settings_applied_at,
-    ap.scale_min AS settings_scale_min,
-    ap.scale_max AS settings_scale_max,
-    ap.scale_step AS settings_scale_step
+    sr.scale_min AS settings_scale_min,
+    sr.scale_max AS settings_scale_max,
+    sr.scale_step AS settings_scale_step
 """.strip()
 
 
@@ -948,6 +949,28 @@ def persist_audio_analysis(
     recommendation_id = None
     recommendation_response = None
     try:
+        if recommendation is not None and not recommendation_context.verification:
+            context = recommendation_context
+            if context.guest or context.user_id is None:
+                raise ValueError("Authenticated persistence requires an owned context")
+            if context.amplifier_profile_id is None:
+                raise ValueError(
+                    "Authenticated persistence requires an amplifier profile"
+                )
+            cursor.execute(
+                """SELECT scale_min, scale_max, scale_step
+                   FROM amplifier_profile
+                   WHERE amplifier_profile_id = %s AND user_id = %s
+                   FOR UPDATE""",
+                (context.amplifier_profile_id, context.user_id),
+            )
+            locked_profile = cursor.fetchone()
+            if locked_profile is None:
+                raise ValueError("amplifier profile is no longer owned by this user")
+            settings_recommendation_service.validate_profile_scale_snapshot(
+                locked_profile,
+                context.scale,
+            )
         if recommendation is not None and recommendation_context.verification:
             context = recommendation_context
             if context.guest or context.user_id is None:
@@ -960,10 +983,13 @@ def persist_audio_analysis(
                 """SELECT sr.recommendation_id, sr.genre, sr.original_score,
                           sr.recommended_positions, sr.algorithm_version,
                           sr.genre_profile_version, sr.genre_profile_checksum,
+                          sr.scale_min, sr.scale_max, sr.scale_step,
                           sr.recommendation_status,
                           child.recommendation_id AS child_recommendation_id,
                           ap.last_positions AS amplifier_last_positions,
-                          ap.scale_min, ap.scale_max, ap.scale_step
+                          ap.scale_min AS profile_scale_min,
+                          ap.scale_max AS profile_scale_max,
+                          ap.scale_step AS profile_scale_step
                    FROM settings_recommendation sr
                    JOIN amplifier_profile ap
                      ON ap.amplifier_profile_id = sr.amplifier_profile_id
@@ -972,34 +998,40 @@ def persist_audio_analysis(
                      ON child.parent_recommendation_id = sr.recommendation_id
                    WHERE sr.recommendation_id = %s AND sr.user_id = %s
                      AND sr.amplifier_profile_id = %s
-                     AND sr.genre_profile_version = %s
-                     AND sr.genre_profile_checksum = %s
                    FOR UPDATE""",
                 (
                     context.verification_of,
                     context.user_id,
                     context.amplifier_profile_id,
-                    recommendation.profile_version,
-                    recommendation.profile_checksum,
                 ),
             )
             parent = cursor.fetchone()
             if parent is None:
                 raise ValueError(
                     "verification_of is no longer eligible for verification "
-                    "with this profile version and checksum"
+                    "with this amplifier profile"
+                )
+            if recommendation.status == "generated" and (
+                parent.get("genre_profile_version") != recommendation.profile_version
+                or parent.get("genre_profile_checksum")
+                != recommendation.profile_checksum
+            ):
+                raise ValueError(
+                    "verification_of profile provenance changed before verification "
+                    "was saved"
                 )
             settings_recommendation_service.validate_authenticated_verification_binding(
                 parent,
                 {
                     "last_positions": parent.get("amplifier_last_positions"),
-                    "scale_min": parent["scale_min"],
-                    "scale_max": parent["scale_max"],
-                    "scale_step": parent["scale_step"],
+                    "scale_min": parent["profile_scale_min"],
+                    "scale_max": parent["profile_scale_max"],
+                    "scale_step": parent["profile_scale_step"],
                 },
                 genre=context.genre,
                 current=context.current,
                 scale=context.scale,
+                require_current_artifact=recommendation.profile_version is not None,
             )
 
         cursor.execute(
@@ -1051,10 +1083,12 @@ def persist_audio_analysis(
                     parent_recommendation_id, genre, current_positions,
                     recommended_positions, adjustments, original_score,
                     verification_score, overall_confidence, algorithm_version,
+                    scale_min, scale_max, scale_step,
                     genre_profile_version, genre_profile_checksum,
+                    unavailable_message,
                     recommendation_status)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                           %s, %s, %s, %s, %s)""",
+                           %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (
                     context.user_id,
                     assessment_id,
@@ -1083,8 +1117,12 @@ def persist_audio_analysis(
                     verification_score,
                     recommendation.overall_confidence,
                     recommendation.algorithm_version,
+                    context.scale.minimum,
+                    context.scale.maximum,
+                    context.scale.step,
                     recommendation.profile_version,
                     recommendation.profile_checksum,
+                    recommendation.message,
                     recommendation.status,
                 ),
             )
