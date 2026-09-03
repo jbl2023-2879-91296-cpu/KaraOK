@@ -143,6 +143,9 @@ def recommendation_row(**overrides):
         "overall_confidence": "medium",
         "algorithm_version": "1.0.0",
         "genre_profile_version": "2026.09.1",
+        "genre_profile_checksum": (
+            recommendation_service.load_genre_profiles().artifact_checksum
+        ),
         "recommendation_status": "generated",
         "created_at": datetime(2026, 9, 2, tzinfo=timezone.utc),
         "applied_at": None,
@@ -308,8 +311,45 @@ class SettingsRecommendationApiTests(unittest.TestCase):
                             user_id=7,
                         )
                 parent_query = cursor.execute.call_args_list[1]
+                self.assertIn("sr.genre_profile_version", parent_query.args[0])
+                self.assertIn("sr.genre_profile_checksum", parent_query.args[0])
                 self.assertIn("sr.user_id = %s", parent_query.args[0])
                 self.assertEqual(parent_query.args[1], (41, 7, 12))
+
+    def test_authenticated_verification_rejects_changed_profile_artifact(self):
+        artifact = recommendation_service.load_genre_profiles()
+        form = {
+            "analysis_purpose": "settings_suggestion",
+            "genre": "rock",
+            "amplifier_profile_id": "12",
+            "verification_of": "41",
+            "current_settings": json.dumps(
+                {
+                    "volume": 5.5,
+                    "bass": 5.5,
+                    "treble": 5.5,
+                    "sharpness": 5,
+                    "flatness": 4.5,
+                }
+            ),
+        }
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.side_effect = [
+            profile_row(),
+            recommendation_row(
+                recommendation_status="applied",
+                genre_profile_version=artifact.profile_version,
+                genre_profile_checksum="b" * 64,
+            ),
+        ]
+        with patch.object(api, "get_db", return_value=connection):
+            with self.assertRaisesRegex(ValueError, "profile checksum"):
+                recommendation_service.parse_suggestion_form(
+                    form,
+                    guest=False,
+                    user_id=7,
+                )
 
     def test_suggestion_verification_fields_are_mutually_exclusive(self):
         with self.assertRaisesRegex(ValueError, "mutually exclusive"):
@@ -555,16 +595,24 @@ class SettingsRecommendationApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["recommended"]["bass"], 5.5)
+        self.assertEqual(
+            response.get_json()["profile_checksum"],
+            recommendation_service.load_genre_profiles().artifact_checksum,
+        )
         query = next(
             call
             for call in cursor.execute.call_args_list
             if "FROM settings_recommendation" in call.args[0]
         )
         self.assertIn("user_id = %s", query.args[0])
+        self.assertIn("sr.genre_profile_checksum", query.args[0])
         self.assertEqual(query.args[1], (41, 7, 7))
 
     def test_get_recommendation_matches_shared_cross_layer_fixture(self):
         expected = json.loads(RECOMMENDATION_FIXTURE.read_text(encoding="utf-8"))
+        expected["profile_checksum"] = (
+            recommendation_service.load_genre_profiles().artifact_checksum
+        )
         response, _, _ = self.request_with_database(
             "GET",
             "/api/settings-recommendations/41",

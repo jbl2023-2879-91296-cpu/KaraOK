@@ -13,6 +13,7 @@ os.environ.setdefault("ADMIN_DB_PASSWORD", "test_password")
 
 import app as api
 from karaok.modules.admin_data import service
+from karaok.security import admin_data_auth
 
 
 api.app.config["TESTING"] = True
@@ -22,6 +23,16 @@ class AdminDataApiTests(unittest.TestCase):
     def setUp(self):
         self.client = api.app.test_client()
         self.headers = {"Authorization": f"Bearer {API_KEY}"}
+        enabled = patch.object(admin_data_auth, "ADMIN_DATA_API_ENABLED", True)
+        key_hash = patch.object(
+            admin_data_auth,
+            "ADMIN_DATA_API_KEY_HASH",
+            hashlib.sha256(API_KEY.encode()).hexdigest(),
+        )
+        enabled.start()
+        key_hash.start()
+        self.addCleanup(enabled.stop)
+        self.addCleanup(key_hash.stop)
 
     def test_admin_data_requires_its_machine_key(self):
         response = self.client.get("/api/admin/data/health")
@@ -57,19 +68,15 @@ class AdminDataApiTests(unittest.TestCase):
         self.assertFalse(policy.deletable)
         self.assertIn("password", policy.hidden_fields)
 
-    def test_legacy_genre_tables_are_read_only(self):
-        expected_labels = {
-            "genre_preset": "Legacy genre presets",
-            "user_genre_setting": "Legacy user genre settings",
-        }
-        for table, label in expected_labels.items():
+    def test_retired_reference_tables_are_not_advertised(self):
+        for table in (
+            "genre_preset",
+            "audio_quality_threshold",
+            "user_genre_setting",
+        ):
             with self.subTest(table=table):
-                policy = service.table_policy(table)
-                self.assertTrue(policy.readable)
-                self.assertFalse(policy.creatable)
-                self.assertFalse(policy.updatable)
-                self.assertFalse(policy.deletable)
-                self.assertEqual(policy.label, label)
+                with self.assertRaises(ValueError):
+                    service.table_policy(table)
 
     def test_new_settings_tables_are_read_only_in_admin_api(self):
         for table in ("amplifier_profile", "settings_recommendation"):
@@ -92,16 +99,14 @@ class AdminDataApiTests(unittest.TestCase):
             service._validated_value(101, column)
         self.assertEqual(service._validated_value(55, column), 55.0)
 
-    def test_create_route_audits_success(self):
-        with patch.object(service, "create_record", return_value={"id": 4}), patch.object(
-            api, "audit"
-        ) as audit:
+    def test_retired_create_route_audits_rejection(self):
+        with patch.object(api, "audit") as audit:
             response = self.client.post(
                 "/api/admin/data/tables/audio_quality_threshold/records",
                 headers=self.headers,
                 json={"threshold_name": "Studio"},
             )
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 400)
         audit.assert_called_once()
 
     def test_assessment_delete_cleans_owned_audio_artifacts(self):

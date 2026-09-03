@@ -357,6 +357,8 @@ def parse_suggestion_form(
         if verification_of is not None:
             cursor.execute(
                 """SELECT sr.recommendation_id, sr.genre, sr.original_score,
+                          sr.genre_profile_version,
+                          sr.genre_profile_checksum,
                           sr.recommendation_status,
                           child.recommendation_id AS child_recommendation_id
                    FROM settings_recommendation sr
@@ -375,6 +377,16 @@ def parse_suggestion_form(
                 raise ValueError("verification_of already has a verification result")
             if normalize_genre(parent["genre"]) != genre:
                 raise ValueError("genre does not match verification_of")
+            artifact = load_genre_profiles()
+            if (
+                parent.get("genre_profile_version") != artifact.profile_version
+                or parent.get("genre_profile_checksum")
+                != artifact.artifact_checksum
+            ):
+                raise ValueError(
+                    "verification_of profile version or profile checksum does "
+                    "not match the validated artifact"
+                )
             before_score = _strict_number(parent["original_score"], "original_score")
         return SuggestionContext(
             guest=False,
@@ -652,6 +664,7 @@ def _recommendation_response(row: Mapping[str, Any]) -> dict[str, Any]:
         "overall_confidence": str(row["overall_confidence"]),
         "algorithm_version": str(row["algorithm_version"]),
         "profile_version": str(row["genre_profile_version"]),
+        "profile_checksum": str(row["genre_profile_checksum"]),
         "status": str(row["recommendation_status"]),
         "created_at": _json_safe(row.get("created_at")),
         "applied_at": _json_safe(row.get("applied_at")),
@@ -678,6 +691,7 @@ def stored_recommendation_payload(row: Mapping[str, Any]) -> dict[str, Any] | No
         "overall_confidence",
         "algorithm_version",
         "genre_profile_version",
+        "genre_profile_checksum",
         "recommendation_status",
         "created_at",
         "applied_at",
@@ -892,7 +906,8 @@ def _recommendation_select(*, lock: bool) -> str:
                   sr.genre, sr.current_positions, sr.recommended_positions,
                   sr.adjustments, sr.original_score, sr.verification_score,
                   sr.overall_confidence, sr.algorithm_version,
-                  sr.genre_profile_version, sr.recommendation_status,
+                  sr.genre_profile_version, sr.genre_profile_checksum,
+                  sr.recommendation_status,
                   sr.created_at, sr.applied_at,
                   ap.scale_min, ap.scale_max, ap.scale_step
            FROM settings_recommendation sr
