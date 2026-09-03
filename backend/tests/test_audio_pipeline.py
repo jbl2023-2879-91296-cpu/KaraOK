@@ -745,6 +745,90 @@ class AudioPipelineTests(unittest.TestCase):
             "b" * 64,
         )
 
+    def test_detail_only_status_and_provenance_normalize_public_snapshot(self):
+        row = {
+            "score": 72.0,
+            "status": "Needs Improvement",
+            "empirical_status": None,
+            "worst_feature_status": None,
+            "worst_features": None,
+            "empirical_details": json.dumps(
+                {
+                    "overall_status": "good",
+                    "algorithm_version": "detail-algorithm",
+                    "quality_profile_version": "detail-quality-v1",
+                    "quality_profile_checksum": "a" * 64,
+                    "reference_recording_count": 31,
+                }
+            ),
+            "scoring_algorithm_version": None,
+            "quality_profile_version": None,
+            "quality_profile_checksum": None,
+            "reference_recording_count": None,
+        }
+
+        enriched = api._enrich_audio_test_row(row)
+
+        self.assertEqual(enriched["status"], "Acceptable")
+        self.assertEqual(enriched["empirical_status"], "good")
+        self.assertEqual(enriched["empirical_quality"]["overall_status"], "good")
+        self.assertEqual(enriched["scoring_algorithm_version"], "detail-algorithm")
+        self.assertEqual(enriched["quality_profile_version"], "detail-quality-v1")
+        self.assertEqual(enriched["quality_profile_checksum"], "a" * 64)
+        self.assertEqual(enriched["reference_recording_count"], 31)
+        self.assertEqual(
+            enriched["empirical_quality"]["algorithm_version"],
+            "detail-algorithm",
+        )
+        self.assertEqual(
+            enriched["empirical_quality"]["quality_profile_version"],
+            "detail-quality-v1",
+        )
+        self.assertEqual(
+            enriched["empirical_quality"]["quality_profile_checksum"],
+            "a" * 64,
+        )
+        self.assertEqual(
+            enriched["empirical_quality"]["reference_recording_count"], 31
+        )
+
+    def test_invalid_detail_only_provenance_is_not_promoted(self):
+        row = {
+            "score": 72.0,
+            "status": "Needs Improvement",
+            "empirical_status": None,
+            "worst_feature_status": None,
+            "worst_features": None,
+            "empirical_details": json.dumps(
+                {
+                    "overall_status": "future_status",
+                    "algorithm_version": 99,
+                    "quality_profile_version": "",
+                    "quality_profile_checksum": "not-a-checksum",
+                    "reference_recording_count": "31",
+                }
+            ),
+            "scoring_algorithm_version": None,
+            "quality_profile_version": None,
+            "quality_profile_checksum": None,
+            "reference_recording_count": None,
+        }
+
+        enriched = api._enrich_audio_test_row(row)
+
+        self.assertEqual(enriched["status"], "Needs Improvement")
+        self.assertEqual(
+            enriched["empirical_status"], "good_but_needs_improvement"
+        )
+        for row_field, empirical_field in (
+            ("scoring_algorithm_version", "algorithm_version"),
+            ("quality_profile_version", "quality_profile_version"),
+            ("quality_profile_checksum", "quality_profile_checksum"),
+            ("reference_recording_count", "reference_recording_count"),
+        ):
+            self.assertIsNone(enriched[row_field])
+            self.assertNotIn(empirical_field, enriched["empirical_quality"])
+
     def test_null_score_with_stored_provenance_is_not_legacy_backfill(self):
         row = {
             "score": None,
@@ -805,6 +889,12 @@ class AudioPipelineTests(unittest.TestCase):
         enriched = api._enrich_audio_test_row(row)
 
         empirical = enriched["empirical_quality"]
+        self.assertEqual(enriched["status"], "Acceptable")
+        self.assertEqual(enriched["empirical_status"], "good")
+        self.assertEqual(enriched["scoring_algorithm_version"], "historical-algorithm")
+        self.assertEqual(enriched["quality_profile_version"], "historical-quality-v1")
+        self.assertEqual(enriched["quality_profile_checksum"], "b" * 64)
+        self.assertEqual(enriched["reference_recording_count"], 30)
         self.assertEqual(empirical["overall_score"], 91.5)
         self.assertEqual(empirical["overall_status"], "good")
         self.assertEqual(
@@ -1061,6 +1151,56 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertIn("r.quality_profile_version", statement)
         self.assertIn("r.quality_profile_checksum", statement)
         self.assertIn("JOIN assessment", cursor.execute.call_args.args[0])
+
+    def test_historical_analysis_dump_uses_normalized_detail_only_snapshot(self):
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.return_value = {
+            "assessment_id": 11,
+            "file_name": "recording.wav",
+            "analysis_purpose": "quality_evaluation",
+            "assessment_status": "Completed",
+            "result_status": "Needs Improvement",
+            "quality_score": 72.0,
+            "noise_level": -42.0,
+            "distortion_level": 8.0,
+            "bass": 40.0,
+            "treble": 12.0,
+            "loudness": -14.0,
+            "sharpness": 0.2,
+            "flatness": 0.03,
+            "empirical_status": None,
+            "worst_feature_status": None,
+            "worst_features": None,
+            "empirical_details": json.dumps(
+                {
+                    "overall_status": "good",
+                    "algorithm_version": "detail-algorithm",
+                    "quality_profile_version": "detail-quality-v1",
+                    "quality_profile_checksum": "a" * 64,
+                    "reference_recording_count": 31,
+                }
+            ),
+            "scoring_algorithm_version": None,
+            "quality_profile_version": None,
+            "quality_profile_checksum": None,
+            "reference_recording_count": None,
+        }
+
+        with api.app.test_request_context(
+            "/api/audio-uploads/13/analysis-dump"
+        ), patch.object(api, "get_db", return_value=connection):
+            api.g.user_id = 7
+            response = api.get_audio_analysis_dump.__wrapped__(13)
+
+        payload = response.get_json()
+        quality = payload["analysis"]["quality_assessment"]
+        self.assertEqual(quality["status"], "Acceptable")
+        self.assertEqual(quality["empirical_status"], "good")
+        self.assertEqual(payload["scoring_algorithm_version"], "detail-algorithm")
+        self.assertEqual(payload["quality_profile_version"], "detail-quality-v1")
+        self.assertEqual(payload["quality_profile_checksum"], "a" * 64)
+        self.assertEqual(payload["reference_recording_count"], 31)
 
     def test_historical_analysis_dump_normalizes_conflicting_and_malformed_fields(self):
         connection = MagicMock()
