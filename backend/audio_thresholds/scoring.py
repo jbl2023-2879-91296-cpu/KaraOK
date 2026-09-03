@@ -482,9 +482,7 @@ def _validate_empirical_artifact(artifact: Mapping[str, Any]) -> None:
             ("strict_p95", "p95", "p95_delta_from_full"),
         ):
             expected_delta = parsed[strict_name] - float(full_metric[full_name])
-            if not math.isclose(
-                parsed[delta_name], expected_delta, rel_tol=0.0, abs_tol=1e-12
-            ):
+            if parsed[delta_name] != expected_delta:
                 raise ValueError(f"{field}.{delta_name} does not match the full cohort.")
 
     if not _string_list(artifact["limitations"], "limitations"):
