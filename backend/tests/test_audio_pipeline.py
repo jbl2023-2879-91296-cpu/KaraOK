@@ -424,6 +424,11 @@ class AudioPipelineTests(unittest.TestCase):
         connection = MagicMock()
         cursor = connection.cursor.return_value
         cursor.lastrowid = 41
+        cursor.fetchone.return_value = {
+            "scale_min": 0.0,
+            "scale_max": 10.0,
+            "scale_step": 0.5,
+        }
 
         with patch.object(api, "get_db", return_value=connection):
             result = api.persist_audio_analysis(
@@ -455,12 +460,68 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertFalse(any("genre_preset" in statement for statement in statements))
         recommendation_insert = cursor.execute.call_args_list[recommendation_index]
         self.assertIn("genre_profile_checksum", recommendation_insert.args[0])
+        self.assertIn("scale_min", recommendation_insert.args[0])
+        self.assertIn("scale_max", recommendation_insert.args[0])
+        self.assertIn("scale_step", recommendation_insert.args[0])
         self.assertEqual(
-            recommendation_insert.args[1][13],
+            recommendation_insert.args[1][16],
             recommendation.profile_checksum,
         )
+        self.assertEqual(recommendation_insert.args[1][12:15], (0.0, 10.0, 0.5))
         self.assertEqual(result["settings_recommendation"]["id"], 41)
         connection.commit.assert_called_once()
+
+    def test_initial_recommendation_rejects_profile_scale_change_before_insert(self):
+        context = recommendation_service.SuggestionContext(
+            guest=False,
+            user_id=7,
+            genre="rock",
+            scale=AmplifierScale(0, 10, 0.5),
+            current=KnobSettings(5, 4, 6, 5, 5),
+            amplifier_profile_id=12,
+        )
+        dump = {
+            "analyzer_process": {"duration_seconds": 1.25},
+            "analysis": _analyzer_result("passed"),
+            "visualizations": {
+                "waveform": "7/11/test_waveform.png",
+                "spectrogram": "7/11/test_spectrogram.png",
+            },
+        }
+        recommendation = recommendation_service.build_recommendation(
+            api.summarize_audio_analysis(dump),
+            context,
+            verification=False,
+        )
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.return_value = {
+            "scale_min": 0.0,
+            "scale_max": 100.0,
+            "scale_step": 1.0,
+        }
+
+        with patch.object(api, "get_db", return_value=connection):
+            with self.assertRaisesRegex(ValueError, "scale changed"):
+                api.persist_audio_analysis(
+                    11,
+                    13,
+                    dump,
+                    recommendation=recommendation,
+                    recommendation_context=context,
+                )
+
+        locked_profile = next(
+            call
+            for call in cursor.execute.call_args_list
+            if "FROM amplifier_profile" in call.args[0]
+        )
+        self.assertIn("FOR UPDATE", locked_profile.args[0])
+        statements = "\n".join(call.args[0] for call in cursor.execute.call_args_list)
+        self.assertNotIn("INSERT INTO audio_analysis_result", statements)
+        self.assertNotIn("INSERT INTO settings_recommendation", statements)
+        connection.commit.assert_not_called()
+        connection.rollback.assert_called_once()
 
     def test_summary_maps_analyzer_clipping_noise_and_distortion_safety(self):
         analysis = _analyzer_result("failed")
@@ -519,6 +580,11 @@ class AudioPipelineTests(unittest.TestCase):
         result_connection = MagicMock()
         result_cursor = result_connection.cursor.return_value
         result_cursor.lastrowid = 41
+        result_cursor.fetchone.return_value = {
+            "scale_min": 0.0,
+            "scale_max": 10.0,
+            "scale_step": 0.5,
+        }
 
         with api.app.test_request_context(
             "/api/audio-uploads",
@@ -583,6 +649,11 @@ class AudioPipelineTests(unittest.TestCase):
         )
         connection = MagicMock()
         cursor = connection.cursor.return_value
+        cursor.fetchone.return_value = {
+            "scale_min": 0.0,
+            "scale_max": 10.0,
+            "scale_step": 0.5,
+        }
 
         def execute(statement, parameters=None):
             if "INSERT INTO settings_recommendation" in statement:
@@ -642,6 +713,9 @@ class AudioPipelineTests(unittest.TestCase):
             "scale_min": 0.0,
             "scale_max": 10.0,
             "scale_step": 0.5,
+            "profile_scale_min": 0.0,
+            "profile_scale_max": 10.0,
+            "profile_scale_step": 0.5,
         }
         cursor.lastrowid = 42
         cursor.rowcount = 1
@@ -673,20 +747,23 @@ class AudioPipelineTests(unittest.TestCase):
             if "INSERT INTO audio_analysis_result" in call.args[0]
         )
         self.assertLess(parent_select_index, analysis_insert_index)
-        self.assertIn("sr.genre_profile_version = %s", parent_select.args[0])
-        self.assertIn("sr.genre_profile_checksum = %s", parent_select.args[0])
+        self.assertNotIn("sr.genre_profile_version = %s", parent_select.args[0])
+        self.assertNotIn("sr.genre_profile_checksum = %s", parent_select.args[0])
         self.assertIn("sr.recommended_positions", parent_select.args[0])
         self.assertIn("sr.algorithm_version", parent_select.args[0])
         self.assertIn("ap.last_positions", parent_select.args[0])
+        self.assertIn("sr.scale_min", parent_select.args[0])
+        self.assertIn("sr.scale_max", parent_select.args[0])
+        self.assertIn("sr.scale_step", parent_select.args[0])
+        child_insert = next(
+            call
+            for call in cursor.execute.call_args_list
+            if "INSERT INTO settings_recommendation" in call.args[0]
+        )
+        self.assertEqual(child_insert.args[1][12:15], (0.0, 10.0, 0.5))
         self.assertEqual(
             parent_select.args[1],
-            (
-                41,
-                7,
-                12,
-                recommendation.profile_version,
-                recommendation.profile_checksum,
-            ),
+            (41, 7, 12),
         )
         parent_update = next(
             call
@@ -740,6 +817,9 @@ class AudioPipelineTests(unittest.TestCase):
             "scale_min": 0.0,
             "scale_max": 10.0,
             "scale_step": 0.5,
+            "profile_scale_min": 0.0,
+            "profile_scale_max": 10.0,
+            "profile_scale_step": 0.5,
         }
 
         with patch.object(api, "get_db", return_value=connection):
@@ -760,6 +840,78 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertNotIn("INSERT INTO settings_recommendation", statements)
         connection.commit.assert_not_called()
         connection.rollback.assert_called_once()
+
+    def test_verification_quality_persists_if_genre_artifact_fails_after_parse(self):
+        context = recommendation_service.SuggestionContext(
+            guest=False,
+            user_id=7,
+            genre="rock",
+            scale=AmplifierScale(0, 10, 0.5),
+            current=KnobSettings(5.5, 5.5, 5.5, 5, 4.5),
+            amplifier_profile_id=12,
+            verification_of=41,
+            before_score=80.0,
+        )
+        dump = {
+            "analyzer_process": {"duration_seconds": 1.25},
+            "analysis": _analyzer_result("passed"),
+            "visualizations": {
+                "waveform": "7/11/test_waveform.png",
+                "spectrogram": "7/11/test_spectrogram.png",
+            },
+        }
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.return_value = {
+            "recommendation_id": 41,
+            "genre": "rock",
+            "original_score": 80.0,
+            "recommended_positions": json.dumps(context.current.to_dict()),
+            "algorithm_version": ALGORITHM_VERSION,
+            "genre_profile_version": "2026.09.1",
+            "genre_profile_checksum": "b" * 64,
+            "recommendation_status": "applied",
+            "child_recommendation_id": None,
+            "amplifier_last_positions": json.dumps(context.current.to_dict()),
+            "scale_min": 0.0,
+            "scale_max": 10.0,
+            "scale_step": 0.5,
+            "profile_scale_min": 0.0,
+            "profile_scale_max": 10.0,
+            "profile_scale_step": 0.5,
+        }
+        cursor.lastrowid = 42
+        cursor.rowcount = 1
+
+        with patch.object(
+            recommendation_service,
+            "load_genre_profiles",
+            side_effect=ValueError("genre artifact became unavailable"),
+        ):
+            recommendation = recommendation_service.build_recommendation(
+                api.summarize_audio_analysis(dump),
+                context,
+                verification=True,
+            )
+            with patch.object(api, "get_db", return_value=connection):
+                result = api.persist_audio_analysis(
+                    11,
+                    13,
+                    dump,
+                    recommendation=recommendation,
+                    recommendation_context=context,
+                )
+
+        self.assertIsNotNone(result["score"])
+        self.assertEqual(result["settings_recommendation"]["status"], "unavailable")
+        parent_select = next(
+            call
+            for call in cursor.execute.call_args_list
+            if "FROM settings_recommendation" in call.args[0]
+        )
+        self.assertNotIn("sr.genre_profile_version = %s", parent_select.args[0])
+        self.assertEqual(parent_select.args[1], (41, 7, 12))
+        connection.commit.assert_called_once()
 
     def test_legacy_null_score_is_computed_from_stored_features(self):
         row = {
@@ -1125,10 +1277,18 @@ class AudioPipelineTests(unittest.TestCase):
                     "quality_profile_checksum": "b" * 64,
                     "status": "Acceptable",
                     "assessment_status": "Completed",
-                    "analysis_purpose": "quality_evaluation",
+                    "analysis_purpose": "settings_suggestion",
                     "duration_seconds": 2,
                     "created_at": datetime(2026, 9, 2, tzinfo=timezone.utc),
                 }
+                row.update(_stored_settings_columns())
+                row.update(
+                    {
+                        "settings_scale_min": -3.0,
+                        "settings_scale_max": 7.0,
+                        "settings_scale_step": 0.25,
+                    }
+                )
                 if route == "list":
                     cursor.fetchall.return_value = [row]
                     request_path = "/api/audio-tests"
@@ -1149,6 +1309,10 @@ class AudioPipelineTests(unittest.TestCase):
                 payload = response.get_json()
                 payload = payload[0] if route == "list" else payload
                 self.assertEqual(payload["empirical_quality"]["overall_score"], 91.5)
+                self.assertEqual(
+                    payload["settings_recommendation"]["scale"],
+                    {"minimum": -3.0, "maximum": 7.0, "step": 0.25},
+                )
                 for raw_field in (
                     "empirical_status",
                     "worst_feature_status",
@@ -1166,6 +1330,8 @@ class AudioPipelineTests(unittest.TestCase):
                     "r.reference_recording_count",
                 ):
                     self.assertIn(column, statement)
+                self.assertIn("sr.scale_min AS settings_scale_min", statement)
+                self.assertNotIn("ap.scale_min AS settings_scale_min", statement)
 
     def test_analysis_persistence_has_no_genre_lookup(self):
         connection = MagicMock()
@@ -1232,6 +1398,10 @@ class AudioPipelineTests(unittest.TestCase):
         statement = cursor.execute.call_args.args[0]
         self.assertIn("r.quality_profile_version", statement)
         self.assertIn("r.quality_profile_checksum", statement)
+        self.assertIn("sr.scale_min AS settings_scale_min", statement)
+        self.assertIn("sr.scale_max AS settings_scale_max", statement)
+        self.assertIn("sr.scale_step AS settings_scale_step", statement)
+        self.assertNotIn("ap.scale_min AS settings_scale_min", statement)
         self.assertIn("JOIN assessment", cursor.execute.call_args.args[0])
 
     def test_historical_null_score_dump_backfills_all_measurements_before_rejecting(self):
@@ -1596,10 +1766,102 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertEqual(status_code, 201)
         self.assertIsNotNone(payload["score"])
         self.assertEqual(recommendation["status"], "unavailable")
+        self.assertIn("supported genre", recommendation["message"])
         self.assertIsNone(recommendation["verification_token"])
         self.assertTrue(
             all(value is None for value in recommendation["recommended"].values())
         )
+
+    def test_guest_quality_survives_genre_artifact_load_failures(self):
+        for failure in (
+            "Genre profile file does not exist",
+            "Genre profile file is not valid JSON",
+            "Genre profile artifact checksum does not match canonical content",
+            "Genre profile artifact fields do not match the schema",
+        ):
+            with self.subTest(failure=failure), patch.object(
+                recommendation_service,
+                "load_genre_profiles",
+                side_effect=ValueError(failure),
+            ):
+                (response, status_code), _ = self._post_guest_audio(
+                    analysis_purpose="settings_suggestion"
+                )
+
+            payload = response.get_json()
+            recommendation = payload["settings_recommendation"]
+            self.assertEqual(status_code, 201)
+            self.assertEqual(payload["status"], "Completed")
+            self.assertIsNotNone(payload["score"])
+            self.assertEqual(recommendation["status"], "unavailable")
+            self.assertIsNone(recommendation["profile_version"])
+            self.assertIsNone(recommendation["profile_checksum"])
+            self.assertIn("try again later", recommendation["message"].lower())
+
+    def test_authenticated_unavailable_settings_persist_with_quality_snapshot(self):
+        context = recommendation_service.SuggestionContext(
+            guest=False,
+            user_id=7,
+            genre="rock",
+            scale=AmplifierScale(0, 10, 0.5),
+            current=KnobSettings(5, 4, 6, 5, 5),
+            amplifier_profile_id=12,
+        )
+        dump = {
+            "analyzer_process": {"duration_seconds": 1.25},
+            "analysis": _analyzer_result("passed"),
+            "visualizations": {
+                "waveform": "7/11/test_waveform.png",
+                "spectrogram": "7/11/test_spectrogram.png",
+            },
+        }
+        summary = api.summarize_audio_analysis(dump)
+        with patch.object(
+            recommendation_service,
+            "load_genre_profiles",
+            side_effect=ValueError("Genre profile checksum mismatch"),
+        ):
+            recommendation = recommendation_service.build_recommendation(
+                summary,
+                context,
+                verification=False,
+            )
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.return_value = {
+            "scale_min": 0.0,
+            "scale_max": 10.0,
+            "scale_step": 0.5,
+        }
+        cursor.lastrowid = 41
+
+        with patch.object(api, "get_db", return_value=connection):
+            persisted = api.persist_audio_analysis(
+                11,
+                13,
+                dump,
+                recommendation=recommendation,
+                recommendation_context=context,
+            )
+
+        self.assertEqual(persisted["score"], summary["score"])
+        self.assertEqual(
+            persisted["empirical_quality"],
+            summary["empirical_quality"],
+        )
+        self.assertEqual(
+            persisted["settings_recommendation"]["status"],
+            "unavailable",
+        )
+        recommendation_insert = next(
+            call
+            for call in cursor.execute.call_args_list
+            if "INSERT INTO settings_recommendation" in call.args[0]
+        )
+        self.assertIsNone(recommendation_insert.args[1][15])
+        self.assertIsNone(recommendation_insert.args[1][16])
+        self.assertIn("try again later", recommendation_insert.args[1][17].lower())
+        connection.commit.assert_called_once()
 
     def test_expired_or_tampered_guest_verification_token_is_rejected(self):
         artifact = load_genre_profiles()

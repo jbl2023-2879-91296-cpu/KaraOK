@@ -501,6 +501,9 @@ List<String> _safetyWarnings(
 }
 
 String _blockerMessage(SettingsRecommendation recommendation) {
+  if (recommendation.message case final message?) {
+    return message;
+  }
   final reason = recommendation.adjustments.values.first.reasonCode;
   return switch (reason) {
     'genre_profile_unavailable' =>

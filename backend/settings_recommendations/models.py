@@ -203,18 +203,37 @@ class KnobAdjustment:
 class SettingsRecommendation:
     status: str
     genre: str
-    profile_version: str
-    profile_checksum: str
+    profile_version: str | None
+    profile_checksum: str | None
     algorithm_version: str
     scale: AmplifierScale
     current: KnobSettings
     adjustments: Mapping[str, KnobAdjustment]
     overall_confidence: str
+    message: str | None = None
 
     def __post_init__(self) -> None:
         if self.status not in {"generated", "unavailable"}:
             raise ValueError(f"Unsupported recommendation status: {self.status!r}")
-        object.__setattr__(self, "profile_checksum", _profile_checksum(self.profile_checksum))
+        if (self.profile_version is None) != (self.profile_checksum is None):
+            raise ValueError(
+                "Recommendation profile version and checksum must both be present or absent"
+            )
+        if self.status == "generated" and self.profile_version is None:
+            raise ValueError("Generated recommendations require genre profile provenance")
+        if self.profile_version is not None:
+            if not isinstance(self.profile_version, str) or not self.profile_version.strip():
+                raise ValueError("Recommendation profile_version must be non-empty")
+            object.__setattr__(self, "profile_version", self.profile_version.strip())
+            object.__setattr__(
+                self,
+                "profile_checksum",
+                _profile_checksum(self.profile_checksum),
+            )
+        if self.message is not None and (
+            not isinstance(self.message, str) or not self.message.strip()
+        ):
+            raise ValueError("Recommendation message must be non-empty text")
         if self.overall_confidence not in CONFIDENCE_LEVELS:
             raise ValueError(
                 f"Unsupported overall confidence: {self.overall_confidence!r}"
@@ -231,7 +250,7 @@ class SettingsRecommendation:
         adjustments = {
             name: self.adjustments[name].to_dict() for name in KNOB_NAMES
         }
-        return {
+        payload = {
             "status": self.status,
             "genre": self.genre,
             "profile_version": self.profile_version,
@@ -245,3 +264,6 @@ class SettingsRecommendation:
             },
             "adjustments": adjustments,
         }
+        if self.message is not None:
+            payload["message"] = self.message.strip()
+        return payload

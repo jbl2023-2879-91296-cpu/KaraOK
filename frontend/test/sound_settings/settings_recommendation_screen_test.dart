@@ -50,6 +50,8 @@ void main() {
           recommendation: _sample(
             status: 'unavailable',
             reasonCode: 'genre_profile_unavailable',
+            message:
+                'Genre calibration data is unavailable. Please try again later.',
           ),
         ),
       ),
@@ -57,7 +59,9 @@ void main() {
 
     expect(find.text('Quality score: 72.0'), findsOneWidget);
     expect(
-      find.text('No supported audio profile is available for this genre.'),
+      find.text(
+        'Genre calibration data is unavailable. Please try again later.',
+      ),
       findsOneWidget,
     );
     expect(find.text('Record Again'), findsOneWidget);
@@ -155,6 +159,7 @@ SettingsRecommendation _sample({
   int? parentRecommendationId,
   double? verificationScore,
   bool rollbackRecommended = false,
+  String? message,
 }) {
   const current = {
     'volume': 5.0,
@@ -180,9 +185,11 @@ SettingsRecommendation _sample({
     'parent_recommendation_id': parentRecommendationId,
     'status': status,
     'genre': 'rock',
-    'profile_version': '2026.09.1',
-    'profile_checksum':
-        '8b87b9f1106bab8dab4978e4590e84c9bb294400a0d60ce5263e196f44701b61',
+    'profile_version': message == null ? '2026.09.1' : null,
+    'profile_checksum': message == null
+        ? '8b87b9f1106bab8dab4978e4590e84c9bb294400a0d60ce5263e196f44701b61'
+        : null,
+    'message': ?message,
     'algorithm_version': '1.0.0',
     'overall_confidence': status == 'unavailable' ? 'unavailable' : 'medium',
     'scale': {'minimum': 0.0, 'maximum': 10.0, 'step': 0.5},

@@ -146,12 +146,16 @@ def recommendation_row(**overrides):
         "genre_profile_checksum": (
             recommendation_service.load_genre_profiles().artifact_checksum
         ),
+        "unavailable_message": None,
         "recommendation_status": "generated",
         "created_at": datetime(2026, 9, 2, tzinfo=timezone.utc),
         "applied_at": None,
         "scale_min": 0.0,
         "scale_max": 10.0,
         "scale_step": 0.5,
+        "profile_scale_min": 0.0,
+        "profile_scale_max": 10.0,
+        "profile_scale_step": 0.5,
     }
     row.update(overrides)
     return row
@@ -470,6 +474,40 @@ class SettingsRecommendationApiTests(unittest.TestCase):
         self.assertEqual(context.verification_of, 41)
         self.assertEqual(context.before_score, 72.4)
 
+    def test_authenticated_verification_rejects_profile_changed_from_parent_snapshot(self):
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.side_effect = [
+            profile_row(
+                scale_max=100.0,
+                scale_step=1.0,
+                last_positions=json.dumps(
+                    {name: value * 10 for name, value in applied_positions().items()}
+                ),
+            ),
+            recommendation_row(
+                recommendation_status="applied",
+                recommended_positions=json.dumps(applied_positions()),
+            ),
+        ]
+
+        with patch.object(api, "get_db", return_value=connection):
+            with self.assertRaisesRegex(ValueError, "scale changed"):
+                recommendation_service.parse_suggestion_form(
+                    authenticated_verification_form(
+                        current_settings=json.dumps(
+                            {name: value * 10 for name, value in applied_positions().items()}
+                        )
+                    ),
+                    guest=False,
+                    user_id=7,
+                )
+
+        parent_query = cursor.execute.call_args_list[1].args[0]
+        self.assertIn("sr.scale_min", parent_query)
+        self.assertIn("sr.scale_max", parent_query)
+        self.assertIn("sr.scale_step", parent_query)
+
     def test_verification_scale_comparison_rejects_large_scale_multi_step_change(self):
         original = AmplifierScale(0.0, 9_000_000.0, 0.001)
         changed = AmplifierScale(0.0, 9_000_000.005, 0.001)
@@ -783,7 +821,60 @@ class SettingsRecommendationApiTests(unittest.TestCase):
         )
         self.assertIn("user_id = %s", query.args[0])
         self.assertIn("sr.genre_profile_checksum", query.args[0])
+        self.assertIn("sr.scale_min", query.args[0])
+        self.assertNotIn("ap.scale_min AS scale_min", query.args[0])
         self.assertEqual(query.args[1], (41, 7, 7))
+
+    def test_get_recommendation_scale_is_immutable_after_profile_edit(self):
+        response, _, _ = self.request_with_database(
+            "GET",
+            "/api/settings-recommendations/41",
+            fetchone=[
+                recommendation_row(
+                    scale_min=-3.0,
+                    scale_max=7.0,
+                    scale_step=0.25,
+                    profile_scale_min=0.0,
+                    profile_scale_max=100.0,
+                    profile_scale_step=1.0,
+                )
+            ],
+        )
+
+        self.assertEqual(
+            response.get_json()["scale"],
+            {"minimum": -3.0, "maximum": 7.0, "step": 0.25},
+        )
+
+    def test_stored_unavailable_recommendation_keeps_nullable_provenance_and_message(self):
+        message = "Genre calibration data is unavailable. Please try again later."
+        response, _, _ = self.request_with_database(
+            "GET",
+            "/api/settings-recommendations/41",
+            fetchone=[
+                recommendation_row(
+                    recommendation_status="unavailable",
+                    genre_profile_version=None,
+                    genre_profile_checksum=None,
+                    unavailable_message=message,
+                )
+            ],
+        )
+
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(payload["profile_version"])
+        self.assertIsNone(payload["profile_checksum"])
+        self.assertEqual(payload["message"], message)
+
+    def test_stored_available_recommendation_requires_profile_provenance(self):
+        with self.assertRaisesRegex(ValueError, "profile provenance"):
+            recommendation_service._recommendation_response(
+                recommendation_row(
+                    genre_profile_version=None,
+                    genre_profile_checksum=None,
+                )
+            )
 
     def test_get_recommendation_matches_shared_cross_layer_fixture(self):
         expected = json.loads(RECOMMENDATION_FIXTURE.read_text(encoding="utf-8"))
@@ -822,6 +913,25 @@ class SettingsRecommendationApiTests(unittest.TestCase):
         connection.commit.assert_called_once()
         connection.rollback.assert_not_called()
         self.assertEqual(response.get_json()["status"], "applied")
+
+    def test_apply_rejects_profile_scale_changed_from_recommendation_snapshot(self):
+        response, connection, cursor = self.request_with_database(
+            "POST",
+            "/api/settings-recommendations/41/apply",
+            fetchone=[
+                recommendation_row(
+                    profile_scale_max=100.0,
+                    profile_scale_step=1.0,
+                )
+            ],
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("scale changed", response.get_json()["error"])
+        statements = "\n".join(call.args[0] for call in cursor.execute.call_args_list)
+        self.assertNotIn("UPDATE amplifier_profile", statements)
+        connection.commit.assert_not_called()
+        connection.rollback.assert_called_once()
 
     def test_apply_rejects_non_generated_recommendation_without_partial_commit(self):
         response, connection, _ = self.request_with_database(

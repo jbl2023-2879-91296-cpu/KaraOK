@@ -221,6 +221,7 @@ class SettingsRecommendation {
     required this.genre,
     required this.profileVersion,
     required this.profileChecksum,
+    required this.message,
     required this.algorithmVersion,
     required this.overallConfidence,
     required this.scale,
@@ -304,6 +305,24 @@ class SettingsRecommendation {
     if (token != null && token is! String) {
       throw const FormatException('verification_token must be a string.');
     }
+    final rawProfileVersion = json['profile_version'];
+    final rawProfileChecksum = json['profile_checksum'];
+    late final String? profileVersion;
+    late final String? profileChecksum;
+    if (status == 'unavailable' &&
+        rawProfileVersion == null &&
+        rawProfileChecksum == null) {
+      profileVersion = null;
+      profileChecksum = null;
+    } else {
+      profileVersion = _requiredString(rawProfileVersion, 'profile_version');
+      profileChecksum = _checksum(rawProfileChecksum, 'profile_checksum');
+    }
+    final rawMessage = json['message'];
+    if (rawMessage != null &&
+        (rawMessage is! String || rawMessage.trim().isEmpty)) {
+      throw const FormatException('message must be a non-empty string.');
+    }
 
     return SettingsRecommendation._(
       id: _nullablePositiveInt(json['id'], 'id'),
@@ -322,11 +341,9 @@ class SettingsRecommendation {
       ),
       status: status,
       genre: _requiredString(json['genre'], 'genre'),
-      profileVersion: _requiredString(
-        json['profile_version'],
-        'profile_version',
-      ),
-      profileChecksum: _checksum(json['profile_checksum'], 'profile_checksum'),
+      profileVersion: profileVersion,
+      profileChecksum: profileChecksum,
+      message: rawMessage as String?,
       algorithmVersion: _requiredString(
         json['algorithm_version'],
         'algorithm_version',
@@ -362,8 +379,9 @@ class SettingsRecommendation {
   final int? parentRecommendationId;
   final String status;
   final String genre;
-  final String profileVersion;
-  final String profileChecksum;
+  final String? profileVersion;
+  final String? profileChecksum;
+  final String? message;
   final String algorithmVersion;
   final String overallConfidence;
   final AmplifierScale scale;
@@ -391,6 +409,7 @@ class SettingsRecommendation {
     'genre': genre,
     'profile_version': profileVersion,
     'profile_checksum': profileChecksum,
+    'message': ?message,
     'algorithm_version': algorithmVersion,
     'overall_confidence': overallConfidence,
     'scale': scale.toJson(),

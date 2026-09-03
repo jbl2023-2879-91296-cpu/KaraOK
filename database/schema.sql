@@ -181,8 +181,12 @@ CREATE TABLE IF NOT EXISTS settings_recommendation (
     verification_score FLOAT NULL,
     overall_confidence VARCHAR(20) NOT NULL,
     algorithm_version VARCHAR(30) NOT NULL,
-    genre_profile_version VARCHAR(30) NOT NULL,
-    genre_profile_checksum CHAR(64) NOT NULL,
+    scale_min DECIMAL(10,3) NOT NULL,
+    scale_max DECIMAL(10,3) NOT NULL,
+    scale_step DECIMAL(10,3) NOT NULL,
+    genre_profile_version VARCHAR(30) NULL,
+    genre_profile_checksum CHAR(64) NULL,
+    unavailable_message VARCHAR(255) NULL,
     recommendation_status
         ENUM('generated','applied','verified','reverted','unavailable')
         NOT NULL DEFAULT 'generated',
@@ -200,7 +204,21 @@ CREATE TABLE IF NOT EXISTS settings_recommendation (
         REFERENCES amplifier_profile(amplifier_profile_id) ON DELETE CASCADE,
     CONSTRAINT fk_settings_recommendation_parent
         FOREIGN KEY (parent_recommendation_id)
-        REFERENCES settings_recommendation(recommendation_id) ON DELETE SET NULL
+        REFERENCES settings_recommendation(recommendation_id) ON DELETE SET NULL,
+    CONSTRAINT chk_settings_recommendation_scale
+        CHECK (scale_min < scale_max AND scale_step > 0),
+    CONSTRAINT chk_settings_recommendation_profile_pair
+        CHECK (
+            (genre_profile_version IS NULL AND genre_profile_checksum IS NULL)
+            OR
+            (genre_profile_version IS NOT NULL AND genre_profile_checksum IS NOT NULL)
+        ),
+    CONSTRAINT chk_settings_recommendation_available_profile
+        CHECK (
+            recommendation_status = 'unavailable'
+            OR
+            (genre_profile_version IS NOT NULL AND genre_profile_checksum IS NOT NULL)
+        )
 );
 
 -- ==========================================

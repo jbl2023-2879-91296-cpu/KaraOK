@@ -1,8 +1,10 @@
 import json
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from audio_thresholds.genre_profiles import (
+    clear_genre_profile_cache,
     load_genre_profiles,
     normalize_genre,
     parse_genre_profile_artifact,
@@ -28,6 +30,9 @@ def with_valid_checksum(payload):
 
 
 class GenreProfileTests(unittest.TestCase):
+    def tearDown(self):
+        clear_genre_profile_cache()
+
     def _assert_schema_mutation_rejected(self, path, key, value=None, *, remove=False):
         payload = valid_payload()
         target = payload
@@ -71,6 +76,16 @@ class GenreProfileTests(unittest.TestCase):
         payload["schema_version"] = 2
         with self.assertRaisesRegex(ValueError, "schema_version"):
             parse_genre_profile_artifact(payload)
+
+    def test_loader_reports_missing_and_malformed_files(self):
+        missing = FIXTURES / "genre_audio_profiles.missing.json"
+        with self.assertRaisesRegex(ValueError, "does not exist"):
+            load_genre_profiles(missing)
+
+        malformed = FIXTURES / "genre_audio_profiles.malformed.json"
+        with patch.object(Path, "read_text", return_value="{not-json"):
+            with self.assertRaisesRegex(ValueError, "not valid JSON"):
+                load_genre_profiles(malformed)
 
     def test_rejects_duplicate_normalized_genres(self):
         payload = valid_payload()

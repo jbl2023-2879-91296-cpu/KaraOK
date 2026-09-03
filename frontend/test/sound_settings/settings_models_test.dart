@@ -185,6 +185,39 @@ void main() {
     );
   });
 
+  test(
+    'unavailable recommendation accepts absent genre provenance and a message',
+    () {
+      final unavailable = _recommendationJson()
+        ..['status'] = 'unavailable'
+        ..['profile_version'] = null
+        ..['profile_checksum'] = null
+        ..['message'] =
+            'Genre calibration data is unavailable. Please try again later.';
+      unavailable['recommended'] = <String, dynamic>{
+        for (final knob in amplifierKnobNames) knob: null,
+      };
+      final adjustments = unavailable['adjustments'] as Map<String, dynamic>;
+      for (final knob in amplifierKnobNames) {
+        final adjustment = adjustments[knob] as Map<String, dynamic>;
+        adjustment['recommended'] = null;
+        adjustment['delta'] = null;
+        adjustment['delta_normalized'] = null;
+        adjustment['reason_code'] = 'genre_profile_unavailable';
+        adjustment['confidence'] = 'unavailable';
+      }
+
+      final recommendation = SettingsRecommendation.fromJson(unavailable);
+
+      expect(recommendation.profileVersion, isNull);
+      expect(recommendation.profileChecksum, isNull);
+      expect(
+        recommendation.message,
+        'Genre calibration data is unavailable. Please try again later.',
+      );
+    },
+  );
+
   test('recommendation parses guest verification and comparison fields', () {
     final recommendation = SettingsRecommendation.fromJson(
       _recommendationJson(),

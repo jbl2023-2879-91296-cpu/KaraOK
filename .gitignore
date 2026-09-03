@@ -3,6 +3,7 @@
 /build.md
 /project.md
 backend/uploads/
+/backend/.tmp-tests/
 /tests/
 __pycache__/
 *.py[cod]
