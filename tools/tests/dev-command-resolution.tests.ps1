@@ -90,3 +90,58 @@ if ($deviceIds.Count -ne 1 -or $deviceIds[0] -ne "PHONE-123") {
     throw "FAIL: expected only the authorized Android device, got '$($deviceIds -join ', ')'"
 }
 Write-Output "PASS: only authorized Android devices are selected for USB forwarding"
+
+$phoneArguments = @(
+    Get-FlutterRunArguments `
+        -ApiBaseUrl "http://127.0.0.1:5000/api" `
+        -DeviceId "R3CM908XHSK"
+)
+$expectedPhoneArguments = @(
+    "run",
+    "-d",
+    "R3CM908XHSK",
+    "--dart-define=API_BASE_URL=http://127.0.0.1:5000/api"
+)
+if (($phoneArguments -join "`n") -cne ($expectedPhoneArguments -join "`n")) {
+    throw "FAIL: phone launch arguments were '$($phoneArguments -join ' ')'."
+}
+
+$defaultArguments = @(
+    Get-FlutterRunArguments -ApiBaseUrl "http://127.0.0.1:5000/api"
+)
+$expectedDefaultArguments = @(
+    "run",
+    "--dart-define=API_BASE_URL=http://127.0.0.1:5000/api"
+)
+if (($defaultArguments -join "`n") -cne ($expectedDefaultArguments -join "`n")) {
+    throw "FAIL: default launch arguments were '$($defaultArguments -join ' ')'."
+}
+
+$chromeLaunchPlan = Get-DevelopmentLaunchPlan `
+    -ApiBaseUrl "http://127.0.0.1:5000/api" `
+    -DeviceId "chrome" `
+    -AdbDevicesOutput @(
+        "List of devices attached",
+        "R3CM908XHSK device product:beyond2lte model:SM_G977N transport_id:1"
+    )
+$expectedChromeArguments = @(
+    "run",
+    "-d",
+    "chrome",
+    "--dart-define=API_BASE_URL=http://127.0.0.1:5000/api"
+)
+if (($chromeLaunchPlan.FlutterRunArguments -join "`n") -cne `
+        ($expectedChromeArguments -join "`n")) {
+    throw "FAIL: Android discovery replaced the requested Chrome target."
+}
+if (($chromeLaunchPlan.AndroidDeviceIds -join "`n") -cne "R3CM908XHSK") {
+    throw "FAIL: the connected Android device was not retained for API forwarding."
+}
+Write-Output "PASS: Android forwarding does not replace the requested Flutter target"
+
+$runDevPath = Join-Path (Split-Path -Parent $resolverPath) "run-dev.ps1"
+$runDevContent = Get-Content -LiteralPath $runDevPath -Raw
+if ($runDevContent -notmatch 'Get-DevelopmentLaunchPlan') {
+    throw "FAIL: run-dev.ps1 does not use the tested development launch plan."
+}
+Write-Output "PASS: run-dev can target one connected phone without changing default behavior"

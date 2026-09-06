@@ -201,3 +201,47 @@ function Get-AuthorizedAndroidDeviceIds {
         }
     }
 }
+
+function Get-FlutterRunArguments {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$ApiBaseUrl,
+
+        [string]$DeviceId
+    )
+
+    $arguments = @("run")
+    if (-not [string]::IsNullOrWhiteSpace($DeviceId)) {
+        $arguments += @("-d", $DeviceId.Trim())
+    }
+    $arguments += "--dart-define=API_BASE_URL=$ApiBaseUrl"
+    return $arguments
+}
+
+function Get-DevelopmentLaunchPlan {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$ApiBaseUrl,
+
+        [string]$DeviceId,
+
+        [AllowEmptyCollection()]
+        [string[]]$AdbDevicesOutput = @()
+    )
+
+    return [pscustomobject]@{
+        AndroidDeviceIds = @(
+            Get-AuthorizedAndroidDeviceIds `
+                -AdbDevicesOutput $AdbDevicesOutput
+        )
+        FlutterRunArguments = @(
+            Get-FlutterRunArguments `
+                -ApiBaseUrl $ApiBaseUrl `
+                -DeviceId $DeviceId
+        )
+    }
+}
