@@ -8,6 +8,9 @@ def generate_database_password() -> str:
 def generate_jwt_secret() -> str:
     return secrets.token_urlsafe(64)
 
+def generate_keystore_secret() -> str:
+    return secrets.token_urlsafe(43)
+
 
 if __name__ == "__main__":
     print("Database password:")
@@ -15,3 +18,6 @@ if __name__ == "__main__":
 
     print("\nJWT secret:")
     print(generate_jwt_secret())
+
+    print("\nkeystore secret:")
+    print(generate_keystore_secret())

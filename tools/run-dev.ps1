@@ -7,10 +7,15 @@ Starts the KaraOK backend, local Admin Console, and Flutter application.
 
 .EXAMPLE
 powershell -ExecutionPolicy Bypass -File .\tools\run-dev.ps1
+
+.EXAMPLE
+.\tools\run-dev.ps1 -DeviceId R3CM908XHSK
 #>
 
 [CmdletBinding()]
-param()
+param(
+    [string]$DeviceId
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -307,23 +312,25 @@ try {
     }
 
     $adbPath = Resolve-AdbPath
+    $adbDevicesOutput = @()
+    $developmentLaunchPlan = $null
     if ($null -ne $adbPath) {
         $adbDevicesOutput = @(& $adbPath devices)
         if ($LASTEXITCODE -eq 0) {
-            $androidDeviceIds = @(
-                Get-AuthorizedAndroidDeviceIds `
-                    -AdbDevicesOutput $adbDevicesOutput
-            )
-            foreach ($deviceId in $androidDeviceIds) {
-                & $adbPath -s $deviceId reverse tcp:5000 tcp:5000 | Out-Null
+            $developmentLaunchPlan = Get-DevelopmentLaunchPlan `
+                -ApiBaseUrl $flutterApiUrl `
+                -DeviceId $DeviceId `
+                -AdbDevicesOutput $adbDevicesOutput
+            foreach ($androidDeviceId in $developmentLaunchPlan.AndroidDeviceIds) {
+                & $adbPath -s $androidDeviceId reverse tcp:5000 tcp:5000 | Out-Null
                 if ($LASTEXITCODE -eq 0) {
                     Write-Host `
-                        "Android API forwarding ready for $deviceId." `
+                        "Android API forwarding ready for $androidDeviceId." `
                         -ForegroundColor Green
                 }
                 else {
                     Write-Warning `
-                        "Could not forward Android port 5000 for $deviceId."
+                        "Could not forward Android port 5000 for $androidDeviceId."
                 }
             }
         }
@@ -332,12 +339,19 @@ try {
         }
     }
 
+    if ($null -eq $developmentLaunchPlan) {
+        $developmentLaunchPlan = Get-DevelopmentLaunchPlan `
+            -ApiBaseUrl $flutterApiUrl `
+            -DeviceId $DeviceId `
+            -AdbDevicesOutput @()
+    }
+
     Write-Host "Starting Flutter with API_BASE_URL=$flutterApiUrl" `
         -ForegroundColor Cyan
+    $flutterRunArguments = @($developmentLaunchPlan.FlutterRunArguments)
     Push-Location $frontendDirectory
     try {
-        & $flutterCommand.Source run `
-            "--dart-define=API_BASE_URL=$flutterApiUrl"
+        & $flutterCommand.Source @flutterRunArguments
         $flutterExitCode = $LASTEXITCODE
     }
     finally {
