@@ -8,5 +8,8 @@ backend/uploads/
 __pycache__/
 *.py[cod]
 /build/
+/dist/
 .worktrees/
 README.md
+docs/reports
+tmp/

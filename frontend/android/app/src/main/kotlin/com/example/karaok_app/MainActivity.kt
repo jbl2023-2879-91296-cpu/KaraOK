@@ -1,4 +1,4 @@
-package com.example.karaok_app
+package com.jrpbone.karaok
 
 import io.flutter.embedding.android.FlutterActivity
 
