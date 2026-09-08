@@ -63,17 +63,16 @@ of each control adjustment.
 ### Control-prior artifact
 
 A small versioned artifact,
-`backend/audio_thresholds/amplifier_control_priors.json`, will document the
-neutral starting setup and its research basis. Its initial normalized 0-100
+`backend/audio_thresholds/amplifier_control_priors.json`, will document the neutral starting setup and its research basis. Its initial normalized 0-100
 positions are:
 
-| Control | Position | Basis |
-| --- | ---: | --- |
-| Volume | 40 | Conservative starting headroom; not a universal optimum |
-| Bass | 50 | Neutral midpoint |
-| Treble | 50 | Neutral midpoint |
-| Sharpness | 50 | Neutral project assumption pending hardware response data |
-| Flatness | 50 | Neutral project assumption pending hardware response data |
+| Control   | Position | Basis                                                     |
+| --------- | -------: | --------------------------------------------------------- |
+| Volume    |       40 | Conservative starting headroom; not a universal optimum   |
+| Bass      |       50 | Neutral midpoint                                          |
+| Treble    |       50 | Neutral midpoint                                          |
+| Sharpness |       50 | Neutral project assumption pending hardware response data |
+| Flatness  |       50 | Neutral project assumption pending hardware response data |
 
 The artifact contains a schema version, prior version, positions, citations,
 assumptions, and canonical checksum. It does not contain executable formulas.
@@ -91,17 +90,17 @@ take precedence.
 
 - ITU-R BS.1770-5 is the reference for objective programme loudness and
   true-peak concepts:
-  <https://www.itu.int/rec/R-REC-BS.1770-5-202311-I/en>.
+  [https://www.itu.int/rec/R-REC-BS.1770-5-202311-I/en](https://www.itu.int/rec/R-REC-BS.1770-5-202311-I/en).
 - Yamaha documents the midpoint of conventional bass and treble controls as a
   flat response:
-  <https://manual.yamaha.com/av/22/rn1000a/en-US/8393117835.html>.
+  [https://manual.yamaha.com/av/22/rn1000a/en-US/8393117835.html](https://manual.yamaha.com/av/22/rn1000a/en-US/8393117835.html).
 - Librosa defines spectral flatness as a measure of how noise-like rather than
   tone-like a spectrum is:
-  <https://librosa.org/doc/main/generated/librosa.feature.spectral_flatness.html>.
+  [https://librosa.org/doc/main/generated/librosa.feature.spectral_flatness.html](https://librosa.org/doc/main/generated/librosa.feature.spectral_flatness.html).
 - Standard acoustic sharpness is normally expressed in acum under methods such
   as DIN 45692. KaraOK's existing `normalized_score` remains explicitly an
   approximation and must not be labelled as standards-compliant acum:
-  <https://www.mathworks.com/help/audio/ref/acousticsharpness.html>.
+  [https://www.mathworks.com/help/audio/ref/acousticsharpness.html](https://www.mathworks.com/help/audio/ref/acousticsharpness.html).
 
 Online guidance can justify neutral starting behavior, measurement definitions,
 and safety constraints. It cannot establish universally optimal physical dial
@@ -112,21 +111,21 @@ come from extracted audio distributions, not from unsourced web EQ recipes.
 The Lakh MIDI Dataset is a possible future multi-genre symbolic source, but its
 own documentation warns about corrupt files, inconsistent attribution, and some
 incorrect MIDI/audio matches. It must not be imported automatically without a
-license and quality review: <https://colinraffel.com/projects/lmd/>. MAESTRO is
+license and quality review: [https://colinraffel.com/projects/lmd/](https://colinraffel.com/projects/lmd/). MAESTRO is
 well documented but piano/classical-specific and cannot support all KaraOK
-genres by itself: <https://magenta.withgoogle.com/datasets/maestro>.
+genres by itself: [https://magenta.withgoogle.com/datasets/maestro](https://magenta.withgoogle.com/datasets/maestro).
 
 ## Recommendation algorithm
 
 The physical-control-to-measurement contract is:
 
-| Physical control | Primary recorded measurement |
-| --- | --- |
-| Volume | Integrated loudness |
-| Bass | Bass-band energy percentage |
-| Treble | Treble-band energy percentage |
-| Sharpness | Approximate normalized sharpness score |
-| Flatness | Mean spectral flatness ratio |
+| Physical control | Primary recorded measurement           |
+| ---------------- | -------------------------------------- |
+| Volume           | Integrated loudness                    |
+| Bass             | Bass-band energy percentage            |
+| Treble           | Treble-band energy percentage          |
+| Sharpness        | Approximate normalized sharpness score |
+| Flatness         | Mean spectral flatness ratio           |
 
 For each control:
 
