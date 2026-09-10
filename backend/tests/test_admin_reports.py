@@ -77,6 +77,18 @@ class ReportTests(unittest.TestCase):
         p=patch.object(reports,'reader',reader);p.start();self.addCleanup(p.stop)
         self.query={'start':'2026-09-01','end':'2026-09-07'}
 
+    def test_assessment_status_groups_ignore_upload_status(self):
+        # The real schema has audio_upload.status; its name collides with
+        # the report's SELECT alias. Keep differing assessment outcomes in
+        # the same upload-status bucket to catch accidental grouping by it.
+        self.db.execute("ALTER TABLE audio_upload ADD COLUMN status TEXT")
+        self.db.execute("UPDATE audio_upload SET status='Acceptable'")
+        data = reports.report('overview', self.query)
+        self.assertEqual(
+            {row['status']: row['total'] for row in data['statuses']},
+            {'Completed': 2, 'Failed': 1},
+        )
+
     def test_overview_does_not_multiply_joins_and_excludes_admin_and_end_boundary(self):
         data=reports.report('overview',self.query)
         self.assertEqual(data['metrics']['assessments'],3)

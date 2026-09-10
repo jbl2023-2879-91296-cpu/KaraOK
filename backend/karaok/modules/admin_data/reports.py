@@ -109,7 +109,7 @@ def report(section, query):
             result['previous'] = metrics((start-(end-start), start))
             result['registrations'] = rows(c, "SELECT DATE(created_at) day,COUNT(*) total FROM user WHERE role='user' AND created_at >= %s AND created_at < %s GROUP BY day ORDER BY day", args)
             result['trend'] = rows(c, "SELECT DATE(a.assessment_date) day,COUNT(*) total"+BASE+where+" GROUP BY day ORDER BY day", args)
-            result['statuses'] = rows(c, "SELECT a.assessment_status status,COUNT(*) total"+BASE+where+" GROUP BY status ORDER BY total DESC", args)
+            result['statuses'] = rows(c, "SELECT a.assessment_status status,COUNT(*) total"+BASE+where+" GROUP BY a.assessment_status ORDER BY total DESC", args)
             result['genres'] = rows(c, "SELECT COALESCE(NULLIF(f.genre_name,''),'Not collected') genre,COUNT(*) total"+BASE+where+" GROUP BY genre ORDER BY total DESC LIMIT 20", args)
             result['recent'] = rows(c, "SELECT a.assessment_id,a.user_id,u.username,a.assessment_date,a.assessment_status,r.quality_score"+BASE+where+" ORDER BY a.assessment_date DESC,a.assessment_id DESC LIMIT 10", args)
         elif section == 'demographics':
@@ -143,7 +143,7 @@ def report(section, query):
             result['enabled'] = SETTINGS_RECOMMENDATIONS_ENABLED
             if result['enabled']:
                 result['metrics'] = one(c,"SELECT COUNT(*) saved_profiles_lifetime FROM amplifier_profile p JOIN user u ON u.user_id=p.user_id WHERE u.role='user'")
-                result['statuses'] = rows(c,"SELECT s.recommendation_status status,COUNT(*) recommendations FROM settings_recommendation s JOIN user u ON u.user_id=s.user_id WHERE u.role='user' AND s.created_at >= %s AND s.created_at < %s GROUP BY status",args)
+                result['statuses'] = rows(c,"SELECT s.recommendation_status status,COUNT(*) recommendations FROM settings_recommendation s JOIN user u ON u.user_id=s.user_id WHERE u.role='user' AND s.created_at >= %s AND s.created_at < %s GROUP BY s.recommendation_status",args)
                 result['genres'] = rows(c,"SELECT s.genre,COUNT(*) recommendations FROM settings_recommendation s JOIN user u ON u.user_id=s.user_id WHERE u.role='user' AND s.created_at >= %s AND s.created_at < %s GROUP BY s.genre ORDER BY recommendations DESC LIMIT 25",args)
                 result['versions'] = rows(c,"SELECT s.algorithm_version,s.genre_profile_version,s.overall_confidence,COUNT(*) recommendations FROM settings_recommendation s JOIN user u ON u.user_id=s.user_id WHERE u.role='user' AND s.created_at >= %s AND s.created_at < %s GROUP BY s.algorithm_version,s.genre_profile_version,s.overall_confidence ORDER BY recommendations DESC LIMIT 50",args)
                 result['verified'] = rows(c,"SELECT s.recommendation_id,child.assessment_id verification_assessment_id,s.original_score,child.verification_score,ROUND(child.verification_score-s.original_score,2) recorded_difference FROM settings_recommendation s JOIN settings_recommendation child ON child.parent_recommendation_id=s.recommendation_id AND child.user_id=s.user_id JOIN user u ON u.user_id=s.user_id WHERE u.role='user' AND child.created_at >= %s AND child.created_at < %s AND child.verification_score IS NOT NULL ORDER BY child.created_at DESC LIMIT 50",args)
