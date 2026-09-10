@@ -103,9 +103,16 @@ function settings_view(array $settings, bool $saved): string
     ob_start(); if ($saved): ?><div class="alert alert-ok mb-5">Settings saved locally.</div><?php endif; ?><form class="panel p-6 max-w-2xl space-y-5" method="post"><input type="hidden" name="_token" value="<?= h(Csrf::token()) ?>"><label class="check"><input type="checkbox" name="privacy_mode" <?= $settings['privacy_mode'] ? 'checked' : '' ?>><span><strong>Privacy Mode</strong><small>Mask likely personal fields after the API response arrives.</small></span></label><button class="btn btn-primary">Save local settings</button></form><?php return (string) ob_get_clean();
 }
 
-function error_view(string $message): string
+function error_view(string $message, bool $apiFailure = true): string
 {
-    return '<div class="alert alert-error"><strong>Administration API request failed.</strong><p class="mt-2">' . h($message) . '</p><p class="mt-3">Verify the backend deployment, HTTPS URL, API key, and server-side administration database credentials.</p><a class="btn mt-4" href="' . h(build_query_url((string)parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH), array_merge(array_filter($_GET, 'is_string'), ['refresh'=>'1']))) . '">Retry request</a></div>';
+    $title = $apiFailure ? 'Administration API request failed.' : 'Console page could not be rendered.';
+    $hint = $apiFailure
+        ? 'Check API diagnostics for connectivity and backend errors.'
+        : 'A local console error interrupted this page. Navigation remains available; retry after updating the console.';
+    return '<div class="alert alert-error" role="alert"><strong>' . h($title) . '</strong><p class="mt-2">'
+        . h($message) . '</p><p class="mt-3">' . h($hint)
+        . '</p><a class="btn mt-4" href="' . h(build_query_url((string)parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH), array_merge(array_filter($_GET, 'is_string'), ['refresh'=>'1'])))
+        . '">Retry request</a></div>';
 }
 
 /** @param array<string,mixed> $params */

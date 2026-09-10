@@ -141,6 +141,25 @@ $tests['Compatibility view labels legacy populations and offers working record t
     assert_same(false,str_contains($unavailable,'matching users'));
 };
 
+$tests['Empty bar series renders an empty state without throwing'] = static function (): void {
+    assert_same(true, str_contains(bars('No genres', [], 'genre', 'total'), 'No observations'));
+};
+$tests['Rendering failures discard partial output before the shell'] = static function (): void {
+    $level = ob_get_level();
+    ob_start();
+    echo '<div>partial view';
+    ob_start();
+    echo '<table>partial chart';
+    discard_view_buffers($level);
+    assert_same($level, ob_get_level());
+};
+$tests['Local render errors are not labelled as API failures'] = static function (): void {
+    $_GET = [];
+    $html = error_view('Chart rendering failed', false);
+    assert_same(false, str_contains($html, 'Administration API request failed'));
+    assert_same(true, str_contains($html, 'Console page could not be rendered'));
+};
+
 $failed = 0;
 foreach ($tests as $name => $test) {
     try {

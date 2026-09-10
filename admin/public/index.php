@@ -54,6 +54,7 @@ $title = 'Overview';
 $query = report_query();
 $reportPages = ['/' => 'overview', '/demographics' => 'demographics', '/usage' => 'usage', '/quality' => 'quality', '/amplifiers' => 'amplifiers', '/operations' => 'operations'];
 $content = '';
+$viewBufferLevel = ob_get_level();
 try {
     if (!$adminApi instanceof AdminApiClient) {
         throw new RuntimeException('Configure ADMIN_API_BASE_URL and ADMIN_API_KEY in admin/.env.');
@@ -207,8 +208,10 @@ try {
         $content = dashboard_view($health, $tables, $analytics, $logger->recent(8));
     }
 } catch (Throwable $exception) {
-    $logger->log('admin_api.error', ['route' => $path, 'error_class' => $exception::class]);
-    $content = error_view($exception->getMessage());
+    discard_view_buffers($viewBufferLevel);
+    $isApiError = $exception instanceof \KaraOK\Admin\Api\AdminApiException;
+    $logger->log($isApiError ? 'admin_api.error' : 'console.render_error', ['route' => $path, 'error_class' => $exception::class]);
+    $content = error_view($exception->getMessage(), $isApiError);
 }
 
 layout($title, $content, $path);
