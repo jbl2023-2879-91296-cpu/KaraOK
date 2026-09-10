@@ -82,8 +82,12 @@ KaraOK/
 |-- backend/          Flask API, analyzer, thresholds, and tests
 |-- admin/            Local Admin Console and its ignored operating guide
 |-- frontend/         Flutter application and widget tests
-|-- database/         Consolidated fresh-install MySQL schema
+|-- database/         Fresh-install schema and compatibility migration documentation
 |-- deploy/ovh/       Production service and web-server configuration
+|-- tools/            Development/build commands, shared helpers, and script tests
+|-- docs/             Calibration sources and design history
+|-- build.md          Android signing, builds, and artifact packaging
+|-- deploy.md         Backend release and recovery runbook
 |-- CHANGELOG.md      User-visible implementation history
 `-- README.md         Public project documentation
 ```
@@ -102,7 +106,7 @@ KaraOK/
 Import the authoritative fresh-install schema into an empty MySQL instance:
 
 ```powershell
-mysql -u root -p < database\schema.sql
+mysql -u root -p --execute="source database/schema.sql"
 ```
 
 ### 2. Run the API
@@ -151,7 +155,22 @@ flutter run --dart-define=API_BASE_URL=http://127.0.0.1:5000/api
 
 For an Android emulator, use `http://10.0.2.2:5000/api` instead of localhost.
 
+## Tooling and release guides
+
+See [tools](tools/README.md), [Android builds](build.md), [database setup](database/README.md),
+and [deployment](deploy.md). Main commands stay at `tools/`; shared helpers live
+in `tools/lib/`, secret generation in `tools/security/`, and regressions in `tools/tests/`.
+
 ## Testing
+
+Run all repository release groups from the root (backend, Flutter, analysis, and PowerShell):
+
+```powershell
+./tools/run-affected-tests.ps1 -All
+```
+
+Use `-ListOnly` to preview groups or omit `-All` for checks selected from working-tree changes.
+The Admin Console suite and real-service integration are separate, explicit checks.
 
 Run the lightweight client checks:
 

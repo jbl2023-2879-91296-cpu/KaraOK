@@ -12,7 +12,7 @@ environment variables, or secure parameters supplied to this command.
 .\tools\build_karaok.ps1 -SetupSigningOnly
 
 .EXAMPLE
-.\tools\build_karaok.ps1 -Format aab -Mode release -ApiBaseUrl https://example.com/api
+.\tools\build_karaok.ps1 -Format aab -NonInteractive
 
 .EXAMPLE
 .\tools\build_karaok.ps1 -Mode debug -ApiBaseUrl http://127.0.0.1:5000/api
@@ -21,7 +21,7 @@ environment variables, or secure parameters supplied to this command.
 param(
     [Parameter()] [ValidateSet('apk', 'aab')] [string]$Format = 'apk',
     [Parameter()] [ValidateSet('debug', 'profile', 'release')] [string]$Mode = 'release',
-    [Parameter()] [string]$ApiBaseUrl,
+    [Parameter()] [Alias('AppBaseUrl')] [string]$ApiBaseUrl,
     [Parameter()] [string]$VersionName,
     [Parameter()] [int]$BuildNumber,
     [Parameter()] [string]$OutputDirectory = 'dist',
@@ -196,7 +196,26 @@ function Read-KeyProperties {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $values }
     foreach ($line in Get-Content -LiteralPath $Path) {
         if ($line -match '^\s*(storeFile|storePassword|keyPassword|keyAlias)\s*=\s*(.*)\s*$') {
-            $values[$Matches[1]] = $Matches[2]
+            $propertyName = $Matches[1]
+            $propertyValue = $Matches[2]
+            $values[$propertyName] = [regex]::Replace(
+                $propertyValue, '\\(u[0-9a-fA-F]{4}|.)', {
+                    param($escape)
+                    $value = $escape.Groups[1].Value
+                    switch -CaseSensitive ($value) {
+                        't' { return "`t" }
+                        'r' { return "`r" }
+                        'n' { return "`n" }
+                        'f' { return "`f" }
+                        default {
+                            if ($value -cmatch '^u[0-9a-fA-F]{4}$') {
+                                return [string][char][Convert]::ToInt32($value.Substring(1), 16)
+                            }
+                            return $value
+                        }
+                    }
+                }
+            )
         }
     }
     return $values
@@ -239,12 +258,12 @@ function Test-SigningConfiguration {
             return $false
         }
     }
-    $configuredStoreFile = $effectiveValues['storeFile'] -replace '\\\\', '\'
+    $configuredStoreFile = $effectiveValues['storeFile']
     $resolvedStoreFile = if ([IO.Path]::IsPathRooted($configuredStoreFile)) {
         $configuredStoreFile
     }
     else {
-        Join-Path $AndroidDirectory $configuredStoreFile
+        Join-Path (Join-Path $AndroidDirectory 'app') $configuredStoreFile
     }
     return Test-Path -LiteralPath $resolvedStoreFile -PathType Leaf
 }
@@ -410,35 +429,16 @@ try {
     if ([string]::IsNullOrWhiteSpace($VersionName)) { $VersionName = $versionMatch.Groups[1].Value }
     if ($BuildNumber -le 0) { $BuildNumber = [int]$versionMatch.Groups[2].Value }
 
-    if ([string]::IsNullOrWhiteSpace($ApiBaseUrl)) {
-        $ApiBaseUrl = $env:KARAOK_API_BASE_URL
-    }
-    if ([string]::IsNullOrWhiteSpace($ApiBaseUrl)) {
-        if ($NonInteractive) {
-            if ($Mode -eq 'release') {
-                throw 'ApiBaseUrl is required for a non-interactive release build.'
-            }
-            $ApiBaseUrl = 'http://127.0.0.1:5000/api'
-        }
-        else {
-            $defaultApiUrl = if ($Mode -eq 'release') { '' } else { 'http://127.0.0.1:5000/api' }
-            $ApiBaseUrl = Read-DefaultValue -Prompt 'Backend API base URL' -DefaultValue $defaultApiUrl
-        }
-    }
-    $parsedApiUrl = $null
-    if (-not [Uri]::TryCreate($ApiBaseUrl, [UriKind]::Absolute, [ref]$parsedApiUrl) -or
-        $parsedApiUrl.Scheme -notin @('http', 'https')) {
-        throw 'ApiBaseUrl must be an absolute HTTP or HTTPS URL.'
-    }
-    if ($Mode -eq 'release' -and $parsedApiUrl.Scheme -ne 'https') {
-        throw 'Release builds require an HTTPS ApiBaseUrl.'
-    }
+    . (Join-Path $PSScriptRoot 'lib/build-api-config.ps1')
+    $apiConfiguration = Resolve-KaraOkBuildApi -Mode $Mode -ExplicitUrl $ApiBaseUrl `
+        -EnvironmentUrl $env:KARAOK_API_BASE_URL -AdditionalDefines $DartDefine
+    $ApiBaseUrl = $apiConfiguration.Url
     if ($VersionName -notmatch '^\d+\.\d+\.\d+$') { throw 'VersionName must use MAJOR.MINOR.PATCH.' }
     if ($BuildNumber -le 0) { throw 'BuildNumber must be greater than zero.' }
     if (-not (Test-Path -LiteralPath $targetPath -PathType Leaf)) { throw "Flutter target was not found: $Target" }
     if ($Obfuscate -and $Mode -ne 'release') { throw 'Obfuscation requires release mode.' }
     if ($Format -eq 'aab') { $SplitPerAbi = $false }
-    if ($Mode -eq 'release' -and -not $signingReady) {
+    if ($Mode -eq 'release' -and -not $signingReady -and -not $PlanOnly) {
         if (-not $NonInteractive -and (Read-YesNo -Prompt 'Release signing is missing. Create a private signing key now?' -DefaultValue $true)) {
             New-KaraOkSigningKey -AndroidDirectory $androidDirectory -PropertiesPath $keyPropertiesPath
             $signingReady = Test-SigningConfiguration -AndroidDirectory $androidDirectory -PropertiesPath $keyPropertiesPath
@@ -475,6 +475,8 @@ try {
     Write-Output "Mode:            $Mode"
     Write-Output "Version:         $VersionName+$BuildNumber"
     Write-Output "API base URL:    $ApiBaseUrl"
+    Write-Output "URL source:      $($apiConfiguration.Source)"
+    Write-Output "Flutter define:  $($apiConfiguration.DartDefine)"
     Write-Output "Release signing: $signingReady"
     Write-Output "Output:          $OutputDirectory"
     if ($PlanOnly) { exit 0 }
@@ -498,7 +500,7 @@ try {
         '--target', $Target,
         '--build-name', $VersionName,
         '--build-number', $BuildNumber.ToString(),
-        "--dart-define=API_BASE_URL=$ApiBaseUrl"
+        $apiConfiguration.DartDefine
     )
     foreach ($definition in $DartDefine) {
         if ([string]::IsNullOrWhiteSpace($definition)) { continue }
@@ -582,6 +584,7 @@ try {
         format = $Format
         mode = $Mode
         apiBaseUrl = $ApiBaseUrl
+        apiBaseUrlSource = $apiConfiguration.Source
         releaseSigned = $Mode -eq 'release'
         obfuscated = $shouldObfuscate
         splitPerAbi = $shouldSplitPerAbi

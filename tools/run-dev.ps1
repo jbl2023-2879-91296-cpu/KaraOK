@@ -19,7 +19,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-. (Join-Path $PSScriptRoot "dev-command-resolution.ps1")
+. (Join-Path $PSScriptRoot "lib/dev-command-resolution.ps1")
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $backendDirectory = Join-Path $repositoryRoot "backend"

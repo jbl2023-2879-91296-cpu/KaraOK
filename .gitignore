@@ -1,6 +1,5 @@
 /audio sample(good)
 /results
-/build.md
 /project.md
 backend/uploads/
 /backend/.tmp-tests/
@@ -10,6 +9,9 @@ __pycache__/
 /build/
 /dist/
 .worktrees/
-README.md
+/admin/README.md
+/backend/README.md
+/frontend/README.md
+/backend/audio_thresholds/README.md
 docs/reports
 tmp/

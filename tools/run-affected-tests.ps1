@@ -210,7 +210,10 @@ function Invoke-CapturedPowerShellScript {
         'Bypass'
         '-File'
         ('"' + $ScriptPath + '"')
-    ) + @($ScriptArguments)
+    )
+    if ($ScriptArguments) {
+        $processArguments += $ScriptArguments
+    }
 
     $passed = $false
     try {
@@ -282,7 +285,7 @@ function Invoke-AffectedTestRun {
         return
     }
 
-    $resolverPath = Join-Path $PSScriptRoot 'dev-command-resolution.ps1'
+    $resolverPath = Join-Path $PSScriptRoot 'lib/dev-command-resolution.ps1'
     . $resolverPath
     $backendPython = $null
     $flutterPath = $null
@@ -378,13 +381,19 @@ function Invoke-AffectedTestRun {
                     }.GetNewClosure()
                 }
                 'powershell-tools' {
+                    $captureScript = ${function:Invoke-CapturedPowerShellScript}
                     {
-                        & (Join-Path $PSScriptRoot `
-                            'tests\dev-command-resolution.tests.ps1')
-                        & (Join-Path $PSScriptRoot `
-                            'tests\backend-python-resolution.tests.ps1')
-                        & (Join-Path $PSScriptRoot `
-                            'tests\affected-test-runner.tests.ps1')
+                        foreach ($testScript in (Get-ChildItem `
+                                -LiteralPath (Join-Path $PSScriptRoot 'tests') `
+                                -Filter '*.tests.ps1' -File | Sort-Object Name)) {
+                            $scriptResult = & $captureScript `
+                                -Name $testScript.BaseName `
+                                -ScriptPath $testScript.FullName `
+                                -LogDirectory $logRoot
+                            if (-not $scriptResult.Passed) {
+                                throw "PowerShell tests failed: $($testScript.Name)`n$($scriptResult.Output)"
+                            }
+                        }
                     }.GetNewClosure()
                 }
                 'integration' {

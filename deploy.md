@@ -2,7 +2,9 @@
 
 This runbook deploys the KaraOK backend from `main` to the live Ubuntu server,
 rebuilds the MySQL schema when explicitly required, and verifies the API. Run
-commands in order and stop immediately if a verification step fails.
+commands in order and stop immediately if a verification step fails. Section 9
+is optional and destructive: routine application updates skip it. For an existing
+legacy schema, review the compatibility migration below instead.
 
 ## Live environment
 
@@ -128,6 +130,7 @@ sudo -u karaok test -r audio_thresholds/good_audio_thresholds.json
 
 These commands are silent when successful.
 
+
 ## 6. Prepare the runtime caches
 
 Direct audio tests must use the same writable Numba and Matplotlib cache
@@ -177,7 +180,10 @@ computer. From that clone's repository root, run the repository release runner:
 
 `-All` must select and pass `backend-full`, `flutter-full`,
 `flutter-analyze`, and `powershell-tools`. Do not substitute a hand-maintained
-module list. The backend derivation fixture is repository-owned at
+module list. The PowerShell group discovers every `tools/tests/*.tests.ps1` suite,
+including build planning and API URL validation. Run `composer test` from `admin/`
+separately when releasing the local console. See [tools](tools/README.md).
+The backend derivation fixture is repository-owned at
 `backend/tests/fixtures/good_audio_results.csv`, so a clean clone has everything
 needed for full discovery.
 
@@ -329,7 +335,17 @@ health endpoints. This stops new generation and hides the settings endpoints;
 it does not delete stored profiles, assessments, recommendations, or audits.
 Never drop the additive tables as a routine rollback.
 
-## 9. Rebuild the MySQL schema
+## Existing legacy server schema
+
+The [server compatibility migration](database/migrations/20260908_01_server_compatibility.md)
+documents the additive upgrade for the supplied 12-table server schema. Review
+its preconditions and validate it on a disposable MySQL copy before production.
+It preserves historical records and retired tables, resulting in 14 tables; the
+11-table and retired-table-absence checks in section 9 apply only to fresh installs.
+Do not run the fresh rebuild after applying the compatibility migration. Keep
+settings recommendations disabled until the separate rollout gate passes.
+
+## 9. Rebuild the MySQL schema (only for an approved fresh replacement)
 
 > **Destructive operation:** This section permanently deletes all live users,
 > sessions, assessments, settings, and database logs. Run it only when a full
@@ -365,10 +381,10 @@ WHERE table_schema = 'karaok_db'
 
 Expected values:
 
-| Check                       | Expected |
-| --------------------------- | -------: |
-| `table_count`               |       11 |
-| retired-table query rows     |        0 |
+| Check                    | Expected |
+| ------------------------ | -------: |
+| `table_count`          |       11 |
+| retired-table query rows |        0 |
 
 Confirm the non-secret database connection identity configured for the service:
 
@@ -452,7 +468,8 @@ No SSH tunnel is required. On the development computer, put the public API URL
 and raw API Key C in ignored `admin/.env`, then run:
 
 ```powershell
-cd "C:\Programming\Mobile Applications\Flutter\KaraOK\admin"
+# From the local repository root:
+cd admin
 composer install
 npm install
 npm run css:build
@@ -471,28 +488,24 @@ Exit the SSH connection:
 exit
 ```
 
-Then run these commands in PowerShell on the development computer:
+Then run these commands in PowerShell from the local repository root:
 
 ```powershell
-cd "C:\Programming\Mobile Applications\Flutter\KaraOK\frontend"
+# First-time signing setup only:
+./tools/build_karaok.ps1 -SetupSigningOnly
 
-flutter pub get
-flutter analyze --no-pub
-flutter test --no-pub
-
-flutter build apk --release `
-  --dart-define=API_BASE_URL=https://139.99.89.112/api
-
-Get-FileHash `
-  ".\build\app\outputs\flutter-apk\app-release.apk" `
-  -Algorithm SHA256
+./tools/build_karaok.ps1 -PlanOnly -NonInteractive
+./tools/build_karaok.ps1 -NonInteractive -ApiBaseUrl https://139.99.89.112/api
 ```
 
-The release APK is created at:
-
-```text
-frontend\build\app\outputs\flutter-apk\app-release.apk
-```
+Release signing requires a private keystore; there is no debug signing fallback.
+Skip the setup command if signing is already configured. The build command runs
+Flutter analysis and tests before building and packages the APK plus a SHA-256
+manifest under `dist/KaraOK-v<version>+<build>-release-android/` (with a timestamp
+on repeated builds). The manifest records the effective API URL. An explicit
+`-ApiBaseUrl` overrides `KARAOK_API_BASE_URL`; review the plan before building.
+For AABs, version overrides, emulator/USB builds, and signing configuration, see
+[the Android build guide](build.md).
 
 Installing the backend does not update Android clients. Users must install the
 new APK to receive the new mobile behavior.

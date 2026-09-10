@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 . (Join-Path (Split-Path -Parent $PSScriptRoot) `
-    "dev-command-resolution.ps1")
+    "lib/dev-command-resolution.ps1")
 
 $testRoot = Join-Path $PSScriptRoot ".tmp-backend-python-$PID"
 $primaryPython = Join-Path $testRoot ".venv\Scripts\python.exe"
