@@ -2,9 +2,8 @@ import csv
 import json
 import math
 import os
-import shutil
+import tempfile
 import unittest
-import uuid
 from collections import Counter
 from contextlib import contextmanager
 from dataclasses import replace
@@ -25,17 +24,13 @@ from audio_thresholds.genre_profiles import parse_genre_profile_artifact
 
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
-TEST_DIRECTORY = Path(__file__).resolve().parent
 
 
 @contextmanager
 def workspace_temporary_directory():
-    path = TEST_DIRECTORY / f"genre-derivation-{uuid.uuid4().hex}"
-    path.mkdir()
-    try:
-        yield path
-    finally:
-        shutil.rmtree(path)
+    # Respect TMPDIR; release checkouts are read-only to the service account.
+    with tempfile.TemporaryDirectory(prefix="karaok-genre-derivation-") as directory:
+        yield Path(directory)
 
 
 def analyzer_result(value: float) -> dict:
@@ -49,6 +44,25 @@ def analyzer_result(value: float) -> dict:
 
 
 class GenreProfileDerivationTests(unittest.TestCase):
+    def test_temporary_workspace_does_not_write_to_checkout(self):
+        original_mkdir = Path.mkdir
+        source = Path(__file__).resolve().parent
+
+        def reject_source_mkdir(path, *args, **kwargs):
+            if path.is_relative_to(source):
+                raise PermissionError("Service account cannot write to checkout")
+            return original_mkdir(path, *args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as scratch:
+            with patch.object(tempfile, "tempdir", scratch):
+                with patch.object(Path, "mkdir", reject_source_mkdir):
+                    with workspace_temporary_directory() as root:
+                        self.assertTrue(root.is_relative_to(Path(scratch)))
+                        (root / "nested").mkdir()
+                        (root / "nested" / "artifact.json").write_text("{}", encoding="utf-8")
+                    self.assertFalse(root.exists())
+                self.assertEqual(list(Path(scratch).iterdir()), [])
+
     def test_extracts_exact_karaok_measurement_paths(self):
         analysis = {
             "loudness": {"integrated_lufs": -14.5, "mean_dbfs": 999},
