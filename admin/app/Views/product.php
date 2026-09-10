@@ -59,7 +59,7 @@ function trend_chart(string $title, array $rows, string $value, array $meta, boo
     for ($d = new DateTimeImmutable($meta['start']); $d <= new DateTimeImmutable($meta['end']); $d = $d->modify('+1 day')) {
         $days[$d->format('Y-m-d')] = $map[$d->format('Y-m-d')] ?? ($zero ? 0 : null);
     }
-    $max = max(1, ...array_map(static fn($v) => (float)$v, array_values($days)));
+    $max = max([1, ...array_map(static fn($v) => (float)$v, array_values($days))]);
     $points = []; $i = 0; $segments = []; $circles = [];
     foreach ($days as $day => $count) {
         $x = 45 + 610 * $i / max(1, count($days)-1); $i++;
@@ -73,7 +73,7 @@ function trend_chart(string $title, array $rows, string $value, array $meta, boo
 }
 function bars(string $title, array $rows, string $label, string $value, string $note = ''): string
 {
-    $max = max(1,...array_map(static fn($r)=>(float)$r[$value],$rows));
+    $max = max([1,...array_map(static fn($r)=>(float)$r[$value],$rows)]);
     ob_start(); ?><article class="panel p-5"><h2 class="section-title"><?= h($title) ?></h2><p class="muted text-sm mt-1 mb-5"><?= h($note) ?></p><?php if (!$rows): ?><div class="empty-state">No observations in this period.</div><?php endif; ?><?php foreach ($rows as $row): ?><div class="bar-row"><div class="flex justify-between gap-4 text-sm"><span><?= h($row[$label]) ?></span><strong><?= metric_value($row[$value]) ?></strong></div><meter min="0" max="<?= h($max) ?>" value="<?= h($row[$value]) ?>" aria-label="<?= h($row[$label].': '.$row[$value]) ?>"></meter></div><?php endforeach; ?></article><?php return (string)ob_get_clean();
 }
 
@@ -183,3 +183,9 @@ function mask_personal_rows(array &$records, bool $privacy): void
     unset($row);
 }
 
+
+/** Discard incomplete nested views while preserving the caller's buffer. */
+function discard_view_buffers(int $level): void
+{
+    while (ob_get_level() > $level) ob_end_clean();
+}
