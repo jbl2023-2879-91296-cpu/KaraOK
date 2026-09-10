@@ -199,15 +199,19 @@ The full backend discovery includes the principal calibration suites:
 - `tests.test_good_audio_thresholds`
 
 After pulling the same verified commit on the live server, run full backend
-discovery there as the service account:
+discovery there as the service account. Temporary test artifacts belong in a
+service-owned temporary directory, not the read-only release checkout:
 
 ```bash
 cd /opt/karaok/app/backend
 
 CACHE_ROOT=/var/lib/karaok/uploads/_analysis/_runtime_cache
 
+KARAOK_TEST_TMP="$(sudo -u karaok mktemp -d /tmp/karaok-tests.XXXXXX)"
+
 sudo -u karaok env \
   PYTHONDONTWRITEBYTECODE=1 \
+  TMPDIR="$KARAOK_TEST_TMP" \
   NUMBA_CACHE_DIR="$CACHE_ROOT/numba" \
   MPLCONFIGDIR="$CACHE_ROOT/matplotlib" \
   XDG_CACHE_HOME="$CACHE_ROOT/xdg" \

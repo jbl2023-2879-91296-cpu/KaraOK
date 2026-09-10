@@ -1,7 +1,8 @@
 import hashlib
 import json
 import unittest
-import uuid
+from unittest.mock import patch
+import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -33,14 +34,32 @@ THRESHOLD_JSON = (
 
 @contextmanager
 def temporary_threshold_path():
-    path = Path(__file__).resolve().parent / f".threshold-{uuid.uuid4().hex}.json"
-    try:
-        yield path
-    finally:
-        path.unlink(missing_ok=True)
+    # Service accounts can read the release checkout without owning it.
+    # tempfile honors TMPDIR, including the deployment test cache directory.
+    with tempfile.TemporaryDirectory(prefix="karaok-threshold-") as directory:
+        yield Path(directory) / "threshold.json"
 
 
 class GoodAudioThresholdTests(unittest.TestCase):
+    def test_temporary_artifact_works_with_read_only_checkout(self):
+        original_write = Path.write_text
+        source_directory = Path(__file__).resolve().parent
+
+        def reject_source_write(path, *args, **kwargs):
+            if path.is_relative_to(source_directory):
+                raise PermissionError("The service account cannot write to the checkout")
+            return original_write(path, *args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as scratch:
+            with patch.object(tempfile, "tempdir", scratch):
+                with patch.object(Path, "write_text", reject_source_write):
+                    with temporary_threshold_path() as artifact:
+                        artifact.write_text("{}", encoding="utf-8")
+                        self.assertEqual(artifact.read_text(encoding="utf-8"), "{}")
+                        self.assertTrue(artifact.is_relative_to(Path(scratch)))
+                    self.assertFalse(artifact.exists())
+                self.assertEqual(list(Path(scratch).iterdir()), [])
+
     @classmethod
     def setUpClass(cls):
         cls.thresholds = load_thresholds(THRESHOLD_JSON)
