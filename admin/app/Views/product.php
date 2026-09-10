@@ -16,7 +16,22 @@ function product_url(string $path, array $extra = []): string
     return build_query_url($path, array_merge($_SESSION['report_dates'] ?? [], $extra));
 }
 
-function readable(string $key): string { return ucwords(str_replace('_', ' ', $key)); }
+function readable(string $key): string
+{
+    return [
+        'registered_users_lifetime'=>'Users (lifetime)', 'new_registrations'=>'New users',
+        'average_audio_quality_score'=>'Avg. audio score', 'assessment_active_users'=>'Participants',
+        'completion_rate_percent'=>'Completion (%)', 'median_processing_seconds'=>'Median processing (s)',
+        'scored_completed_assessments'=>'Scored completions', 'selected_period'=>'Period',
+        'preceding_period'=>'Previous', 'assessment_id'=>'Assessment', 'user_id'=>'User',
+        'assessment_date'=>'Date', 'assessment_status'=>'Status', 'quality_score'=>'Score',
+        'duration_seconds'=>'Duration (s)', 'processing_time'=>'Processing (s)',
+        'daily_active_users'=>'Daily active', 'weekly_active_users'=>'Weekly active',
+        'monthly_active_users'=>'Monthly active', 'assessments_per_participant'=>'Assessments / user',
+        'mean_hours_to_first_assessment'=>'Avg. first assessment (h)', 'conversion_percent'=>'Conversion (%)',
+        'mean_latency_ms'=>'Avg. latency (ms)', 'error_percent'=>'Error rate (%)',
+    ][$key] ?? ucwords(str_replace('_', ' ', $key));
+}
 function metric_value(mixed $value): string
 {
     if ($value === null) return 'Unavailable';
@@ -42,12 +57,12 @@ function export_directory(array $data, string $kind): never
 }
 function metric_grid(array $metrics, array $previous = [], string $scope = 'Selected period'): string
 {
-    ob_start(); ?><div class="metric-grid"><?php foreach ($metrics as $key => $value): ?><article class="stat"><span><?= h(readable($key)) ?></span><strong><?= metric_value($value) ?></strong><small class="muted"><?= h($scope) ?><?php if (array_key_exists($key, $previous) && $value !== null): ?> · <?php if ($previous[$key] === null || (float)$previous[$key] == 0): ?>Comparison unavailable (no baseline)<?php else: ?><?= h(sprintf('%+.1f%%', 100 * ((float)$value-(float)$previous[$key])/(float)$previous[$key])) ?> vs preceding period<?php endif; ?><?php endif; ?></small></article><?php endforeach; ?></div><?php return (string)ob_get_clean();
+    ob_start(); ?><div class="metric-grid"><?php foreach ($metrics as $key => $value): ?><article class="stat"><span><?= h(readable($key)) ?></span><strong><?= metric_value($value) ?></strong><small class="muted"><?= h($scope) ?><?php if (array_key_exists($key, $previous) && $value !== null): ?> · <?php if ($previous[$key] === null || (float)$previous[$key] == 0): ?>No comparison (no baseline)<?php else: ?><?= h(sprintf('%+.1f%%', 100 * ((float)$value-(float)$previous[$key])/(float)$previous[$key])) ?> vs previous<?php endif; ?><?php endif; ?></small></article><?php endforeach; ?></div><?php return (string)ob_get_clean();
 }
 
 function data_table(string $title, array $rows, string $note = '', bool $links = true): string
 {
-    ob_start(); ?><article class="panel report-table"><div class="panel-heading"><h2 class="section-title"><?= h($title) ?></h2><?php if ($note): ?><p class="muted text-sm mt-1"><?= h($note) ?></p><?php endif; ?></div><?php if (!$rows): ?><div class="empty-state"><strong>No matching records</strong><p>Try a wider reporting period or different filters.</p></div><?php else: ?><div class="table-scroll" tabindex="0" role="region" aria-label="<?= h($title) ?>"><table><thead><tr><?php foreach (array_keys($rows[0]) as $key): ?><th scope="col"><?= h(readable($key)) ?></th><?php endforeach; ?></tr></thead><tbody><?php foreach ($rows as $row): ?><tr><?php foreach ($row as $key => $value): ?><td><?php if ($links && in_array($key, ['user_id','assessment_id'], true) && $value !== null): ?><a class="text-sky-300 underline underline-offset-4" href="<?= h(product_url($key === 'user_id' ? '/users/detail' : '/assessments/detail', ['id' => $value])) ?>">#<?= h($value) ?></a><?php elseif (str_contains($key, 'status') && $value !== null): ?><span class="badge <?= in_array($value,['Completed','verified','generated'],true) ? 'badge-ok' : ($value === 'Failed' ? 'badge-high' : '') ?>"><?= h($value) ?></span><?php elseif (in_array($key,['verified','is_active'],true)): ?><?= $value ? 'Yes' : 'No' ?><?php else: ?><?= $value === null ? '<span class="muted">Not collected</span>' : (is_array($value) ? '<pre class="json-value">'.h(json_encode($value,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE)).'</pre>' : h($value)) ?><?php endif; ?></td><?php endforeach; ?></tr><?php endforeach; ?></tbody></table></div><?php endif; ?></article><?php return (string)ob_get_clean();
+    ob_start(); ?><article class="panel report-table"><div class="panel-heading"><h2 class="section-title"><?= h($title) ?></h2><?php if ($note): ?><p class="muted text-sm mt-1"><?= h($note) ?></p><?php endif; ?></div><?php if (!$rows): ?><div class="empty-state"><strong>No matching records</strong><p>Adjust the dates or filters.</p></div><?php else: ?><div class="table-scroll" tabindex="0" role="region" aria-label="<?= h($title) ?>"><table><thead><tr><?php foreach (array_keys($rows[0]) as $key): ?><th scope="col"><?= h(readable($key)) ?></th><?php endforeach; ?></tr></thead><tbody><?php foreach ($rows as $row): ?><tr><?php foreach ($row as $key => $value): ?><td><?php if ($links && in_array($key, ['user_id','assessment_id'], true) && $value !== null): ?><a class="text-slate-700 underline underline-offset-4" href="<?= h(product_url($key === 'user_id' ? '/users/detail' : '/assessments/detail', ['id' => $value])) ?>">#<?= h($value) ?></a><?php elseif (str_contains($key, 'status') && $value !== null): ?><span class="badge <?= in_array($value,['Completed','verified','generated'],true) ? 'badge-ok' : ($value === 'Failed' ? 'badge-high' : '') ?>"><?= h($value) ?></span><?php elseif (in_array($key,['verified','is_active'],true)): ?><?= $value ? 'Yes' : 'No' ?><?php else: ?><?= $value === null ? '<span class="muted">Not collected</span>' : (is_array($value) ? '<pre class="json-value">'.h(json_encode($value,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE)).'</pre>' : h($value)) ?><?php endif; ?></td><?php endforeach; ?></tr><?php endforeach; ?></tbody></table></div><?php endif; ?></article><?php return (string)ob_get_clean();
 }
 
 /** SVG uses attributes, not inline styles, to respect the console's CSP. */
@@ -69,7 +84,7 @@ function trend_chart(string $title, array $rows, string $value, array $meta, boo
         $circles[] = '<circle cx="'.round($x,2).'" cy="'.round($y,2).'" r="2.5"><title>'.h($day.': '.$count).'</title></circle>';
     }
     if ($points) $segments[] = implode(' ', $points);
-    ob_start(); ?><article class="panel p-5"><h2 class="section-title"><?= h($title) ?></h2><p class="muted text-sm mt-1">Daily · UTC · <?= h(readable($value)) ?></p><?php if (!$rows): ?><div class="empty-state">No observations in this period.</div><?php else: ?><svg class="trend-chart" viewBox="0 0 700 210" role="img" aria-label="<?= h($title) ?>. Daily values in the table below."><line x1="45" y1="170" x2="655" y2="170" stroke="#334155"/><line x1="45" y1="30" x2="655" y2="30" stroke="#25324a"/><text x="3" y="35"><?= h(round($max,1)) ?></text><text x="20" y="175">0</text><?php foreach ($segments as $segment): ?><polyline points="<?= h($segment) ?>" fill="none" stroke="#70b8f0" stroke-width="2.5"/><?php endforeach; ?><g fill="#70b8f0"><?= implode('', $circles) ?></g><text x="45" y="200"><?= h($meta['start']) ?></text><text x="655" y="200" text-anchor="end"><?= h($meta['end']) ?></text></svg><details><summary>View daily values</summary><?= data_table('Daily values', array_map(static fn($day,$n)=>['day'=>$day,$value=>$n],array_keys($days),array_values($days)), '', false) ?></details><?php endif; ?></article><?php return (string)ob_get_clean();
+    ob_start(); ?><article class="panel p-5"><h2 class="section-title"><?= h($title) ?></h2><p class="muted text-sm mt-1">Daily · UTC · <?= h(readable($value)) ?></p><?php if (!$rows): ?><div class="empty-state">No observations in this period.</div><?php else: ?><svg class="trend-chart" viewBox="0 0 700 210" role="img" aria-label="<?= h($title) ?>. Daily values in the table below."><line x1="45" y1="170" x2="655" y2="170" stroke="#cbd5e1"/><line x1="45" y1="30" x2="655" y2="30" stroke="#e2e8f0"/><text x="3" y="35"><?= h(round($max,1)) ?></text><text x="20" y="175">0</text><?php foreach ($segments as $segment): ?><polyline points="<?= h($segment) ?>" fill="none" stroke="#52677f" stroke-width="2.5"/><?php endforeach; ?><g fill="#52677f"><?= implode('', $circles) ?></g><text x="45" y="200"><?= h($meta['start']) ?></text><text x="655" y="200" text-anchor="end"><?= h($meta['end']) ?></text></svg><details><summary>Data table</summary><?= data_table('Daily values', array_map(static fn($day,$n)=>['day'=>$day,$value=>$n],array_keys($days),array_values($days)), '', false) ?></details><?php endif; ?></article><?php return (string)ob_get_clean();
 }
 function bars(string $title, array $rows, string $label, string $value, string $note = ''): string
 {
@@ -80,8 +95,7 @@ function bars(string $title, array $rows, string $label, string $value, string $
 function product_report_view(string $section, array $data): string
 {
     $meta = $data['meta'];
-    ob_start(); ?><div class="report-intro"><div><p class="eyebrow">KaraOK intelligence</p><h2 class="text-2xl font-semibold mt-1"><?= h(['overview'=>'Understand your audio community','demographics'=>'Who uses KaraOK?','usage'=>'From registration to repeat assessment','quality'=>'Instrumental audio quality','amplifiers'=>'Amplifier recommendations','operations'=>'Service operations'][$section]) ?></h2><p class="muted mt-2"><?= h($meta['start'].' – '.$meta['end']) ?> · UTC · Complete days</p></div><span class="badge badge-ok">Live API data</span></div>
-    <p class="coverage-note"><?= h($meta['coverage']) ?> Scores evaluate instrumental audio, not singing ability.</p>
+    ob_start(); ?><div class="report-context"><span><?= h($meta['start'].' to '.$meta['end']) ?> / UTC</span><details><summary>Scope</summary><p><?= h($meta['coverage']) ?> Scores measure instrumental audio quality.</p></details></div>
     <?php if ($section === 'overview'): ?>
         <?php
         $headline = ['registered_users_lifetime'=>$data['lifetime']['registered_users'],
@@ -95,11 +109,11 @@ function product_report_view(string $section, array $data): string
         $accounts = [];
         foreach ($data['lifetime'] as $key=>$value) $accounts[] = ['account_measure'=>readable($key),'users'=>$value];
         ?>
-        <?= metric_grid($headline, $data['previous'], 'Period unless labelled lifetime') ?>
+        <?= metric_grid($headline, $data['previous'], 'Selected period; lifetime where noted') ?>
         <div class="report-columns">
             <?= trend_chart('Assessment activity', $data['trend'], 'total', $meta) ?>
             <?= trend_chart('New registrations', $data['registrations'], 'total', $meta) ?>
-            <?= data_table('Assessment and registration summary', $summary, 'UTC period versus immediately preceding equal period. Rate is percent; processing time is median seconds.', false) ?>
+            <?= data_table('Period summary', $summary, 'UTC period versus immediately preceding equal period. Rate is percent; processing time is median seconds.', false) ?>
             <?= data_table('Account base', $accounts, 'Lifetime totals for non-administrator users; current activation and verification state.', false) ?>
             <?= bars('Assessment status', $data['statuses'], 'status', 'total', 'All assessment attempts in the selected period') ?>
             <?= bars('Popular genres', $data['genres'], 'genre', 'total', 'Upload genre: top 20, including missing genre') ?>
@@ -114,7 +128,7 @@ function product_report_view(string $section, array $data): string
         <?= metric_grid($data['metrics'], [], 'See activity windows above') ?>
         <div class="report-columns"><?= bars('First-time and returning assessors',$data['assessors'],'assessor_type','users','First-time: earliest stored assessment is within the period. Returning: an earlier assessment exists.') ?><?= trend_chart('Daily assessment-active users',$data['daily'],'active_users',$meta) ?></div>
         <h2 class="section-title mt-6 mb-3">Registration cohort conversion</h2><?= metric_grid($data['conversion'], [], 'Registered in period · observed through period end') ?>
-        <p class="coverage-note">Conversion denominator: users registered in the selected period. Numerator: those with a first assessment after registration and before period end. Mean delay excludes unconverted users. Recent registrations have less time to convert; deleted history can undercount participation.</p>
+        <details class="context-details"><summary>Conversion method</summary><p>Conversion denominator: users registered in the selected period. Numerator: those with a first assessment after registration and before period end. Mean delay excludes unconverted users. Recent registrations have less time to convert; deleted history can undercount participation.</p></details>
         <?= bars('Assessment activity by weekday',array_map(static fn($r)=>['day'=>['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][(int)$r['weekday']],'assessments'=>$r['assessments']],$data['weekdays']),'day','assessments','UTC · counts, not normalized for the number of each weekday') ?>
         <p class="coverage-note">Retention cohorts are not reported: history completeness and deleted-event coverage are not recorded.</p>
     <?php elseif ($section === 'quality'): ?>
@@ -130,18 +144,18 @@ function product_report_view(string $section, array $data): string
         <a class="btn mt-5" href="/preview?table=amplifier_profile">Inspect saved profiles</a> <a class="btn mt-5" href="/preview?table=settings_recommendation">Inspect recommendations</a>
         <?php endif; ?>
     <?php else: ?>
-        <?= metric_grid($data['metrics']) ?><p class="coverage-note">Source: api_request_log. Includes app, administrator and background requests. Errors are HTTP 400–599; error rate divides these by all logged requests. Latency is the arithmetic mean in milliseconds. This is operational traffic, not engagement.</p>
+        <?= metric_grid($data['metrics']) ?><details class="context-details"><summary>Traffic definition</summary><p>Source: api_request_log. Includes app, administrator and background requests. Errors are HTTP 400–599; error rate divides these by all logged requests. Latency is the arithmetic mean in milliseconds. This is operational traffic, not engagement.</p></details>
         <?= data_table('Assessments needing attention',$data['attention'],'Latest 50 failed, pending or processing assessments in the period') ?><?= data_table('Audit history',$data['audit'],'Latest 50 events in the period; sensitive event details omitted') ?>
         <div class="flex flex-wrap gap-3 mt-5"><a class="btn" href="/diagnostics">Connection diagnostics</a><a class="btn" href="/activity">Local console activity</a><a class="btn" href="/preview?table=assessment">Controlled assessment management</a></div>
     <?php endif; ?>
-    <details class="panel p-5 mt-6"><summary>Metric definitions and data coverage</summary><div class="prose-notes"><p><?= h($meta['window']) ?> Generated <?= h($meta['generated_at']) ?>. Non-administrator users are defined by user.role = user; deactivated accounts remain in analytics.</p><p>Sources: user, assessment, audio_analysis_result and audio_upload; amplifier_profile and settings_recommendation when enabled; audit_log and api_request_log for operations. Unique assessment keys prevent multiplying rows across result/upload joins.</p><p>Completion rate: completed assessments / all period attempts. Average audio quality: mean of non-null completed result scores (see scored completed assessments for its denominator). Typical processing time: median nonnegative processing_time of completed assessments, in seconds. Null observations are excluded, never treated as zero. A missing denominator or preceding baseline makes comparisons unavailable.</p><p>Preceding comparison covers the same number of complete days immediately before this period. Percent changes are relative changes, including for rates. Deleted records are absent; failed API requests never produce substitute metrics. Reports are queried on demand with a 30-second, per-session cache; Refresh bypasses it.</p></div></details>
+    <details class="panel p-5 mt-6"><summary>Definitions</summary><div class="prose-notes"><p><?= h($meta['window']) ?> Generated <?= h($meta['generated_at']) ?>. Non-administrator users are defined by user.role = user; deactivated accounts remain in analytics.</p><p>Sources: user, assessment, audio_analysis_result and audio_upload; amplifier_profile and settings_recommendation when enabled; audit_log and api_request_log for operations. Unique assessment keys prevent multiplying rows across result/upload joins.</p><p>Completion rate: completed assessments / all period attempts. Average audio quality: mean of non-null completed result scores (see scored completed assessments for its denominator). Typical processing time: median nonnegative processing_time of completed assessments, in seconds. Null observations are excluded, never treated as zero. A missing denominator or preceding baseline makes comparisons unavailable.</p><p>Preceding comparison covers the same number of complete days immediately before this period. Percent changes are relative changes, including for rates. Deleted records are absent; failed API requests never produce substitute metrics. Reports are queried on demand with a 30-second, per-session cache; Refresh bypasses it.</p></div></details>
     <?php return (string)ob_get_clean();
 }
 
 function directory_view(string $kind, array $data, array $query): string
 {
     $users = $kind === 'users';
-    ob_start(); ?><div class="report-intro"><div><p class="eyebrow"><?= $users ? 'People' : 'Audio assessments' ?></p><h2 class="text-2xl font-semibold mt-1"><?= number_format((int)$data['total']) ?> matching <?= h($kind) ?></h2><p class="muted mt-2"><?= $users ? 'Registration date' : 'Assessment date' ?> follows the top-bar period · UTC. Registered non-administrator users only.</p></div><a class="btn" href="<?= h(product_url('/'.$kind, array_merge($query,['export'=>'1','page'=>1]))) ?>">Export CSV · first 100</a></div>
+    ob_start(); ?><div class="report-intro"><div><h2 class="text-2xl font-semibold mt-1"><?= number_format((int)$data['total']) ?> <?= h($kind) ?></h2><p class="muted mt-2"><?= $users ? 'Registration date' : 'Assessment date' ?> / selected period, UTC. Excludes administrators.</p></div><a class="btn" href="<?= h(product_url('/'.$kind, array_merge($query,['export'=>'1','page'=>1]))) ?>">Export CSV (100 max)</a></div>
     <form class="panel directory-filters" method="get"><input type="hidden" name="days" value="<?= h($query['days'] ?? '30') ?>"><?php foreach (['start','end','user_id'] as $f): if (isset($query[$f])): ?><input type="hidden" name="<?= h($f) ?>" value="<?= h($query[$f]) ?>"><?php endif; endforeach; ?>
     <label class="field">Search <?= $users ? 'name, username or ID' : 'user, ID or purpose' ?><input class="input" name="search" maxlength="100" value="<?= h($query['search'] ?? '') ?>" placeholder="Find a user…"></label>
     <label class="field">Status<select class="input" name="status"><option value="">All statuses</option><?php foreach ($users ? ['enabled','deactivated'] : ['Pending','Processing','Completed','Failed'] as $v): ?><option <?= ($query['status'] ?? '') === $v ? 'selected' : '' ?>><?= h($v) ?></option><?php endforeach; ?></select></label>
@@ -151,15 +165,15 @@ function directory_view(string $kind, array $data, array $query): string
     <?php else: ?><label class="field">Genre (exact)<input class="input" name="genre" maxlength="50" value="<?= h($query['genre'] ?? '') ?>"></label><?php endif; ?>
     <label class="field">Sort by<select class="input" name="sort"><?php foreach ($users ? ['date','username','id'] : ['date','username','id','score'] as $f): ?><option value="<?= h($f) ?>" <?= ($query['sort'] ?? 'date') === $f ? 'selected' : '' ?>><?= h(readable($f)) ?></option><?php endforeach; ?></select></label><label class="field">Direction<select class="input" name="direction"><option value="DESC">Descending</option><option value="ASC" <?= ($query['direction'] ?? '') === 'ASC' ? 'selected' : '' ?>>Ascending</option></select></label>
     <div class="flex gap-2 items-end"><button class="btn btn-primary">Apply filters</button><a class="btn" href="<?= h(product_url('/'.$kind)) ?>">Reset</a></div></form>
-    <?= data_table($users ? 'User directory' : 'Assessment records',$data['rows'],$users ? 'Contacts are always masked. Age reference: '.$data['age_reference'].'. Assessment count and last activity are lifetime.' : 'Duration and processing time are seconds. Audio-quality score uses the recorded 0–100 scale.') ?>
+    <?= compact_directory_table($kind, $data['rows'], $data['age_reference']) ?>
     <nav class="pagination" aria-label="Directory pages"><span class="muted">Page <?= h($data['page']) ?> of <?= h($data['pages']) ?> · 25 per page</span><div class="flex gap-2"><?php if ($data['page']>1): ?><a class="btn" href="<?= h(product_url('/'.$kind,array_merge($query,['page'=>$data['page']-1]))) ?>">Previous</a><?php endif; ?><?php if ($data['page']<$data['pages']): ?><a class="btn" href="<?= h(product_url('/'.$kind,array_merge($query,['page'=>$data['page']+1]))) ?>">Next</a><?php endif; ?></div></nav><?php return (string)ob_get_clean();
 }
 
 function detail_view(string $kind, array $data, array $query): string
 {
     $profile=$data['profile'];$users=$kind==='users';
-    ob_start(); ?><a class="text-sky-300 underline" href="<?= h(product_url('/'.$kind)) ?>">← Back to <?= h($kind) ?></a><div class="report-intro mt-5"><h2 class="text-2xl font-semibold"><?= h($users ? $profile['username'] : 'Assessment #'.$profile['assessment_id']) ?></h2><a class="btn" href="/record/edit?table=<?= $users ? 'user' : 'assessment' ?>&amp;id=<?= h($users ? $profile['user_id'] : $profile['assessment_id']) ?>"><?= $users ? 'Manage activation' : 'Manage status' ?></a></div>
-    <article class="panel p-5"><h2 class="section-title"><?= $users ? 'Profile' : 'Recorded assessment details' ?></h2><?php if ($users): ?><p class="muted text-sm mt-2">Age as of <?= h($data['age_reference']) ?> UTC ? contacts masked</p><?php endif; ?><dl class="profile-details"><?php foreach ($profile as $key=>$value): ?><dt><?= h(readable($key)) ?></dt><dd><?= $value === null ? '<span class="muted">Not collected</span>' : (is_array($value) ? '<pre class="json-value">'.h(json_encode($value,JSON_PRETTY_PRINT)).'</pre>' : h($value)) ?></dd><?php endforeach; ?></dl></article>
+    ob_start(); ?><a class="text-slate-700 underline" href="<?= h(product_url('/'.$kind)) ?>">← Back to <?= h($kind) ?></a><div class="report-intro mt-5"><h2 class="text-2xl font-semibold"><?= h($users ? $profile['username'] : 'Assessment #'.$profile['assessment_id']) ?></h2><a class="btn" href="/record/edit?table=<?= $users ? 'user' : 'assessment' ?>&amp;id=<?= h($users ? $profile['user_id'] : $profile['assessment_id']) ?>"><?= $users ? 'Manage activation' : 'Manage status' ?></a></div>
+    <?= profile_sections($profile, $users, $data['age_reference'] ?? null) ?>
     <?php if ($users): ?>
     <div class="report-columns"><?= trend_chart('Audio-quality score trend',$data['scores'],'average_score',$data['meta'],false) ?><?= bars('Genre preferences',$data['genres'],'genre','assessments','Selected period · upload genres') ?></div><?= data_table('Saved amplifier profiles',$data['profiles'],'Lifetime · latest 50. Availability follows the recommendations feature flag. Positions are recorded values.') ?>
     <a class="btn btn-primary mt-5" href="<?= h(product_url('/assessments',['user_id'=>$profile['user_id']])) ?>">Browse assessment history</a>
@@ -188,4 +202,49 @@ function mask_personal_rows(array &$records, bool $privacy): void
 function discard_view_buffers(int $level): void
 {
     while (ob_get_level() > $level) ob_end_clean();
+}
+
+function compact_directory_table(string $kind, array $rows, string $reference): string
+{
+    $users = $kind === 'users';
+    if (!$rows) return data_table($users ? 'Users' : 'Assessments', []);
+    ob_start(); ?>
+    <article class="panel report-table"><div class="panel-heading"><h2 class="section-title"><?= $users ? 'Users' : 'Assessments' ?></h2><p class="muted text-xs"><?= $users ? 'Masked contacts · age as of '.h($reference).' · lifetime activity' : 'Audio scores: 0–100 · times in seconds' ?></p></div>
+    <div class="table-scroll" tabindex="0" role="region" aria-label="<?= $users ? 'Users' : 'Assessments' ?>"><table class="directory-table"><thead><tr>
+    <?php foreach ($users ? ['User','Contact','Location / age','Account','Registered','Activity'] : ['Assessment','User','Purpose / genre','Status','Score','Timing'] as $label): ?><th scope="col"><?= h($label) ?></th><?php endforeach; ?>
+    </tr></thead><tbody><?php foreach ($rows as $row): ?><tr>
+    <?php if ($users): ?>
+    <td><a class="record-link" href="<?= h(product_url('/users/detail',['id'=>$row['user_id']])) ?>"><?= h($row['username']) ?></a><small><?= h(trim(($row['first_name'] ?? '').' '.($row['last_name'] ?? ''))) ?> · #<?= h($row['user_id']) ?></small></td>
+    <td><?= h($row['email'] ?? 'Not collected') ?><small><?= h($row['phone'] ?? 'Not collected') ?></small></td>
+    <td><?= h(implode(', ',array_filter([$row['city'] ?? '',$row['country'] ?? '']))) ?><small>Age <?= h($row['age'] ?? 'unknown') ?></small></td>
+    <td><span class="badge <?= $row['is_active'] ? 'badge-ok' : '' ?>"><?= $row['is_active'] ? 'Enabled' : 'Deactivated' ?></span><small><?= $row['verified'] ? 'Verified' : 'Unverified' ?></small></td>
+    <td><?= h($row['created_at']) ?></td><td><strong><?= h($row['assessment_count_lifetime']) ?></strong> assessments<small>Last: <?= h($row['last_assessment_lifetime'] ?? 'None') ?></small></td>
+    <?php else: ?>
+    <td><a class="record-link" href="<?= h(product_url('/assessments/detail',['id'=>$row['assessment_id']])) ?>">#<?= h($row['assessment_id']) ?></a><small><?= h($row['assessment_date']) ?></small></td>
+    <td><a class="record-link" href="<?= h(product_url('/users/detail',['id'=>$row['user_id']])) ?>"><?= h($row['username']) ?></a><small>#<?= h($row['user_id']) ?></small></td>
+    <td><?= h(readable($row['analysis_purpose'])) ?><small><?= h($row['genre_name'] ?? 'Genre not collected') ?></small></td>
+    <td><span class="badge <?= $row['assessment_status']==='Completed' ? 'badge-ok' : ($row['assessment_status']==='Failed' ? 'badge-high' : '') ?>"><?= h($row['assessment_status']) ?></span></td>
+    <td class="numeric"><?= metric_value($row['quality_score']) ?></td><td><?= h($row['duration_seconds']) ?> s audio<small><?= h($row['processing_time'] ?? 'Unavailable') ?> s processing</small></td>
+    <?php endif; ?></tr><?php endforeach; ?></tbody></table></div></article>
+    <?php return (string)ob_get_clean();
+}
+
+function profile_sections(array $profile, bool $users, ?string $reference): string
+{
+    $groups = $users ? [
+        'Identity'=>['user_id','username','first_name','last_name','age'],
+        'Contact & location'=>['email','phone','city','country'],
+        'Account'=>['created_at','is_active','verified'],
+    ] : [
+        'Assessment'=>['assessment_id','user_id','username','assessment_date','analysis_purpose','genre_name','assessment_status','result_status'],
+        'Quality & timing'=>['quality_score','duration_seconds','processing_time','empirical_status','worst_feature_status'],
+        'Audio features'=>['noise_level','distortion_level','bass','treble','loudness','sharpness','flatness'],
+        'Report metadata'=>['worst_features','empirical_details','scoring_algorithm_version','quality_profile_version','reference_recording_count'],
+    ];
+    ob_start(); ?><div class="report-columns"><?php foreach ($groups as $label=>$fields): ?>
+    <article class="panel p-4"><h2 class="section-title"><?= h($label) ?></h2>
+    <?php if ($users && $label==='Identity'): ?><p class="muted text-xs mt-1">Age as of <?= h($reference) ?> UTC</p><?php endif; ?>
+    <dl class="profile-details"><?php foreach ($fields as $key): if (!array_key_exists($key,$profile)) continue; $value=$profile[$key]; ?>
+    <dt><?= h(readable($key)) ?></dt><dd><?php if ($value===null): ?><span class="muted">Not collected</span><?php elseif (in_array($key,['is_active','verified'],true)): ?><?= $value ? 'Yes' : 'No' ?><?php elseif (is_array($value) || in_array($key,['worst_features','empirical_details'],true)): ?><details><summary>View data</summary><pre class="json-value"><?= h(is_array($value) ? json_encode($value,JSON_PRETTY_PRINT) : $value) ?></pre></details><?php else: ?><?= h($value) ?><?php endif; ?></dd>
+    <?php endforeach; ?></dl></article><?php endforeach; ?></div><?php return (string)ob_get_clean();
 }

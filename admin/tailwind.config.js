@@ -7,10 +7,10 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        ink: '#0b1020',
-        panel: '#121a2b',
-        line: '#25324a',
-        accent: '#4a90d9'
+        ink: '#f8fafc',
+        panel: '#ffffff',
+        line: '#e2e8f0',
+        accent: '#475569'
       }
     }
   },
