@@ -61,6 +61,19 @@ final class AdminApiClient
      *  @param array<string, mixed>|null $body
      *  @return mixed
      */
+    public function report(string $section, array $query = []): array
+    {
+        return $this->request('GET', '/reports/' . rawurlencode($section), $query);
+    }
+    public function directory(string $kind, array $query = []): array
+    {
+        return $this->request('GET', '/directory/' . rawurlencode($kind), $query);
+    }
+    public function detail(string $kind, string $id, array $query = []): array
+    {
+        return $this->request('GET', '/directory/' . rawurlencode($kind) . '/' . rawurlencode($id), $query);
+    }
+
     private function request(string $method, string $path, array $query = [], ?array $body = null): mixed
     {
         $url = $this->baseUrl . $path;

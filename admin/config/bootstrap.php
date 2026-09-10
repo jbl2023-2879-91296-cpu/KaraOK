@@ -40,6 +40,7 @@ if (PHP_SAPI !== 'cli') {
         'samesite' => 'Strict',
     ]);
     session_start();
+    header('Cache-Control: no-store');
     header('X-Content-Type-Options: nosniff');
     header('X-Frame-Options: DENY');
     header('Referrer-Policy: no-referrer');

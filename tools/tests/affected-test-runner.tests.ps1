@@ -27,7 +27,7 @@ function Assert-TestGroups {
 $settingsGroups = @(Get-AffectedTestGroups -ChangedPaths @(
         'backend/settings_recommendations/engine.py'
         'frontend/lib/features/sound_settings/data/settings_api.dart'
-        'tools/dev-command-resolution.ps1'
+        'tools/lib/dev-command-resolution.ps1'
     ))
 Assert-TestGroups `
     -Scenario 'known settings changes select focused groups' `
@@ -200,7 +200,6 @@ try {
     $nestedWarningResult = Invoke-CapturedPowerShellScript `
         -Name 'successful-nested-native-warning' `
         -ScriptPath $warningScript `
-        -ScriptArguments @() `
         -LogDirectory $testRoot
     if (-not $nestedWarningResult.Passed) {
         throw 'FAIL: nested native stderr overrode the successful script exit code'

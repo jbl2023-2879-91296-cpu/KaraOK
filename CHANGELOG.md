@@ -2,6 +2,23 @@
 
 All notable changes to KaraOK are documented here.
 
+## 2026-09-08 - Repository tooling and release documentation
+
+### Changed
+
+- Organized shared PowerShell helpers under `tools/lib/` and secret generation
+  under `tools/security/`, preserving the top-level development/build commands.
+- Made the PowerShell release group discover all regression scripts, including
+  Android build planning, private signing configuration, and API URL validation.
+- Isolated PowerShell suites in child processes so successful Java stderr output
+  does not fail signing tests, and supported omitted subprocess arguments.
+- Versioned the root, Android build, database, and tooling guides; corrected stale
+  debug-signing and retired-table documentation and documented packaged manifests.
+- Updated the deployment runbook to distinguish routine updates, the existing
+  server compatibility migration, and explicitly approved fresh schema replacement.
+- Removed obsolete scratch build logs while retaining local reports, audio data,
+  release artifacts, and existing work in progress.
+
 ## 2026-09-03 - Instrumental settings calibration and schema simplification
 
 ### Added

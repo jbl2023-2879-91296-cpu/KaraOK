@@ -51,10 +51,10 @@ $defaultDebugPlan = @(
         -PlanOnly
 )
 if ($LASTEXITCODE -ne 0 -or
-    ($defaultDebugPlan -join "`n") -notmatch 'http://127\.0\.0\.1:5000/api') {
-    throw 'FAIL: a non-interactive debug plan did not select the local API default.'
+    ($defaultDebugPlan -join "`n") -notmatch 'http://10\.0\.2\.2:5000/api') {
+    throw 'FAIL: a non-interactive debug plan did not select the Android emulator API default.'
 }
-Write-Output 'PASS: non-interactive debug builds use the documented local API default'
+Write-Output 'PASS: non-interactive debug builds use the documented Android emulator API default'
 
 $gradle = Get-Content -Raw -LiteralPath $gradlePath
 if ($gradle -match 'release\s*\{[\s\S]*?signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)') {
@@ -120,6 +120,20 @@ try {
         throw 'FAIL: guided signing setup did not create both required private files.'
     }
     Write-Output 'PASS: guided signing setup creates a private keystore and ignored properties file'
+    New-Item -ItemType Directory -Path (Join-Path $testProject 'lib') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $testProject 'lib/main.dart') -Value 'void main() {}'
+    $signedPlan = @(& $buildScript -ProjectDirectory $testProject -NonInteractive -PlanOnly)
+    if (($signedPlan -join "`n") -notmatch 'Release signing: True') {
+        throw 'FAIL: build tool cannot read its own Java-escaped signing properties.'
+    }
+    $relativeProperties = [IO.File]::ReadAllText($testProperties)
+    $relativeProperties = [regex]::Replace($relativeProperties, '(?m)^storeFile=.*$', 'storeFile=../keystore/disposable-test.jks')
+    [IO.File]::WriteAllText($testProperties, $relativeProperties)
+    $relativePlan = @(& $buildScript -ProjectDirectory $testProject -NonInteractive -PlanOnly)
+    if (($relativePlan -join "`n") -notmatch 'Release signing: True') {
+        throw 'FAIL: relative keystore paths must resolve from android/app, like Gradle.'
+    }
+    Write-Output 'PASS: escaped absolute and Gradle-relative signing paths are recognized'
 }
 finally {
     if (Test-Path -LiteralPath $resolvedTestRoot) {

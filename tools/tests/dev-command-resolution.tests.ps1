@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $resolverPath = Join-Path (Split-Path -Parent $PSScriptRoot) `
-    "dev-command-resolution.ps1"
+    "lib/dev-command-resolution.ps1"
 if (-not (Test-Path -LiteralPath $resolverPath)) {
     throw "FAIL: Composer command resolver is missing: $resolverPath"
 }
@@ -139,7 +139,7 @@ if (($chromeLaunchPlan.AndroidDeviceIds -join "`n") -cne "R3CM908XHSK") {
 }
 Write-Output "PASS: Android forwarding does not replace the requested Flutter target"
 
-$runDevPath = Join-Path (Split-Path -Parent $resolverPath) "run-dev.ps1"
+$runDevPath = Join-Path (Split-Path -Parent $PSScriptRoot) "run-dev.ps1"
 $runDevContent = Get-Content -LiteralPath $runDevPath -Raw
 if ($runDevContent -notmatch 'Get-DevelopmentLaunchPlan') {
     throw "FAIL: run-dev.ps1 does not use the tested development launch plan."

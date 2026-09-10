@@ -119,3 +119,24 @@ def relationships():
 @require_admin_data_key
 def analytics():
     return _execute(service.analytics)
+
+
+@blueprint.get('/reports/<section>')
+@require_admin_data_key
+def product_report(section):
+    from .reports import report
+    return _execute(report, section, request.args.to_dict())
+
+
+@blueprint.get('/directory/<kind>')
+@require_admin_data_key
+def product_directory(kind):
+    from .reports import directory
+    return _execute(directory, kind, request.args.to_dict())
+
+
+@blueprint.get('/directory/<kind>/<record_id>')
+@require_admin_data_key
+def product_detail(kind, record_id):
+    from .reports import detail
+    return _execute(detail, kind, record_id, request.args.to_dict())
