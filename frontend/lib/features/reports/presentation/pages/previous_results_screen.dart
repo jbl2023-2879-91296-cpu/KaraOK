@@ -1,3 +1,4 @@
+import 'report_comparison_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/core/storage/guest_assessment_store.dart';
@@ -41,6 +42,8 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
   DateTime? _endDate;
   ReportHistorySort _sortOrder = ReportHistorySort.newest;
   List<dynamic> _results = [];
+  bool _selectingReports = false;
+  final List<int> _selectedReports = [];
   bool _loading = !UserSession.instance.isGuest;
   String? _loadError;
 
@@ -63,6 +66,8 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
             _results.isEmpty &&
             !(UserSession.instance.isGuest && widget.resultsLoader == null);
         _loadError = null;
+        _selectedReports.clear();
+        _selectingReports = false;
       });
     }
     if (widget.resultsLoader case final loader?) {
@@ -482,6 +487,61 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
                   ],
                 ),
               ),
+            if (_results.whereType<Map>().length >= 2)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Wrap(
+                  spacing: 12,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (!_selectingReports)
+                      TextButton.icon(
+                        key: const Key('compareReports'),
+                        icon: const Icon(Icons.compare_arrows),
+                        label: const Text('Select reports to compare'),
+                        onPressed: () =>
+                            setState(() => _selectingReports = true),
+                      )
+                    else ...[
+                      Text(
+                        '${_selectedReports.length} of 2 selected',
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                      FilledButton(
+                        key: const Key('compareSelectedReports'),
+                        onPressed: _selectedReports.length != 2
+                            ? null
+                            : () {
+                                final entries = _selectedReports
+                                    .map(
+                                      (index) => ReportHistoryEntry.fromRaw(
+                                        _results[index],
+                                        sourceIndex: index,
+                                      ),
+                                    )
+                                    .toList();
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => ReportComparisonScreen(
+                                      entries: entries,
+                                    ),
+                                  ),
+                                );
+                              },
+                        child: const Text('Compare'),
+                      ),
+                      TextButton(
+                        onPressed: () => setState(() {
+                          _selectingReports = false;
+                          _selectedReports.clear();
+                        }),
+                        child: const Text('Cancel selection'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             Expanded(child: _buildResults(filtered, query.hasFilters)),
           ],
         ),
@@ -514,7 +574,31 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
         itemCount: filtered.length,
         itemBuilder: (_, index) => _ReportCard(
           entry: filtered[index],
-          onTap: () => _openResult(filtered[index].raw),
+          selecting: _selectingReports,
+          selected: _selectedReports.contains(filtered[index].sourceIndex),
+          onTap: () {
+            if (!_selectingReports) {
+              _openResult(filtered[index].raw);
+              return;
+            }
+            final sourceIndex = filtered[index].sourceIndex;
+            if (!_selectedReports.contains(sourceIndex) &&
+                _selectedReports.length == 2) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Deselect a report before choosing another.'),
+                ),
+              );
+              return;
+            }
+            setState(() {
+              if (_selectedReports.contains(sourceIndex)) {
+                _selectedReports.remove(sourceIndex);
+              } else {
+                _selectedReports.add(sourceIndex);
+              }
+            });
+          },
         ),
       ),
     );
@@ -556,7 +640,15 @@ class _StatusChip extends StatelessWidget {
 }
 
 class _ReportCard extends StatelessWidget {
-  const _ReportCard({required this.entry, required this.onTap});
+  const _ReportCard({
+    required this.entry,
+    required this.onTap,
+    this.selecting = false,
+    this.selected = false,
+  });
+
+  final bool selecting;
+  final bool selected;
 
   final ReportHistoryEntry entry;
   final VoidCallback onTap;
@@ -580,6 +672,14 @@ class _ReportCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
             children: [
+              if (selecting)
+                Checkbox(
+                  key: Key('selectReport${entry.sourceIndex}'),
+                  value: selected,
+                  onChanged: (_) => onTap(),
+                  semanticLabel:
+                      'Select ${entry.name ?? 'report'}, ${entry.createdAt?.toLocal() ?? 'date unavailable'}',
+                ),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
