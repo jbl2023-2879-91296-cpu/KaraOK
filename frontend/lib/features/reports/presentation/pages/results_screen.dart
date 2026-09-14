@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:karaok_app/features/reports/domain/report_values.dart';
+import 'package:karaok_app/features/reports/presentation/widgets/empirical_feature_table.dart';
+import 'package:karaok_app/features/reports/presentation/widgets/report_measurements.dart';
 import 'package:karaok_app/app/app_shell.dart';
 import 'package:karaok_app/core/security/guest_assessment_service.dart';
 import 'package:karaok_app/features/assessments/presentation/pages/audio_test_screen.dart';
@@ -6,20 +9,15 @@ import 'package:karaok_app/features/auth/presentation/pages/login_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/detailed_report_screen.dart';
 import 'package:karaok_app/shared/widgets/guest_banner.dart';
 
-num? _resultNumber(Object? value) =>
-    value is num ? value : num.tryParse('$value');
-
-Map<String, dynamic> _resultMap(Object? value) =>
-    value is Map ? Map<String, dynamic>.from(value) : const <String, dynamic>{};
-
 class ResultsScreen extends StatefulWidget {
   const ResultsScreen({
     super.key,
-    this.testName = 'Test #4',
+    this.testName = 'Audio test',
     this.score,
     this.noiseLevelDb,
     this.distortionLevel,
     this.empiricalStatus,
+    this.referenceRecordingCount,
     this.featureResults = const {},
     this.isGuest = false,
     this.assessmentId,
@@ -30,23 +28,27 @@ class ResultsScreen extends StatefulWidget {
     Map<dynamic, dynamic> record, {
     bool isGuest = false,
   }) {
-    final empirical = _resultMap(record['empirical_quality']);
-    final features = _resultMap(empirical['features']);
-    final visualizationValues = _resultMap(record['visualizations']);
+    final empirical = reportMap(record['empirical_quality']);
+    final features = reportMap(empirical['features']);
+    final visualizationValues = reportMap(record['visualizations']);
     return ResultsScreen(
       testName: (record['test_name'] ?? record['file_name'] ?? 'Audio test')
           .toString(),
       score:
-          _resultNumber(empirical['overall_score']) ??
-          _resultNumber(record['score']),
-      noiseLevelDb: _resultNumber(record['noise_level']),
-      distortionLevel: _resultNumber(record['distortion_level']),
+          reportNumber(empirical['overall_score']) ??
+          reportNumber(record['score']),
+      noiseLevelDb: reportNumber(record['noise_level']),
+      distortionLevel: reportNumber(record['distortion_level']),
       empiricalStatus: empirical['overall_status']?.toString(),
+      referenceRecordingCount: reportReferenceCount(
+        empirical['reference_recording_count'] ??
+            record['reference_recording_count'],
+      ),
       featureResults: features,
       isGuest: isGuest,
       assessmentId: isGuest
           ? null
-          : _resultNumber(record['assessment_id'] ?? record['id'])?.toInt(),
+          : reportNumber(record['assessment_id'] ?? record['id'])?.toInt(),
       visualizationImages: isGuest
           ? visualizationValues.map(
               (key, value) => MapEntry(key, value.toString()),
@@ -60,6 +62,7 @@ class ResultsScreen extends StatefulWidget {
   final num? noiseLevelDb;
   final num? distortionLevel;
   final String? empiricalStatus;
+  final int? referenceRecordingCount;
   final Map<String, dynamic> featureResults;
   final bool isGuest;
   final int? assessmentId;
@@ -77,39 +80,32 @@ class _ResultsScreenState extends State<ResultsScreen> {
     );
   }
 
-  String get _grade {
-    if (widget.empiricalStatus == 'good') return 'GOOD';
-    if (widget.empiricalStatus == 'good_but_needs_improvement') {
-      return 'NEEDS IMPROVEMENT';
-    }
-    if (widget.empiricalStatus == 'bad') return 'BAD';
-    final score = widget.score;
-    if (score == null) return 'NOT SCORED';
-    if (score >= 80) return 'GOOD';
-    if (score >= 50) return 'NEEDS IMPROVEMENT';
-    return 'BAD';
-  }
+  String get _grade => reportGrade(widget.score, widget.empiricalStatus);
 
-  Color get _gradeColor {
-    final score = widget.score;
-    if (score == null) return const Color(0xFF888888);
-    if (score >= 80) return const Color(0xFF4CAF50);
-    if (score >= 50) return const Color(0xFFFF9800);
-    return const Color(0xFFF44336);
-  }
-
-  String get _scoreLabel => widget.score?.toDouble().toStringAsFixed(1) ?? '--';
-
-  String get _interpretation => switch (widget.empiricalStatus) {
-    'good' =>
-      'All five measurements produced a weighted score of at least 80 against the 30-recording good-audio reference.',
-    'good_but_needs_improvement' =>
-      'The weighted result is usable but one or more measurements are outside the central P05–P95 good range.',
-    'bad' =>
-      'The weighted score is below 50 or one or more measurements fall outside the observed good-audio envelope.',
-    _ =>
-      'A score is unavailable because a required audio measurement is missing.',
+  Color get _gradeColor => switch (_grade) {
+    'GOOD' => const Color(0xFF4CAF50),
+    'NEEDS IMPROVEMENT' => const Color(0xFFFF9800),
+    'BAD' => const Color(0xFFF44336),
+    _ => const Color(0xFF888888),
   };
+
+  String get _scoreLabel => reportScoreLabel(widget.score);
+
+  String get _interpretation {
+    if (_grade == 'NOT SCORED') {
+      return 'No valid score is available for this assessment.';
+    }
+    return switch (widget.empiricalStatus) {
+      'good' =>
+        'The saved weighted score is at least 80 against its good-audio reference. Individual feature grades are shown separately.',
+      'good_but_needs_improvement' =>
+        'The saved weighted score is at least 50 and below 80 against its good-audio reference.',
+      'bad' =>
+        'The saved weighted score is below 50 against its good-audio reference. This comparison is not a validated perceptual diagnosis.',
+      _ =>
+        'This is a saved score. Detailed reference information is unavailable for this assessment.',
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -216,22 +212,19 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         ),
                       ),
                       const SizedBox(height: 20),
-                      if (widget.featureResults.isNotEmpty)
-                        _EmpiricalFeatureTable(features: widget.featureResults),
-                      if (widget.featureResults.isNotEmpty)
+                      if (widget.featureResults.isNotEmpty ||
+                          widget.referenceRecordingCount != null)
+                        EmpiricalFeatureTable(
+                          features: widget.featureResults,
+                          referenceRecordingCount:
+                              widget.referenceRecordingCount,
+                        ),
+                      if (widget.featureResults.isNotEmpty ||
+                          widget.referenceRecordingCount != null)
                         const SizedBox(height: 20),
-                      _MeasuredValue(
-                        label: 'Estimated noise level',
-                        value: widget.noiseLevelDb == null
-                            ? 'Not measured'
-                            : '${widget.noiseLevelDb!.toDouble().toStringAsFixed(2)} dBFS',
-                      ),
-                      const SizedBox(height: 10),
-                      _MeasuredValue(
-                        label: 'Distortion risk',
-                        value: widget.distortionLevel == null
-                            ? 'Not measured'
-                            : '${widget.distortionLevel!.toDouble().toStringAsFixed(2)}/100',
+                      ReportMeasurements(
+                        noiseLevelDb: widget.noiseLevelDb,
+                        distortionLevel: widget.distortionLevel,
                       ),
                       const SizedBox(height: 20),
                       // Status row
@@ -295,12 +288,13 @@ class _ResultsScreenState extends State<ResultsScreen> {
                                 MaterialPageRoute(
                                   builder: (_) => DetailedReportScreen(
                                     testName: widget.testName,
-                                    score: widget.score!.round(),
-                                    noiseLevelDb:
-                                        widget.noiseLevelDb?.toDouble() ?? 0.0,
-                                    distortionLevel:
-                                        widget.distortionLevel?.toDouble() ??
-                                        0.0,
+                                    score: widget.score,
+                                    empiricalStatus: widget.empiricalStatus,
+                                    featureResults: widget.featureResults,
+                                    referenceRecordingCount:
+                                        widget.referenceRecordingCount,
+                                    noiseLevelDb: widget.noiseLevelDb,
+                                    distortionLevel: widget.distortionLevel,
                                     assessmentId: widget.assessmentId,
                                     visualizationImages:
                                         widget.visualizationImages,
@@ -477,175 +471,3 @@ class _ResultsScreenState extends State<ResultsScreen> {
 }
 
 // ── Metric bar ────────────────────────────────────────────────────────────────
-
-class _EmpiricalFeatureTable extends StatelessWidget {
-  const _EmpiricalFeatureTable({required this.features});
-
-  final Map<String, dynamic> features;
-
-  static const _labels = {
-    'loudness': 'Loudness',
-    'bass': 'Bass',
-    'treble': 'Treble',
-    'sharpness': 'Sharpness',
-    'flatness': 'Flatness',
-  };
-
-  static const _units = {
-    'loudness': 'LUFS',
-    'bass': '%',
-    'treble': '%',
-    'sharpness': '',
-    'flatness': '',
-  };
-
-  String _measurement(String key, num value) {
-    final decimals = key == 'sharpness' || key == 'flatness' ? 6 : 2;
-    final unit = _units[key]!;
-    return '${value.toDouble().toStringAsFixed(decimals)}${unit.isEmpty ? '' : ' $unit'}';
-  }
-
-  String _statusLabel(String status) => switch (status) {
-    'good' => 'Good',
-    'good_but_needs_improvement' => 'Needs improvement',
-    'bad' => 'Bad',
-    _ => 'Not evaluated',
-  };
-
-  Color _statusColor(String status) => switch (status) {
-    'good' => const Color(0xFF4CAF50),
-    'good_but_needs_improvement' => const Color(0xFFFF9800),
-    'bad' => const Color(0xFFF44336),
-    _ => const Color(0xFF888888),
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1C1C2E),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Empirical five-feature grading',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Compared with 30 analyzed good-audio recordings',
-            style: TextStyle(color: Color(0xFF888888), fontSize: 11),
-          ),
-          const SizedBox(height: 12),
-          for (final key in _labels.keys) ...[
-            Builder(
-              builder: (context) {
-                final feature = _resultMap(features[key]);
-                final value = _resultNumber(feature['value']);
-                final score = _resultNumber(feature['score']);
-                final status = feature['status']?.toString() ?? 'not_evaluated';
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 7),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _labels[key]!,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            Text(
-                              value == null
-                                  ? 'Not measured'
-                                  : _measurement(key, value),
-                              style: const TextStyle(
-                                color: Color(0xFF888888),
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        flex: 2,
-                        child: Text(
-                          score == null
-                              ? '--/100'
-                              : '${score.toDouble().toStringAsFixed(1)}/100',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: _statusColor(status),
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        flex: 3,
-                        child: Text(
-                          _statusLabel(status),
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                            color: _statusColor(status),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-            if (key != _labels.keys.last)
-              const Divider(height: 1, color: Color(0xFF303044)),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _MeasuredValue extends StatelessWidget {
-  const _MeasuredValue({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1C1C2E),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(color: Color(0xFFAAAAAA))),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

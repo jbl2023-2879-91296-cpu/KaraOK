@@ -1,10 +1,14 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:karaok_app/core/security/secure_token_store.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
+import 'package:karaok_app/core/storage/guest_assessment_store.dart';
 import 'package:karaok_app/features/auth/data/auth_api.dart';
 import 'package:karaok_app/features/auth/presentation/pages/login_screen.dart';
+import 'package:karaok_app/features/auth/presentation/pages/otp_verification_screen.dart';
 import 'package:karaok_app/features/auth/presentation/pages/session_bootstrap_screen.dart';
 
 void main() {
@@ -13,7 +17,66 @@ void main() {
     UserSession.instance.clear();
   });
 
-  tearDown(UserSession.instance.clear);
+  tearDown(() async {
+    UserSession.instance.clear();
+    await GuestAssessmentStore.instance.clearAll();
+  });
+
+  testWidgets('logging in keeps device-local guest reports', (tester) async {
+    await tester.runAsync(_saveGuestReport);
+
+    await tester.pumpWidget(
+      MaterialApp(home: LoginScreen(authApi: _LoginAuthApi())),
+    );
+    await tester.pump();
+    await tester.enterText(
+      find.byType(TextFormField).at(0),
+      'saved@example.com',
+    );
+    await tester.enterText(find.byType(TextFormField).at(1), 'Password1!');
+    await tester.tap(find.text('Log In'));
+    await tester.pump();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 500)),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Evaluate Audio Quality'), findsOneWidget);
+
+    final reports = await tester.runAsync(
+      GuestAssessmentStore.instance.guestHistory,
+    );
+    expect(reports, hasLength(1));
+    expect((reports!.single as Map<String, dynamic>)['score'], 87);
+  });
+
+  testWidgets('verifying registration keeps device-local guest reports', (
+    tester,
+  ) async {
+    await tester.runAsync(_saveGuestReport);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: OtpVerificationScreen(
+          email: 'saved@example.com',
+          authApi: _RegistrationAuthApi(),
+        ),
+      ),
+    );
+    await tester.enterText(find.byType(TextFormField), '123456');
+    await tester.tap(find.text('Verify Email'));
+    await tester.pump();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 500)),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Evaluate Audio Quality'), findsOneWidget);
+
+    final reports = await tester.runAsync(
+      GuestAssessmentStore.instance.guestHistory,
+    );
+    expect(reports, hasLength(1));
+    expect((reports!.single as Map<String, dynamic>)['score'], 87);
+  });
 
   testWidgets('a valid persisted session restores the authenticated user', (
     tester,
@@ -32,6 +95,32 @@ void main() {
     expect(UserSession.instance.email, 'saved@example.com');
     expect(UserSession.instance.isGuest, isFalse);
     expect(find.text('Evaluate Audio Quality'), findsOneWidget);
+  });
+
+  testWidgets('restoring an account keeps device-local guest reports', (
+    tester,
+  ) async {
+    await tester.runAsync(_saveGuestReport);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SessionBootstrapScreen(
+          authApi: _FakeAuthApi(() async => _user()),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 100)),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final reports = await tester.runAsync(
+      GuestAssessmentStore.instance.guestHistory,
+    );
+    expect(reports, hasLength(1));
+    expect((reports!.single as Map<String, dynamic>)['score'], 87);
   });
 
   testWidgets('a missing or rejected session continues as guest', (
@@ -164,3 +253,27 @@ class _FakeAuthApi extends AuthApi {
   @override
   Future<Map<String, dynamic>?> restoreSession() => restore();
 }
+
+class _LoginAuthApi extends AuthApi {
+  @override
+  Future<Map<String, dynamic>> login({
+    required String identifier,
+    required String password,
+  }) async => _user();
+}
+
+class _RegistrationAuthApi extends AuthApi {
+  @override
+  Future<Map<String, dynamic>> verifyRegistration({
+    required String email,
+    required String code,
+  }) async => _user();
+}
+
+Future<void> _saveGuestReport() => GuestAssessmentStore.instance.saveCompleted({
+  'score': 87,
+  'visualizations': {
+    'waveform': base64Encode([1, 2, 3]),
+    'spectrogram': base64Encode([4, 5, 6]),
+  },
+});

@@ -3,16 +3,16 @@ import 'package:karaok_app/app/app_shell.dart';
 import 'package:karaok_app/core/security/guest_assessment_service.dart';
 import 'package:karaok_app/core/security/secure_token_store.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
-import 'package:karaok_app/core/storage/guest_assessment_store.dart';
 import 'package:karaok_app/features/auth/data/auth_api.dart';
 import 'package:karaok_app/features/account/presentation/pages/change_password_screen.dart';
 import 'package:karaok_app/features/auth/presentation/pages/forgot_password_screen.dart';
 import 'package:karaok_app/features/auth/presentation/pages/signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, this.initialIdentifier});
+  const LoginScreen({super.key, this.initialIdentifier, this.authApi});
 
   final String? initialIdentifier;
+  final AuthApi? authApi;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -66,7 +66,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
-      final res = await AuthApi().login(
+      final res = await (widget.authApi ?? AuthApi()).login(
         identifier: _identifierCtrl.text.trim(),
         password: _passCtrl.text,
       );
@@ -78,11 +78,6 @@ class _LoginScreenState extends State<LoginScreen> {
         // Remembering the identifier is a convenience and must not block login.
       }
       UserSession.instance.setUserFromMap(res);
-      try {
-        await GuestAssessmentStore.instance.clearAll();
-      } catch (_) {
-        // Authentication succeeds even if local guest cleanup must retry.
-      }
       if (UserSession.instance.requiresPasswordChange) {
         if (!mounted) return;
         Navigator.pushAndRemoveUntil(
@@ -356,7 +351,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'Guest mode allows three audio evaluations on this device. Results are shown once and are not added to history.',
+                  'Guest mode allows three audio evaluations on this device. Guest reports stay on this device and remain separate from account history.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Color(0xFF666666),
