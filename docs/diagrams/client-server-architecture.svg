@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE svg
+  PUBLIC '-//W3C//DTD SVG 1.0//EN'
+  'http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd'>
+<svg width="2200" height="1280" preserveAspectRatio="xMinYMin meet" viewBox="0 0 2200 1280" xmlns="http://www.w3.org/2000/svg" version="1.0" fill-rule="evenodd" xmlns:xlink="http://www.w3.org/1999/xlink">
+	<title>...</title>
+	<desc>...</desc>
+	<clipPath id="clip">
+		<rect x="0" y="0" width="2200" height="1280"/>
+	</clipPath>
+	<g id="group" transform="scale(1,-1) translate(0,-1280)" style="clip-path: url(#clip)">
+		<g transform="">
+			<rect x="0" y="0" width="2200" height="1280" style="stroke: none; stroke-linecap: butt; stroke-width: 1.5; fill: rgb(100%,100%,100%); fill-rule: evenodd;"/>
+			<text x="45" y="1239.52" style="font-family: Helvetica-Bold; font-size: 16px;fill: rgb(9%,42%,34%); stroke:none;" transform="translate(0,2479) scale(1,-1)">KaraOK  /  CURRENT APPLICATION</text>
+			<text x="45" y="1185.58" style="font-family: Helvetica-Bold; font-size: 39px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,2371) scale(1,-1)">Client-server architecture</text>
+			<text x="45" y="1147.96" style="font-family: Helvetica; font-size: 18px;fill: rgb(32%,39%,37%); stroke:none;" transform="translate(0,2295) scale(1,-1)">Flutter and the local PHP Admin Console use the Flask API; the API owns access to MySQL and analysis files.</text>
+			<text x="2130.536" y="1225.84" style="font-family: Helvetica-Bold; font-size: 22px;fill: rgb(9%,42%,34%); stroke:none;" transform="translate(0,2451) scale(1,-1)">01</text>
+			<path d="M 45,1125 L 2155,1125 Z" style="stroke: rgb(83%,87%,85%); stroke-linecap: butt; stroke-width: 1.5;"/>
+			<rect x="45" y="155" width="540" height="940" style="stroke: rgb(83%,87%,85%); stroke-linecap: butt; stroke-width: 1.5; fill: rgb(96%,98%,97%); fill-rule: evenodd;"/>
+			<text x="65" y="1062.96" style="font-family: Helvetica-Bold; font-size: 18px;fill: rgb(9%,42%,34%); stroke:none;" transform="translate(0,2125) scale(1,-1)">CLIENT DEVICES</text>
+			<rect x="835" y="155" width="570" height="940" style="stroke: rgb(83%,87%,85%); stroke-linecap: butt; stroke-width: 1.5; fill: rgb(96%,98%,97%); fill-rule: evenodd;"/>
+			<text x="855" y="1062.96" style="font-family: Helvetica-Bold; font-size: 18px;fill: rgb(9%,42%,34%); stroke:none;" transform="translate(0,2125) scale(1,-1)">APPLICATION SERVER</text>
+			<text x="1650" y="1062.96" style="font-family: Helvetica-Bold; font-size: 18px;fill: rgb(9%,42%,34%); stroke:none;" transform="translate(0,2125) scale(1,-1)">DATA &amp; SUPPORTING SERVICES</text>
+			<rect x="70" y="795" width="490" height="240" rx="10" ry="10" style="stroke: rgb(45%,52%,49%); stroke-linecap: butt; stroke-width: 1.5; fill: rgb(100%,100%,100%); fill-rule: evenodd;"/>
+			<text x="92" y="992.72" style="font-family: Helvetica-Bold; font-size: 26px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1985) scale(1,-1)">Flutter application</text>
+			<text x="92" y="952.18" style="font-family: Helvetica; font-size: 19px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1904) scale(1,-1)">Guest and registered-user workflows</text>
+			<text x="92" y="924.63" style="font-family: Helvetica; font-size: 19px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1849) scale(1,-1)">Record / select audio; view quality reports</text>
+			<text x="92" y="897.0799999999999" style="font-family: Helvetica; font-size: 19px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1794) scale(1,-1)">Account, history and amplifier settings*</text>
+			<text x="92" y="869.53" style="font-family: Helvetica; font-size: 19px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1739) scale(1,-1)">HTTP API client; bearer tokens when signed in</text>
+			<rect x="70" y="563" width="490" height="172" rx="10" ry="10" style="stroke: rgb(45%,52%,49%); stroke-linecap: butt; stroke-width: 1.5; fill: rgb(91%,95%,93%); fill-rule: evenodd;"/>
+			<text x="92" y="695.06" style="font-family: Helvetica-Bold; font-size: 23px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1390) scale(1,-1)">App-private device storage</text>
+			<text x="92" y="655.96" style="font-family: Helvetica; font-size: 18px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1311) scale(1,-1)">Secure session-token storage</text>
+			<text x="92" y="629.86" style="font-family: Helvetica; font-size: 18px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1259) scale(1,-1)">Guest records, report images and profiles*</text>
+			<text x="92" y="603.76" style="font-family: Helvetica; font-size: 18px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1207) scale(1,-1)">Per-user history and downloaded-image cache</text>
+			<path d="M 210,795 L 210,735 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<polygon points="210 735, 213.4 743, 206.6 743" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(9%,42%,34%); fill-rule: evenodd;"/>
+			<path d="M 430,735 L 430,795 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<polygon points="430 795, 426.6 787, 433.4 787" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(9%,42%,34%); fill-rule: evenodd;"/>
+			<text x="227" y="759.52" style="font-family: Helvetica; font-size: 16px;fill: rgb(32%,39%,37%); stroke:none;" transform="translate(0,1519) scale(1,-1)">local reads / writes</text>
+			<rect x="70" y="420" width="490" height="100" rx="10" ry="10" style="stroke: rgb(45%,52%,49%); stroke-linecap: butt; stroke-width: 1.5; fill: rgb(100%,100%,100%); fill-rule: evenodd;"/>
+			<text x="92" y="479.28" style="font-family: Helvetica-Bold; font-size: 24px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,958) scale(1,-1)">Administrator browser</text>
+			<text x="92" y="439.96" style="font-family: Helvetica; font-size: 18px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,879) scale(1,-1)">Local console pages and forms</text>
+			<path d="M 170,420 L 170,365 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<polygon points="170 365, 173.4 373, 166.6 373" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(9%,42%,34%); fill-rule: evenodd;"/>
+			<path d="M 455,365 L 455,420 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<polygon points="455 420, 451.6 412, 458.4 412" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(9%,42%,34%); fill-rule: evenodd;"/>
+			<text x="196" y="389.52" style="font-family: Helvetica; font-size: 16px;fill: rgb(32%,39%,37%); stroke:none;" transform="translate(0,779) scale(1,-1)">loopback HTTP / HTML</text>
+			<rect x="70" y="180" width="490" height="185" rx="10" ry="10" style="stroke: rgb(45%,52%,49%); stroke-linecap: butt; stroke-width: 1.5; fill: rgb(100%,100%,100%); fill-rule: evenodd;"/>
+			<text x="92" y="324.28" style="font-family: Helvetica-Bold; font-size: 24px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,648) scale(1,-1)">Local PHP Admin Console</text>
+			<text x="92" y="284.96" style="font-family: Helvetica; font-size: 18px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,569) scale(1,-1)">Server-side API client and local sign-in</text>
+			<text x="92" y="258.85999999999996" style="font-family: Helvetica; font-size: 18px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,517) scale(1,-1)">Analytics, schema and allowed record edits</text>
+			<text x="92" y="232.76000000000002" style="font-family: Helvetica; font-size: 18px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,465) scale(1,-1)">Local credentials, sessions, logs and cache</text>
+			<rect x="860" y="922" width="520" height="113" rx="10" ry="10" style="stroke: rgb(45%,52%,49%); stroke-linecap: butt; stroke-width: 1.5; fill: rgb(100%,100%,100%); fill-rule: evenodd;"/>
+			<text x="882" y="994.28" style="font-family: Helvetica-Bold; font-size: 24px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1988) scale(1,-1)">HTTP entry point</text>
+			<text x="882" y="954.96" style="font-family: Helvetica; font-size: 18px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1909) scale(1,-1)">Repository deployment: Nginx -&gt; Gunicorn</text>
+			<text x="882" y="928.86" style="font-family: Helvetica; font-size: 18px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1857) scale(1,-1)">Development: Flask server</text>
+			<path d="M 1120,922 L 1120,877 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<polygon points="1120 877, 1123.4 885, 1116.6 885" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(9%,42%,34%); fill-rule: evenodd;"/>
+			<rect x="860" y="531" width="520" height="346" rx="10" ry="10" style="stroke: rgb(45%,52%,49%); stroke-linecap: butt; stroke-width: 1.5; fill: rgb(100%,100%,100%); fill-rule: evenodd;"/>
+			<text x="882" y="833.16" style="font-family: Helvetica-Bold; font-size: 28px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1666) scale(1,-1)">Flask API</text>
+			<text x="882" y="792.18" style="font-family: Helvetica; font-size: 19px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1584) scale(1,-1)">Authentication, verification and user profiles</text>
+			<text x="882" y="764.63" style="font-family: Helvetica; font-size: 19px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1529) scale(1,-1)">Audio evaluation, assessment history, reports</text>
+			<text x="882" y="737.0799999999999" style="font-family: Helvetica; font-size: 19px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1474) scale(1,-1)">Amplifier profiles and recommendations*</text>
+			<text x="882" y="709.53" style="font-family: Helvetica; font-size: 19px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1419) scale(1,-1)">Data Administration API and table policies</text>
+			<text x="882" y="681.9799999999999" style="font-family: Helvetica; font-size: 19px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1363) scale(1,-1)">JWT / admin-key checks; request and audit logs</text>
+			<rect x="860" y="277" width="520" height="184" rx="10" ry="10" style="stroke: rgb(45%,52%,49%); stroke-linecap: butt; stroke-width: 1.5; fill: rgb(100%,100%,100%); fill-rule: evenodd;"/>
+			<text x="882" y="421.84" style="font-family: Helvetica-Bold; font-size: 22px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,843) scale(1,-1)">Local analysis &amp; recommendation code</text>
+			<text x="882" y="382.96" style="font-family: Helvetica; font-size: 18px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,765) scale(1,-1)">Python audio analyzer subprocess</text>
+			<text x="882" y="356.85999999999996" style="font-family: Helvetica; font-size: 18px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,713) scale(1,-1)">Audio measurements and empirical scoring</text>
+			<text x="882" y="330.76" style="font-family: Helvetica; font-size: 18px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,661) scale(1,-1)">Matplotlib waveform / spectrogram generation</text>
+			<text x="882" y="304.65999999999997" style="font-family: Helvetica; font-size: 18px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,609) scale(1,-1)">Bounded settings recommendations*</text>
+			<path d="M 985,531 L 985,461 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<polygon points="985 461, 988.4 469, 981.6 469" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(9%,42%,34%); fill-rule: evenodd;"/>
+			<path d="M 1245,461 L 1245,531 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<polygon points="1245 531, 1241.6 523, 1248.4 523" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(9%,42%,34%); fill-rule: evenodd;"/>
+			<text x="1003" y="492.52" style="font-family: Helvetica; font-size: 16px;fill: rgb(32%,39%,37%); stroke:none;" transform="translate(0,985) scale(1,-1)">audio / analysis output</text>
+			<text x="880" y="225.96" style="font-family: Helvetica; font-size: 18px;fill: rgb(32%,39%,37%); stroke:none;" transform="translate(0,451) scale(1,-1)">One backend codebase; analysis executes locally.</text>
+			<text x="880" y="202.56" style="font-family: Helvetica; font-size: 18px;fill: rgb(32%,39%,37%); stroke:none;" transform="translate(0,405) scale(1,-1)">Settings output is applied physically by the user.</text>
+			<path d="M 560,974 L 860,974 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<polygon points="860 974, 852 977.4, 852 970.6" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(9%,42%,34%); fill-rule: evenodd;"/>
+			<text x="653.5225" y="1005.18" style="font-family: Helvetica-Bold; font-size: 19px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,2010) scale(1,-1)">HTTP(S) /api</text>
+			<text x="627.08" y="983.52" style="font-family: Helvetica; font-size: 16px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1967) scale(1,-1)">JSON + multipart audio</text>
+			<path d="M 860,834 L 710,834 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<path d="M 710,834 L 710,866 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<path d="M 710,866 L 560,866 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<polygon points="560 866, 568 862.6, 568 869.4" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(9%,42%,34%); fill-rule: evenodd;"/>
+			<text x="633.64" y="902.52" style="font-family: Helvetica; font-size: 16px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1805) scale(1,-1)">JSON results / tokens</text>
+			<text x="644.752" y="879.52" style="font-family: Helvetica; font-size: 16px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1759) scale(1,-1)">report image bytes</text>
+			<path d="M 560,310 L 747,310 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<path d="M 747,310 L 747,620 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<path d="M 747,620 L 860,620 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<polygon points="860 620, 852 623.4, 852 616.6" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(9%,42%,34%); fill-rule: evenodd;"/>
+			<text x="668.504" y="552.96" style="font-family: Helvetica-Bold; font-size: 18px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1105) scale(1,-1)">HTTP(S)</text>
+			<text x="645.8855" y="525.74" style="font-family: Helvetica; font-size: 17px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1051) scale(1,-1)">/api/admin/data</text>
+			<text x="634.648" y="500.52" style="font-family: Helvetica; font-size: 16px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1001) scale(1,-1)">server-side API key</text>
+			<path d="M 860,575 L 785,575 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<path d="M 785,575 L 785,235 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<path d="M 785,235 L 560,235 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<polygon points="560 235, 568 231.6, 568 238.4" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(9%,42%,34%); fill-rule: evenodd;"/>
+			<text x="593.304" y="207.52" style="font-family: Helvetica; font-size: 16px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,415) scale(1,-1)">JSON data / reports</text>
+			<rect x="1650" y="749" width="505" height="286" rx="10" ry="10" style="stroke: rgb(45%,52%,49%); stroke-linecap: butt; stroke-width: 1.5; fill: rgb(91%,95%,93%); fill-rule: evenodd;"/>
+			<text x="1672" y="991.94" style="font-family: Helvetica-Bold; font-size: 27px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1983) scale(1,-1)">MySQL  /  karaok_db</text>
+			<text x="1672" y="951.18" style="font-family: Helvetica; font-size: 19px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1902) scale(1,-1)">user  |  registration_otp</text>
+			<text x="1672" y="923.63" style="font-family: Helvetica; font-size: 19px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1847) scale(1,-1)">refresh_token  |  revoked_access_token</text>
+			<text x="1672" y="896.0799999999999" style="font-family: Helvetica; font-size: 19px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1792) scale(1,-1)">assessment  |  audio_upload</text>
+			<text x="1672" y="868.53" style="font-family: Helvetica; font-size: 19px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1737) scale(1,-1)">audio_analysis_result  |  amplifier_profile</text>
+			<text x="1672" y="840.9799999999999" style="font-family: Helvetica; font-size: 19px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1681) scale(1,-1)">settings_recommendation</text>
+			<text x="1672" y="813.43" style="font-family: Helvetica; font-size: 19px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1626) scale(1,-1)">audit_log  |  api_request_log</text>
+			<path d="M 1380,810 L 1650,810 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<polygon points="1650 810, 1642 813.4, 1642 806.6" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(9%,42%,34%); fill-rule: evenodd;"/>
+			<text x="1428.538" y="854.74" style="font-family: Helvetica; font-size: 17px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1709) scale(1,-1)">SQL queries / changes</text>
+			<path d="M 1650,773 L 1380,773 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<polygon points="1380 773, 1388 769.6, 1388 776.4" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(9%,42%,34%); fill-rule: evenodd;"/>
+			<text x="1441.3135" y="740.74" style="font-family: Helvetica; font-size: 17px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1481) scale(1,-1)">rows / query results</text>
+			<text x="1437.566" y="708.08" style="font-family: Helvetica; font-size: 14px;fill: rgb(32%,39%,37%); stroke:none;" transform="translate(0,1416) scale(1,-1)">Separate application and</text>
+			<text x="1438.749" y="687.08" style="font-family: Helvetica; font-size: 14px;fill: rgb(32%,39%,37%); stroke:none;" transform="translate(0,1374) scale(1,-1)">data-admin DB identities</text>
+			<rect x="1650" y="489" width="505" height="171" rx="10" ry="10" style="stroke: rgb(45%,52%,49%); stroke-linecap: butt; stroke-width: 1.5; fill: rgb(91%,95%,93%); fill-rule: evenodd;"/>
+			<text x="1672" y="618.5" style="font-family: Helvetica-Bold; font-size: 25px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1237) scale(1,-1)">Server filesystem</text>
+			<text x="1672" y="578.96" style="font-family: Helvetica; font-size: 18px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1157) scale(1,-1)">Temporary uploaded audio: removed after use</text>
+			<text x="1672" y="552.86" style="font-family: Helvetica; font-size: 18px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1105) scale(1,-1)">Signed-in analysis artifacts: retained</text>
+			<text x="1672" y="526.76" style="font-family: Helvetica; font-size: 18px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1053) scale(1,-1)">Waveform / spectrogram paths stored in MySQL</text>
+			<path d="M 1380,654 L 1530,654 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<path d="M 1530,654 L 1530,609 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<path d="M 1530,609 L 1650,609 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<polygon points="1650 609, 1642 612.4, 1642 605.6" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(9%,42%,34%); fill-rule: evenodd;"/>
+			<path d="M 1650,529 L 1490,529 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<path d="M 1490,529 L 1490,575 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<path d="M 1490,575 L 1380,575 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<polygon points="1380 575, 1388 571.6, 1388 578.4" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(9%,42%,34%); fill-rule: evenodd;"/>
+			<text x="1450.976" y="580.52" style="font-family: Helvetica; font-size: 16px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,1161) scale(1,-1)">files / image bytes</text>
+			<rect x="1650" y="301" width="505" height="135" rx="10" ry="10" style="stroke: rgb(45%,52%,49%); stroke-linecap: butt; stroke-width: 1.5; fill: rgb(91%,95%,93%); fill-rule: evenodd;"/>
+			<text x="1672" y="395.28" style="font-family: Helvetica-Bold; font-size: 24px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,790) scale(1,-1)">Versioned reference JSON</text>
+			<text x="1672" y="355.96" style="font-family: Helvetica; font-size: 18px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,711) scale(1,-1)">Quality thresholds, genre profiles, control priors</text>
+			<text x="1672" y="329.85999999999996" style="font-family: Helvetica; font-size: 18px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,659) scale(1,-1)">Plus checked-in analyzer configuration</text>
+			<path d="M 1650,355 L 1380,355 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<polygon points="1380 355, 1388 351.6, 1388 358.4" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(9%,42%,34%); fill-rule: evenodd;"/>
+			<text x="1426.08" y="384.52" style="font-family: Helvetica; font-size: 16px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,769) scale(1,-1)">reference measurements</text>
+			<text x="1453.632" y="361.52" style="font-family: Helvetica; font-size: 16px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,723) scale(1,-1)">and configuration</text>
+			<rect x="1650" y="155" width="505" height="95" rx="10" ry="10" style="stroke: rgb(45%,52%,49%); stroke-linecap: butt; stroke-width: 1.5; fill: rgb(100%,100%,100%); fill-rule: evenodd;"/>
+			<text x="1672" y="209.28" style="font-family: Helvetica-Bold; font-size: 24px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,418) scale(1,-1)">SMTP email service</text>
+			<text x="1672" y="170.74" style="font-family: Helvetica; font-size: 17px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,341) scale(1,-1)">Registration OTP and temporary-password email</text>
+			<path d="M 1380,545 L 1394,545 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<path d="M 1394,545 L 1394,190 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<path d="M 1394,190 L 1650,190 Z" style="stroke: rgb(9%,42%,34%); stroke-linecap: butt; stroke-width: 1.6;"/>
+			<polygon points="1650 190, 1642 193.4, 1642 186.6" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(9%,42%,34%); fill-rule: evenodd;"/>
+			<text x="1438.245" y="253.74" style="font-family: Helvetica; font-size: 17px;fill: rgb(9%,20%,18%); stroke:none;" transform="translate(0,507) scale(1,-1)">SMTP + STARTTLS</text>
+			<path d="M 45,119 L 2155,119 Z" style="stroke: rgb(83%,87%,85%); stroke-linecap: butt; stroke-width: 1.5;"/>
+			<text x="45" y="86.74" style="font-family: Helvetica; font-size: 17px;fill: rgb(32%,39%,37%); stroke:none;" transform="translate(0,173) scale(1,-1)">* Implemented behind a settings feature flag (default: off). Deployment boxes describe checked-in configuration; live deployment was not queried.</text>
+			<text x="45" y="58.74" style="font-family: Helvetica; font-size: 17px;fill: rgb(32%,39%,37%); stroke:none;" transform="translate(0,117) scale(1,-1)">Guest assessment data and report images stay device-local; the API still analyzes guest audio and records request / audit metadata.</text>
+			<text x="45" y="30.52" style="font-family: Helvetica; font-size: 16px;fill: rgb(32%,39%,37%); stroke:none;" transform="translate(0,61) scale(1,-1)">Source: current repository b74ceb8, database/schema.sql and implementation files. Detailed evidence: docs/diagrams/evidence.md.</text>
+		</g>
+	</g>
+</svg>

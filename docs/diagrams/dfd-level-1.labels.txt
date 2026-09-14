@@ -1,0 +1,195 @@
+KaraOK  /  CURRENT APPLICATION
+Level 1 data-flow diagram
+Scope: KaraOK server-side application. E1 = Flutter client; E2 = local Admin Console; E3 = SMTP email service.
+02
+Six numbered processes. Store IDs repeat to avoid crossing lines; a repeated ID always denotes the same store.
+Identity, verification and sessions
+1.0
+Manage accounts
+and sessions
+E1  Flutter client
+Guest / signed in
+Credentials, OTP,
+profile, session token
+Account state,
+profile, tokens
+D1
+user
+account / profile updates
+identity / security state
+D7
+registration_otp
+hashed OTP / attempts / deletion
+pending verification
+D8
+refresh_token
+token hash / rotation / revocation
+refresh-session state
+D9
+revoked_access_token
+revoked JWT identifier
+revocation state
+E3  SMTP
+email service
+OTP / recovery email
+Audio assessment and optional settings generation
+2.0
+Evaluate playback;
+generate / verify
+recommendations*
+E1  Flutter client
+Guest / signed in
+Audio + metadata;
+genre / controls*
+Scores, reports;
+recommendations*
+D2
+assessment
+assessment / processing status
+D3
+audio_upload
+upload metadata / score / status
+D4
+audio_analysis_result
+measurements / provenance / paths
+D5
+amplifier_profile
+owned scale / positions*
+D6
+settings_recommendation
+result / verification linkage*
+parent recommendation*
+F1
+Analysis artifacts (files)
+working files / retained PNGs
+analyzer output / PNG bytes
+F2
+Reference JSON files
+analyzer config / quality / genre
+D2-D6 business persistence is for signed-in users. Guest output is returned to E1; server artifacts are temporary.
+Amplifier profiles and applied-settings state*
+3.0
+Manage profiles;
+record settings
+applied by user*
+E1  Flutter client
+Signed-in user
+Scale, positions,
+profile / apply data*
+Profiles, metadata,
+applied status*
+D5
+amplifier_profile
+profile CRUD / last positions
+owned profiles / scale
+D6
+settings_recommendation
+applied status / timestamp
+owned recommendation
+F2
+Reference JSON files
+profile metadata / control prior
+Profile metadata also has a public endpoint. Applying settings records confirmation; the user moves the controls.
+Assessment history and visual reports
+4.0
+Manage records
+and reports
+E1  Flutter client
+Signed-in user
+Record / report ID;
+record data / deletion
+History, record,
+image / status
+D2
+assessment
+record create / delete
+owned assessment history
+D3
+audio_upload
+owned upload metadata
+D4
+audio_analysis_result
+result for record-create endpoint
+stored measurements / paths
+D5
+amplifier_profile
+linked amplifier profile
+D6
+settings_recommendation
+linked recommendation
+F1
+Analysis artifacts (files)
+assessment artifact deletion
+waveform / spectrogram bytes
+F2
+Reference JSON files
+quality-reference provenance
+Assessment deletion cascades to D3, D4 and D6 through the database foreign keys.
+Administration and operational reporting
+5.0
+Inspect data;
+perform allowed
+administration
+E2  Local Admin
+Console
+API key, queries,
+allowed edit / delete
+Reports, schema,
+rows, change status
+D1
+user
+active-status update
+permitted account data
+D2
+assessment
+status update / deletion
+assessment records
+D3
+audio_upload
+upload metadata
+D4
+audio_analysis_result
+analysis results
+D5
+amplifier_profile
+amplifier profiles
+D6
+settings_recommendation
+recommendation records
+D10
+audit_log
+audit entries
+D11
+api_request_log
+request metadata
+F1
+Analysis artifacts (files)
+deleted-assessment cleanup
+S1
+MySQL information_schema
+table / column / FK metadata
+D7-D9 record contents are blocked by admin policy; schema metadata remains inspectable.
+Audit and request recording
+6.0
+Record audit
+and API activity
+Process 1.0 (repeat)
+Process 2.0 (repeat)
+Process 3.0 (repeat)
+Process 4.0 (repeat)
+Process 5.0 (repeat)
+API request
+metadata;
+audit events
+Only audit-instrumented actions emit audit events.
+D10
+audit_log
+security / business audit event
+D11
+api_request_log
+sanitized request metadata
+Bodies, credentials, OTPs and uploaded audio bytes are excluded from api_request_log.
+Notation: square = external entity; rounded rectangle = process; open-ended store = data store; arrows = named data flows.
+D1-D11 exactly match database/schema.sql. F1-F2 are filesystem stores; S1 is MySQL system metadata. These are not additional ERD tables.
+* Conditional settings feature (default: off). Shared authentication checks for protected requests reuse process 1.0. E1 owns device-local guest history.
+Source: repository b74ceb8. Flow details and explicit limitations: docs/diagrams/evidence.md. This is a code-derived model, not a live-server inventory.
