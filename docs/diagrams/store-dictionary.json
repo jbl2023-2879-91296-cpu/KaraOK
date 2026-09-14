@@ -1,0 +1,13 @@
+{
+  "D1": "user",
+  "D2": "assessment",
+  "D3": "audio_upload",
+  "D4": "audio_analysis_result",
+  "D5": "amplifier_profile",
+  "D6": "settings_recommendation",
+  "D7": "registration_otp",
+  "D8": "refresh_token",
+  "D9": "revoked_access_token",
+  "D10": "audit_log",
+  "D11": "api_request_log"
+}

@@ -1,0 +1,11 @@
+{
+  "commit": "b74ceb8",
+  "sources": [
+    "database/schema.sql",
+    "README.md",
+    "backend/karaok/modules/admin_data/policy.py"
+  ],
+  "reference": "DFD_lvl1.pdf; ARALert process page used for visual reference only",
+  "method": "Deterministic labeled DFD, Pillow",
+  "sha256": "e2453e7b47ccaeb2c11aa7904c35683d82ff3085b726f731a862deae76454163"
+}

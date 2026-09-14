@@ -1,0 +1,140 @@
+[
+  {
+    "id": "S01",
+    "from": "1.0",
+    "to": "D1",
+    "label": "Account changes"
+  },
+  {
+    "id": "S02",
+    "from": "D1",
+    "to": "1.0",
+    "label": "Account data"
+  },
+  {
+    "id": "S03",
+    "from": "1.0",
+    "to": "D2",
+    "label": "Token / OTP changes"
+  },
+  {
+    "id": "S04",
+    "from": "D2",
+    "to": "1.0",
+    "label": "Token / OTP status"
+  },
+  {
+    "id": "S05",
+    "from": "2.0",
+    "to": "D3",
+    "label": "Upload metadata"
+  },
+  {
+    "id": "S06",
+    "from": "3.0",
+    "to": "D3",
+    "label": "Score / features"
+  },
+  {
+    "id": "S07",
+    "from": "F1",
+    "to": "3.0",
+    "label": "Quality thresholds"
+  },
+  {
+    "id": "S08",
+    "from": "3.0",
+    "to": "F2",
+    "label": "Plots"
+  },
+  {
+    "id": "S09",
+    "from": "4.0",
+    "to": "D4",
+    "label": "Profile changes"
+  },
+  {
+    "id": "S10",
+    "from": "D4",
+    "to": "4.0",
+    "label": "Profile data"
+  },
+  {
+    "id": "S11",
+    "from": "D4",
+    "to": "5.0",
+    "label": "Saved scale / positions"
+  },
+  {
+    "id": "S12",
+    "from": "F1",
+    "to": "5.0",
+    "label": "Genre targets / priors"
+  },
+  {
+    "id": "S13",
+    "from": "5.0",
+    "to": "D5",
+    "label": "Recommendation / verification"
+  },
+  {
+    "id": "S14",
+    "from": "D5",
+    "to": "5.0",
+    "label": "Prior recommendation"
+  },
+  {
+    "id": "S15",
+    "from": "D3",
+    "to": "6.0",
+    "label": "Assessment history"
+  },
+  {
+    "id": "S16",
+    "from": "D5",
+    "to": "6.0",
+    "label": "Saved recommendations"
+  },
+  {
+    "id": "S17",
+    "from": "F2",
+    "to": "6.0",
+    "label": "Report images"
+  },
+  {
+    "id": "S18",
+    "from": "6.0",
+    "to": "L1",
+    "label": "Cached report"
+  },
+  {
+    "id": "S19",
+    "from": "L1",
+    "to": "6.0",
+    "label": "Local history"
+  },
+  {
+    "id": "S20",
+    "from": "D1",
+    "to": "7.0",
+    "label": "User records"
+  },
+  {
+    "id": "S21",
+    "from": "D3",
+    "to": "7.0",
+    "label": "Assessment records"
+  },
+  {
+    "id": "S22",
+    "from": "D4",
+    "to": "7.0",
+    "label": "Amplifier records"
+  },
+  {
+    "id": "S23",
+    "from": "D5",
+    "to": "7.0",
+    "label": "Recommendation records"
+  }
+]

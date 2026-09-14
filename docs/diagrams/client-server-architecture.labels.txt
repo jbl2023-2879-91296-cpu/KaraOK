@@ -1,0 +1,76 @@
+KaraOK  /  CURRENT APPLICATION
+Client-server architecture
+Flutter and the local PHP Admin Console use the Flask API; the API owns access to MySQL and analysis files.
+01
+CLIENT DEVICES
+APPLICATION SERVER
+DATA & SUPPORTING SERVICES
+Flutter application
+Guest and registered-user workflows
+Record / select audio; view quality reports
+Account, history and amplifier settings*
+HTTP API client; bearer tokens when signed in
+App-private device storage
+Secure session-token storage
+Guest records, report images and profiles*
+Per-user history and downloaded-image cache
+local reads / writes
+Administrator browser
+Local console pages and forms
+loopback HTTP / HTML
+Local PHP Admin Console
+Server-side API client and local sign-in
+Analytics, schema and allowed record edits
+Local credentials, sessions, logs and cache
+HTTP entry point
+Repository deployment: Nginx -> Gunicorn
+Development: Flask server
+Flask API
+Authentication, verification and user profiles
+Audio evaluation, assessment history, reports
+Amplifier profiles and recommendations*
+Data Administration API and table policies
+JWT / admin-key checks; request and audit logs
+Local analysis & recommendation code
+Python audio analyzer subprocess
+Audio measurements and empirical scoring
+Matplotlib waveform / spectrogram generation
+Bounded settings recommendations*
+audio / analysis output
+One backend codebase; analysis executes locally.
+Settings output is applied physically by the user.
+HTTP(S) /api
+JSON + multipart audio
+JSON results / tokens
+report image bytes
+HTTP(S)
+/api/admin/data
+server-side API key
+JSON data / reports
+MySQL  /  karaok_db
+user  |  registration_otp
+refresh_token  |  revoked_access_token
+assessment  |  audio_upload
+audio_analysis_result  |  amplifier_profile
+settings_recommendation
+audit_log  |  api_request_log
+SQL queries / changes
+rows / query results
+Separate application and
+data-admin DB identities
+Server filesystem
+Temporary uploaded audio: removed after use
+Signed-in analysis artifacts: retained
+Waveform / spectrogram paths stored in MySQL
+files / image bytes
+Versioned reference JSON
+Quality thresholds, genre profiles, control priors
+Plus checked-in analyzer configuration
+reference measurements
+and configuration
+SMTP email service
+Registration OTP and temporary-password email
+SMTP + STARTTLS
+* Implemented behind a settings feature flag (default: off). Deployment boxes describe checked-in configuration; live deployment was not queried.
+Guest assessment data and report images stay device-local; the API still analyzes guest audio and records request / audit metadata.
+Source: current repository b74ceb8, database/schema.sql and implementation files. Detailed evidence: docs/diagrams/evidence.md.

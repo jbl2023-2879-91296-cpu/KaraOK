@@ -1,0 +1,27 @@
+{
+  "takeaway": "KaraOK separates client interfaces, Flask processing, and storage into three logical layers.",
+  "visual_job": "Map component relationships",
+  "layout_family": "layers",
+  "dimensions": [
+    2400,
+    1350
+  ],
+  "method": "Deterministic Pillow diagram; reproducible source in tmp/build_final_architecture.py",
+  "qa_score": "15/16: visual inspection passed; supporting text intended for full-slide viewing.",
+  "evidence_status": "Verified component facts; logical three-layer grouping is an architectural synthesis.",
+  "sources": [
+    "README.md",
+    "frontend/README.md",
+    "backend/README.md",
+    "backend/karaok/application.py",
+    "backend/audio_engine/analyzer.py",
+    "backend/karaok/infrastructure/database.py",
+    "admin/app/Api/AdminApiClient.php",
+    "database/schema.sql"
+  ],
+  "limitations": [
+    "Logical architecture, not a live deployment status check.",
+    "Settings recommendations are feature-flagged off by default."
+  ],
+  "sha256": "3c6c9b6ae8a6e1b22dce648bf109f9f3c4e3580230d0708e0a9591afc4025198"
+}

@@ -1,0 +1,41 @@
+{
+  "basis": "Checked-in code at b74ceb8 and authoritative 11-table schema; live services not queried.",
+  "method": "Deterministic reportlab vector geometry; PDFium rasterization of final PDF.",
+  "skill": "editorial-infographics; pdf",
+  "pdf_pages": 2,
+  "database_tables_verified": [
+    "amplifier_profile",
+    "api_request_log",
+    "assessment",
+    "audio_analysis_result",
+    "audio_upload",
+    "audit_log",
+    "refresh_token",
+    "registration_otp",
+    "revoked_access_token",
+    "settings_recommendation",
+    "user"
+  ],
+  "assets": [
+    {
+      "path": "output\\pdf\\karaok-application-diagrams.pdf",
+      "sha256": "3f9eceb179c9bd4e4ec3080359baf0486a5830b177b4901234006c0370904027"
+    },
+    {
+      "path": "docs\\diagrams\\client-server-architecture.svg",
+      "sha256": "1d6eb0592fc51178bd68c62944b2a0222412a8e5800cb53021c2c07595715759"
+    },
+    {
+      "path": "docs\\diagrams\\client-server-architecture.png",
+      "sha256": "2e215e52f0b76bbb5cc6d6853381aab155f927da97276005b12b2ff629081edb"
+    },
+    {
+      "path": "docs\\diagrams\\dfd-level-1.svg",
+      "sha256": "320c3d08291d4fb27b31c7d568e4c4a610d8b2a0318ab5fc5c30626101b0e2e3"
+    },
+    {
+      "path": "docs\\diagrams\\dfd-level-1.png",
+      "sha256": "c74459011ba785603ad911b2641dcb45e6b4f28f4121a494e8a353b1f28003f9"
+    }
+  ]
+}
