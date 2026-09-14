@@ -6,6 +6,70 @@ import 'package:karaok_app/features/reports/presentation/pages/previous_results_
 void main() {
   tearDown(UserSession.instance.clear);
 
+  testWidgets(
+    'selects exactly two test instances across sorting and opens that pair',
+    (tester) async {
+      await _pumpScreen(tester, [
+        _record('Same.mp3', 'Acceptable', 81, '2026-09-01T00:00:00Z'),
+        _record('Same.mp3', 'Acceptable', 82, '2026-09-02T00:00:00Z'),
+        _record('Third.mp3', 'Acceptable', 83, '2026-09-03T00:00:00Z'),
+      ]);
+      await tester.tap(find.byKey(const Key('compareReports')));
+      await tester.pump();
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const Key('compareSelectedReports')),
+            )
+            .onPressed,
+        isNull,
+      );
+      await tester.tap(find.byKey(const Key('selectReport0')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('historySort')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Oldest first'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<Checkbox>(find.byKey(const Key('selectReport0'))).value,
+        isTrue,
+      );
+      await tester.tap(find.byKey(const Key('selectReport1')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('selectReport2')));
+      await tester.pump();
+      expect(
+        tester.widget<Checkbox>(find.byKey(const Key('selectReport2'))).value,
+        isFalse,
+      );
+      expect(find.text('2 of 2 selected'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('compareSelectedReports')));
+      await tester.pumpAndSettle();
+      expect(find.text('A: 81.0/100'), findsOneWidget);
+      expect(find.text('B: 82.0/100'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('cancel clears report selection and restores normal records', (
+    tester,
+  ) async {
+    await _pumpScreen(tester, [
+      _record('A', 'Acceptable', 81, '2026-09-01T00:00:00Z'),
+      _record('B', 'Acceptable', 82, '2026-09-02T00:00:00Z'),
+    ]);
+    await tester.tap(find.byKey(const Key('compareReports')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('selectReport0')));
+    await tester.pump();
+    await tester.tap(find.text('Cancel selection'));
+    await tester.pump();
+    expect(find.byType(Checkbox), findsNothing);
+    await tester.tap(find.byKey(const Key('compareReports')));
+    await tester.pump();
+    expect(find.text('0 of 2 selected'), findsOneWidget);
+  });
+
   testWidgets('name and status controls filter records and update the count', (
     tester,
   ) async {
