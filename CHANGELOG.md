@@ -2,6 +2,27 @@
 
 All notable changes to KaraOK are documented here.
 
+## 2026-09-15 - Accurate reports and persistent guest history
+
+### Fixed
+
+- Preserved guest reports and their visualizations through login, account
+  verification, and authenticated session restoration; guest history stays
+  device-local and separate from account history.
+- Replaced fixed noise/distortion labels and decorative bars with measured
+  values, correct units, and explanation of their estimation limits.
+- Removed demonstration values and zero substitutions for missing measurements.
+- Kept saved scores, grades, feature measurements, and reference counts
+  consistent between results and visual reports, including grade-boundary
+  precision and incomplete historical records.
+
+### Added
+
+- History name search, date-range and numeric score filters, status filtering,
+  newest/oldest sorting, and distinct loading-error and no-match states.
+- A source audit confirming that the existing quality profile already uses
+  the 30 supplied recordings. Calibration data and weights remain unchanged.
+
 ## 2026-09-08 - Repository tooling and release documentation
 
 ### Changed

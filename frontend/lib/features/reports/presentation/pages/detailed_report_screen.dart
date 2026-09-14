@@ -2,24 +2,33 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:karaok_app/features/reports/domain/report_values.dart';
+import 'package:karaok_app/features/reports/presentation/widgets/empirical_feature_table.dart';
+import 'package:karaok_app/features/reports/presentation/widgets/report_measurements.dart';
 import 'package:karaok_app/features/assessments/data/assessment_api.dart';
 
 class DetailedReportScreen extends StatefulWidget {
   const DetailedReportScreen({
     super.key,
-    this.testName = 'Test #4',
-    this.score = 82,
-    this.noiseLevelDb = -4.8,
-    this.distortionLevel = 0.12,
+    this.testName = 'Audio test',
+    this.score,
+    this.noiseLevelDb,
+    this.distortionLevel,
     this.assessmentId,
+    this.empiricalStatus,
+    this.featureResults = const {},
+    this.referenceRecordingCount,
     this.visualizationImages = const {},
   });
 
   final String testName;
-  final int score;
-  final double noiseLevelDb;
-  final double distortionLevel;
+  final num? score;
+  final num? noiseLevelDb;
+  final num? distortionLevel;
   final int? assessmentId;
+  final String? empiricalStatus;
+  final Map<String, dynamic> featureResults;
+  final int? referenceRecordingCount;
   final Map<String, String> visualizationImages;
 
   @override
@@ -50,17 +59,14 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
     return _api.getAudioVisualization(assessmentId, kind);
   }
 
-  String get _grade {
-    if (widget.score >= 80) return 'GOOD';
-    if (widget.score >= 60) return 'FAIR';
-    return 'POOR';
-  }
+  String get _grade => reportGrade(widget.score, widget.empiricalStatus);
 
-  Color get _gradeColor {
-    if (widget.score >= 80) return const Color(0xFF4CAF50);
-    if (widget.score >= 60) return const Color(0xFFFF9800);
-    return const Color(0xFFF44336);
-  }
+  Color get _gradeColor => switch (_grade) {
+    'GOOD' => const Color(0xFF4CAF50),
+    'NEEDS IMPROVEMENT' => const Color(0xFFFF9800),
+    'BAD' => const Color(0xFFF44336),
+    _ => const Color(0xFF888888),
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -85,6 +91,15 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text(
+                widget.testName,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 16),
               // Waveform Analysis
               const Text(
                 'Waveform Analysis',
@@ -129,24 +144,19 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
                 child: _VisualizationImage(image: _spectrogramImage),
               ),
               const SizedBox(height: 20),
-              // Noise level bar
-              _MetricBar(
-                label: 'Noise level',
-                tag: 'low',
-                tagColor: const Color(0xFF4CAF50),
-                value: 0.3,
-                valueLabel: '${widget.noiseLevelDb} dB',
-              ),
-              const SizedBox(height: 14),
-              // Distortion level bar
-              _MetricBar(
-                label: 'Distortion level',
-                tag: 'acceptable',
-                tagColor: const Color(0xFFFF9800),
-                value: 0.45,
-                valueLabel: '${widget.distortionLevel}',
+              ReportMeasurements(
+                noiseLevelDb: widget.noiseLevelDb,
+                distortionLevel: widget.distortionLevel,
               ),
               const SizedBox(height: 20),
+              if (widget.featureResults.isNotEmpty ||
+                  widget.referenceRecordingCount != null) ...[
+                EmpiricalFeatureTable(
+                  features: widget.featureResults,
+                  referenceRecordingCount: widget.referenceRecordingCount,
+                ),
+                const SizedBox(height: 20),
+              ],
               // Overall score card
               Container(
                 width: double.infinity,
@@ -163,37 +173,41 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
                       style: TextStyle(color: Color(0xFFAAAAAA), fontSize: 13),
                     ),
                     const SizedBox(height: 8),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Text(
-                          '${widget.score}',
-                          style: TextStyle(
-                            color: _gradeColor,
-                            fontSize: 44,
-                            fontWeight: FontWeight.w900,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text(
+                            reportScoreLabel(widget.score),
+                            style: TextStyle(
+                              color: _gradeColor,
+                              fontSize: 44,
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
-                        ),
-                        Text(
-                          '/100',
-                          style: TextStyle(
-                            color: _gradeColor.withValues(alpha: 0.7),
-                            fontSize: 22,
-                            fontWeight: FontWeight.w600,
+                          Text(
+                            '/100',
+                            style: TextStyle(
+                              color: _gradeColor.withValues(alpha: 0.7),
+                              fontSize: 22,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          _grade,
-                          style: TextStyle(
-                            color: _gradeColor,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 2,
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _grade,
+                      style: TextStyle(
+                        color: _gradeColor,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 2,
+                      ),
                     ),
                   ],
                 ),
@@ -206,8 +220,6 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
     );
   }
 }
-
-// ── Spectrogram placeholder painter ──────────────────────────────────────────
 
 class _VisualizationImage extends StatelessWidget {
   const _VisualizationImage({required this.image});
@@ -243,68 +255,6 @@ class _VisualizationImage extends StatelessWidget {
           child: CircularProgressIndicator(color: Color(0xFF4A90D9)),
         );
       },
-    );
-  }
-}
-
-// ── Shared metric bar ─────────────────────────────────────────────────────────
-
-class _MetricBar extends StatelessWidget {
-  const _MetricBar({
-    required this.label,
-    required this.tag,
-    required this.tagColor,
-    required this.value,
-    required this.valueLabel,
-  });
-
-  final String label;
-  final String tag;
-  final Color tagColor;
-  final double value;
-  final String valueLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(color: Colors.white, fontSize: 13),
-            ),
-            Text(
-              tag,
-              style: TextStyle(
-                color: tagColor,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: LinearProgressIndicator(
-            value: value,
-            minHeight: 8,
-            backgroundColor: const Color(0xFF2A2A3E),
-            valueColor: AlwaysStoppedAnimation<Color>(const Color(0xFF4CAF50)),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Align(
-          alignment: Alignment.centerRight,
-          child: Text(
-            valueLabel,
-            style: const TextStyle(color: Color(0xFF888888), fontSize: 11),
-          ),
-        ),
-      ],
     );
   }
 }

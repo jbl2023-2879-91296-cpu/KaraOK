@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:karaok_app/app/app_shell.dart';
 import 'package:karaok_app/core/security/secure_token_store.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
-import 'package:karaok_app/core/storage/guest_assessment_store.dart';
 import 'package:karaok_app/features/auth/data/auth_api.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
@@ -11,10 +10,12 @@ class OtpVerificationScreen extends StatefulWidget {
     super.key,
     required this.email,
     this.developmentCode,
+    this.authApi,
   });
 
   final String email;
   final String? developmentCode;
+  final AuthApi? authApi;
 
   @override
   State<OtpVerificationScreen> createState() => _OtpVerificationScreenState();
@@ -41,7 +42,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       _error = null;
     });
     try {
-      final user = await AuthApi().verifyRegistration(
+      final user = await (widget.authApi ?? AuthApi()).verifyRegistration(
         email: widget.email,
         code: _otpController.text.trim(),
       );
@@ -51,11 +52,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         // Account creation succeeds even if the convenience value cannot save.
       }
       UserSession.instance.setUserFromMap(user);
-      try {
-        await GuestAssessmentStore.instance.clearAll();
-      } catch (_) {
-        // Account creation succeeds even if local guest cleanup must retry.
-      }
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,

@@ -24,10 +24,18 @@ spectrogram reports.
   creating an account does not transfer or assign guest records to that account.
 - Completed results include a score, feature grading, noise and distortion
   measurements, and generated waveform and spectrogram reports.
+- Results and visual reports use the same saved score, grade, and reference
+  metadata. Noise and distortion are explicitly labeled as advisory estimates.
+- Records support name search, inclusive date-range and numeric score filters,
+  status filtering, and chronological newest/oldest sorting.
 - A local-only KaraOK Admin Console provides analytics, schema visibility, and
   policy-controlled record management through the live Data Administration API.
 
 ## Adjusted amplifier settings
+
+The quality-report reference remains the existing 30-recording dataset in
+`results/`. See the [report reference audit](docs/report-reference-audit.md) for
+the source verification, measured ranges, and interpretation limits.
 
 KaraOK records or accepts rendered karaoke instrumental playback, measures five audio features, and recommends bounded positions for Volume, Bass, Treble, Sharpness, and Flatness. It does not analyze a singer, vocal track, feedback, or microphone effects, and it does not parse symbolic .mid files.
 
