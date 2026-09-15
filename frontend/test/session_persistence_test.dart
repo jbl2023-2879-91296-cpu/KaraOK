@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -12,6 +13,43 @@ import 'package:karaok_app/features/auth/presentation/pages/otp_verification_scr
 import 'package:karaok_app/features/auth/presentation/pages/session_bootstrap_screen.dart';
 
 void main() {
+  testWidgets('fast launch keeps branding visible for its minimum duration', (
+    tester,
+  ) async {
+    UserSession.instance.clear();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SessionBootstrapScreen(
+          authApi: _FakeAuthApi(() async => throw Exception('offline')),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 1400));
+    expect(find.textContaining('Getting KaraOK ready'), findsOneWidget);
+    expect(find.text('Retry'), findsNothing);
+    await tester.pump(const Duration(milliseconds: 101));
+    expect(find.text('Retry'), findsOneWidget);
+  });
+
+  testWidgets('slow restoration keeps launch screen past minimum duration', (
+    tester,
+  ) async {
+    UserSession.instance.clear();
+    final restoration = Completer<Map<String, dynamic>?>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SessionBootstrapScreen(
+          authApi: _FakeAuthApi(() => restoration.future),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 3));
+    expect(find.textContaining('Getting KaraOK ready'), findsOneWidget);
+    restoration.completeError(Exception('offline'));
+    await tester.pump();
+    expect(find.text('Retry'), findsOneWidget);
+  });
+
   setUp(() {
     FlutterSecureStorage.setMockInitialValues({});
     UserSession.instance.clear();
@@ -84,6 +122,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SessionBootstrapScreen(
+          minimumLaunchDuration: Duration.zero,
           authApi: _FakeAuthApi(() async => _user()),
         ),
       ),
@@ -105,6 +144,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SessionBootstrapScreen(
+          minimumLaunchDuration: Duration.zero,
           authApi: _FakeAuthApi(() async => _user()),
         ),
       ),
@@ -128,7 +168,10 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: SessionBootstrapScreen(authApi: _FakeAuthApi(() async => null)),
+        home: SessionBootstrapScreen(
+          minimumLaunchDuration: Duration.zero,
+          authApi: _FakeAuthApi(() async => null),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -148,6 +191,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SessionBootstrapScreen(
+          minimumLaunchDuration: Duration.zero,
           authApi: _FakeAuthApi(
             () async => throw ApiException(0, 'Server unavailable'),
           ),
@@ -172,6 +216,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: SessionBootstrapScreen(
+            minimumLaunchDuration: Duration.zero,
             authApi: _FakeAuthApi(
               () async => _user(requiresPasswordChange: true),
             ),

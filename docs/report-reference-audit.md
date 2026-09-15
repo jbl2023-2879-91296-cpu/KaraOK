@@ -60,3 +60,12 @@ Neither estimate contributes to the existing five-feature weighted score.
 The good-only cohort supports comparison with observed recordings. It does
 not establish validated perceptual boundaries for poor audio. Existing
 reference limitations are documented in `backend/audio_thresholds/README.md`.
+
+## Detailed interpretation report (2026-09-15)
+
+See [empirical scoring and user interpretation](empirical-scoring-report.md)
+for all five threshold anchors, the piecewise score formula, engineering-default
+weights, song 25 worked example, and proposed user-facing explanations.
+The [six-page PDF](../output/pdf/karaok-empirical-scoring-report.pdf) contains the
+same explanation. The source CSV checksum was reverified for that report.
+No scoring code, calibration values, or weights were changed.

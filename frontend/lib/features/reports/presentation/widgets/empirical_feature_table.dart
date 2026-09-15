@@ -1,3 +1,4 @@
+import 'measurement_guide.dart';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/features/reports/domain/report_values.dart';
 
@@ -74,6 +75,7 @@ class EmpiricalFeatureTable extends StatelessWidget {
                 : 'Reference derived from $referenceRecordingCount analyzed good-audio recordings',
             style: const TextStyle(color: Color(0xFF888888), fontSize: 11),
           ),
+          const MeasurementGuide(),
           const SizedBox(height: 12),
           for (final key in _labels.keys) ...[
             Builder(
