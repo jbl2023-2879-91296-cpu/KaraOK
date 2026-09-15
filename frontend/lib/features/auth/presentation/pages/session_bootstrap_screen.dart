@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'launch_animation.dart';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/app/app_shell.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
@@ -6,7 +8,13 @@ import 'package:karaok_app/features/auth/data/auth_api.dart';
 
 /// Resolves persisted authentication before any account-dependent UI is built.
 class SessionBootstrapScreen extends StatefulWidget {
-  const SessionBootstrapScreen({super.key, this.authApi});
+  const SessionBootstrapScreen({
+    super.key,
+    this.authApi,
+    this.minimumLaunchDuration = const Duration(milliseconds: 1500),
+  });
+
+  final Duration minimumLaunchDuration;
 
   final AuthApi? authApi;
 
@@ -15,13 +23,30 @@ class SessionBootstrapScreen extends StatefulWidget {
 }
 
 class _SessionBootstrapScreenState extends State<SessionBootstrapScreen> {
+  Timer? _launchTimer;
+  bool _launchReady = false;
   Widget? _destination;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    _launchReady = widget.minimumLaunchDuration == Duration.zero;
+    if (!_launchReady) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _launchTimer = Timer(widget.minimumLaunchDuration, () {
+          if (mounted) setState(() => _launchReady = true);
+        });
+      });
+    }
     _restore();
+  }
+
+  @override
+  void dispose() {
+    _launchTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _restore() async {
@@ -74,7 +99,7 @@ class _SessionBootstrapScreenState extends State<SessionBootstrapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_destination case final destination?) return destination;
+    if (_launchReady && _destination != null) return _destination!;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
@@ -82,18 +107,8 @@ class _SessionBootstrapScreenState extends State<SessionBootstrapScreen> {
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(28),
-            child: _error == null
-                ? const Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircularProgressIndicator(color: Color(0xFF4A90D9)),
-                      SizedBox(height: 18),
-                      Text(
-                        'Restoring your session…',
-                        style: TextStyle(color: Color(0xFFCCCCCC)),
-                      ),
-                    ],
-                  )
+            child: _error == null || !_launchReady
+                ? const LaunchAnimation()
                 : Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [

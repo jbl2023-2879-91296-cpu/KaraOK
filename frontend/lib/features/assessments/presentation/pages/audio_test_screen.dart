@@ -1,3 +1,4 @@
+import 'recording_checklist.dart';
 import 'dart:async';
 import 'dart:developer' as developer;
 
@@ -571,7 +572,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
         setState(() {
           _state = AudioInputState.failed;
           _message =
-              'The upload timed out. Your staged file is ready to retry.';
+              'The request timed out. Your audio is still available. Check Records before retrying; analysis may have completed.';
         });
       }
     } on ApiException catch (e, st) {
@@ -593,7 +594,8 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
       if (mounted) {
         setState(() {
           _state = AudioInputState.failed;
-          _message = 'Upload failed. Your staged file was kept for retry.';
+          _message =
+              'Could not complete the request. Check your connection and Records before retrying. Your audio has been kept.';
         });
       }
     }
@@ -644,6 +646,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
               ],
             ),
           ),
+          if (!recording && !_busy) const RecordingChecklist(),
           const SizedBox(height: 20),
           Text(
             '${_time(_elapsed)} / 05:00',
@@ -701,9 +704,26 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
             ),
           ],
           if (_busy)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator()),
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Semantics(
+                liveRegion: true,
+                child: Column(
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 12),
+                    Text(switch (_state) {
+                      AudioInputState.uploading =>
+                        'Uploading and analyzing audio. Keep this screen open.',
+                      AudioInputState.requestingPermission =>
+                        'Waiting for microphone permission.',
+                      AudioInputState.selecting =>
+                        'Preparing the selected audio file.',
+                      _ => 'Preparing your recording.',
+                    }, textAlign: TextAlign.center),
+                  ],
+                ),
+              ),
             ),
           if (item != null) ...[
             const SizedBox(height: 24),

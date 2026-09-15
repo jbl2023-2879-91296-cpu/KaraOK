@@ -2,6 +2,34 @@
 
 All notable changes to KaraOK are documented here.
 
+## 2026-09-15 - Frontend usability, comparison, and branding
+
+### Added
+
+- Comparison of two saved test instances, direct selection in Records, selection
+  cancellation, swap, and unavailable-value handling without backend changes.
+- Expandable measurement explanations and an optional recording checklist.
+- Approved Android launcher icon and project-local full-resolution artwork.
+- Startup logo animation with a 1.5-second minimum, session-readiness gating,
+  reduced-motion support, and preserved startup error recovery.
+- Detailed empirical scoring documentation and PDF explaining the 30-recording
+  reference, five factors, score mapping, weights, limitations, and usability.
+
+### Changed
+
+- Combined upload/analysis progress wording, screen-reader announcements, and
+  failure guidance that recommends checking Records before retrying.
+- Updated root/frontend documentation with feature usage and validation status.
+
+### Validation
+
+- Targeted comparison (14), guidance/report (12), and startup/session (11) tests
+  passed in their respective runs; Flutter analysis clean after each batch.
+- Phone checks cover persistence, history filtering/sorting, comparison/swap,
+  checklist, help dialogs, and larger help text. Icon installation succeeded.
+- Launch-animation phone testing remains pending. No new server tests or
+  deployment are required by these frontend/documentation changes.
+
 ## 2026-09-15 - Accurate reports and persistent guest history
 
 ### Fixed

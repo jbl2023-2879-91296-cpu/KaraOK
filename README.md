@@ -5,6 +5,28 @@ API analyzes uploaded or recorded audio, grades five empirical features, stores
 authenticated-user history in MySQL, and produces real Matplotlib waveform and
 spectrogram reports.
 
+## Latest frontend updates (2026-09-15)
+
+- Records supports selecting exactly two saved test instances for comparison.
+  Selection follows each instance through sorting, including identical filenames;
+  Cancel clears it. Comparison displays saved values and B minus A differences,
+  supports swapping A/B, and labels missing measurements unavailable.
+- Reports include expandable explanations of the five measurements. Recording
+  screens include an optional consistency checklist with no invented calibration
+  settings. Progress says uploading and analyzing because the API combines them;
+  timeout guidance recommends checking Records before retrying.
+- The Android launcher uses the selected blue karaoke cabinet and orange checkmark.
+  Source artwork: `frontend/assets/branding/karaok-icon.png`.
+- Startup shows a gently pulsing logo for at least 1.5 seconds after the first
+  Flutter frame and waits longer when session restoration needs it. Reduced-motion
+  settings disable the pulse. Startup errors retain Retry and Continue as Guest.
+  Returning to an already-running app does not replay this animation.
+- These changes do not modify backend scoring, reference thresholds, or weights.
+  Report export/sharing remains excluded.
+
+See [frontend usage and validation](frontend/README.md) and the
+[detailed empirical scoring report](docs/empirical-scoring-report.md).
+
 ## Current application flow
 
 - The app securely restores a valid saved login at startup; otherwise it opens
