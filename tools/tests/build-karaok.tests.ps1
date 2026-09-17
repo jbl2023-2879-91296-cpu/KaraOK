@@ -43,6 +43,18 @@ foreach ($expected in @('KaraOK', 'debug', 'apk', 'http://127.0.0.1:5000/api')) 
 }
 Write-Output 'PASS: debug build plan contains the expected KaraOK configuration'
 
+$customPlan = @(& $buildScript -NonInteractive -PlanOnly `
+    -ApplicationName 'My Karaoke' -PackageId 'com.example.player' `
+    -VersionName '2.3.4' -BuildNumber 12 -Format aab -Mode debug)
+if ($LASTEXITCODE -ne 0) { throw 'FAIL: custom build planning failed.' }
+$customPlanText = $customPlan -join "`n"
+foreach ($expected in @('My Karaoke', 'com.example.player', '2.3.4+12', 'aab', 'debug')) {
+    if ($customPlanText -notmatch [regex]::Escape($expected)) {
+        throw "FAIL: custom build plan omitted '$expected'."
+    }
+}
+Write-Output 'PASS: custom build identity, version, format, and mode reach the build plan'
+
 $defaultDebugPlan = @(
     & $buildScript `
         -ProjectDirectory (Join-Path $repositoryRoot 'frontend') `
