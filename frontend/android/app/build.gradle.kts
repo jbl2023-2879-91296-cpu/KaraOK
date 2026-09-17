@@ -50,6 +50,11 @@ android {
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.jrpbone.karaok"
+        System.getenv("KARAOK_APPLICATION_ID")?.takeIf { it.isNotBlank() }?.let {
+            applicationId = it
+        }
+        manifestPlaceholders["karaokApplicationLabel"] =
+            System.getenv("KARAOK_APPLICATION_NAME")?.takeIf { it.isNotBlank() } ?: "KaraOK"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // image_picker 1.2.x supports Android API 24 and newer.

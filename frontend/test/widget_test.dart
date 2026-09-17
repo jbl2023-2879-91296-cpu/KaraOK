@@ -8,6 +8,7 @@ import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/account/presentation/pages/change_password_screen.dart';
 import 'package:karaok_app/features/assessments/presentation/pages/audio_settings_suggestion_screen.dart';
 import 'package:karaok_app/features/auth/presentation/pages/signup_screen.dart';
+import 'package:karaok_app/features/auth/presentation/pages/launch_animation.dart';
 import 'package:karaok_app/features/home/presentation/pages/user_home_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/user_previous_results_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/results_screen.dart';
@@ -19,9 +20,18 @@ void main() {
   });
   tearDown(UserSession.instance.clear);
 
-  testWidgets('KaraOK opens directly in guest mode', (tester) async {
+  testWidgets('KaraOK opens in guest mode after the launch screen', (tester) async {
     await tester.pumpWidget(const KaraOKApp());
     await tester.pump();
+
+    expect(find.byType(LaunchAnimation), findsOneWidget);
+    expect(find.text('Home'), findsNothing);
+    await tester.pump(const Duration(milliseconds: 1499));
+    expect(find.byType(LaunchAnimation), findsOneWidget);
+    expect(find.text('Home'), findsNothing);
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pumpAndSettle();
+    expect(find.byType(LaunchAnimation), findsNothing);
 
     expect(find.byType(MaterialApp), findsOneWidget);
     expect(UserSession.instance.isGuest, isTrue);
@@ -114,7 +124,8 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(const KaraOKApp());
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1500));
+    await tester.pumpAndSettle();
 
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Records'), findsOneWidget);
@@ -144,7 +155,8 @@ void main() {
       userType: 'user',
     );
     await tester.pumpWidget(const KaraOKApp());
-    await tester.pump();
+    // Advance the launch timer without waiting for the Records loading spinner.
+    await tester.pump(const Duration(milliseconds: 1500));
     await tester.tap(find.text('Settings'));
     await tester.pump();
 

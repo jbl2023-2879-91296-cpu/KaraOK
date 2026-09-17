@@ -20,16 +20,30 @@ back up the signing identity securely; app updates require the same identity.
 
 ## Build and package
 
+Run `./tools/build_karaok.ps1` for guided prompts. Press Enter to accept each
+default: application name `KaraOK`, Android package ID `com.jrpbone.karaok`,
+version and build number from `frontend/pubspec.yaml`, format `apk`, and mode
+`release`. Format (`apk` or `aab`) and mode (`release`, `debug`, or `profile`)
+are separate choices. Invalid answers are prompted again.
+
+The application name sets the Android launcher label and packaged filenames.
+The package ID sets the installed app's identity; using another ID installs a
+separate app. These choices apply to the current build without rewriting the
+project defaults. Command-line values become prompt defaults; `-NonInteractive`
+uses them directly, and `-PlanOnly` previews settings without prompting or building.
+
 ```powershell
 ./tools/build_karaok.ps1 -PlanOnly -NonInteractive
 ./tools/build_karaok.ps1 -NonInteractive
 # Play Console bundle:
 ./tools/build_karaok.ps1 -Format aab -NonInteractive
+# Custom identity and version:
+./tools/build_karaok.ps1 -ApplicationName 'My Karaoke' -ApplicationId com.example.karaoke -VersionName 1.0.1 -BuildNumber 3 -Format apk -Mode debug -NonInteractive
 ```
 
 The default mode is `release`. The script restores dependencies, runs Flutter
 analysis and tests, builds, and copies versioned artifacts to
-`dist/KaraOK-v<version>+<build>-<mode>-android/`. A timestamp distinguishes repeat
+`dist/<application-name>-v<version>+<build>-<mode>-android/`. A timestamp distinguishes repeat
 builds. `build-manifest.json` records artifact hashes and the effective API URL.
 The original artifacts remain in `frontend/build/app/outputs/`.
 

@@ -19,6 +19,8 @@ environment variables, or secure parameters supplied to this command.
 #>
 [CmdletBinding()]
 param(
+    [Parameter()] [string]$ApplicationName = 'KaraOK',
+    [Parameter()] [Alias('PackageId')] [string]$ApplicationId,
     [Parameter()] [ValidateSet('apk', 'aab')] [string]$Format = 'apk',
     [Parameter()] [ValidateSet('debug', 'profile', 'release')] [string]$Mode = 'release',
     [Parameter()] [Alias('AppBaseUrl')] [string]$ApiBaseUrl,
@@ -51,6 +53,8 @@ $ErrorActionPreference = 'Stop'
 $previousDirectory = (Get-Location).Path
 $temporaryPlainSecrets = @()
 $signingEnvironmentNames = @(
+    'KARAOK_APPLICATION_NAME',
+    'KARAOK_APPLICATION_ID',
     'KARAOK_KEYSTORE_PATH',
     'KARAOK_KEY_ALIAS',
     'KARAOK_STORE_PASSWORD',
@@ -425,9 +429,20 @@ try {
     $appGradle = Get-Content -Raw -LiteralPath $appGradlePath
     $applicationIdMatch = [regex]::Match($appGradle, 'applicationId\s*=\s*"([^"]+)"')
     if (-not $applicationIdMatch.Success) { throw 'Could not read the Android application ID.' }
-    $applicationId = $applicationIdMatch.Groups[1].Value
+    if ([string]::IsNullOrWhiteSpace($ApplicationId)) { $ApplicationId = $applicationIdMatch.Groups[1].Value }
     if ([string]::IsNullOrWhiteSpace($VersionName)) { $VersionName = $versionMatch.Groups[1].Value }
-    if ($BuildNumber -le 0) { $BuildNumber = [int]$versionMatch.Groups[2].Value }
+    if (-not $PSBoundParameters.ContainsKey('BuildNumber')) { $BuildNumber = [int]$versionMatch.Groups[2].Value }
+
+    . (Join-Path $PSScriptRoot 'lib/build-options.ps1')
+    $options = Resolve-KaraOkBuildOptions -ApplicationName $ApplicationName -ApplicationId $ApplicationId `
+        -VersionName $VersionName -BuildNumber $BuildNumber -Format $Format -Mode $Mode `
+        -Interactive:(-not $NonInteractive -and -not $PlanOnly)
+    $ApplicationName = $options.ApplicationName
+    $ApplicationId = $options.ApplicationId
+    $VersionName = $options.VersionName
+    $BuildNumber = $options.BuildNumber
+    $Format = $options.Format
+    $Mode = $options.Mode
 
     . (Join-Path $PSScriptRoot 'lib/build-api-config.ps1')
     $apiConfiguration = Resolve-KaraOkBuildApi -Mode $Mode -ExplicitUrl $ApiBaseUrl `
@@ -471,6 +486,8 @@ try {
     Write-Output 'KaraOK Android build plan'
     Write-Output '----------------------------------------'
     Write-Output "Project:         $ProjectDirectory"
+    Write-Output "Application:     $ApplicationName"
+    Write-Output "Package ID:      $ApplicationId"
     Write-Output "Format:          $Format"
     Write-Output "Mode:            $Mode"
     Write-Output "Version:         $VersionName+$BuildNumber"
@@ -513,7 +530,9 @@ try {
         New-Item -ItemType Directory -Path $symbolDirectory -Force | Out-Null
         $arguments += @('--obfuscate', "--split-debug-info=$symbolDirectory")
     }
-    Invoke-FlutterStep -Title 'Building KaraOK Android artifact...' -Arguments $arguments
+    [Environment]::SetEnvironmentVariable('KARAOK_APPLICATION_NAME', $ApplicationName, 'Process')
+    [Environment]::SetEnvironmentVariable('KARAOK_APPLICATION_ID', $ApplicationId, 'Process')
+    Invoke-FlutterStep -Title "Building $ApplicationName Android artifact..." -Arguments $arguments
 
     if ($Format -eq 'aab') {
         $artifacts = @(Join-Path $ProjectDirectory "build/app/outputs/bundle/$Mode/app-$Mode.aab")
@@ -537,7 +556,7 @@ try {
     else {
         [IO.Path]::GetFullPath((Join-Path $repositoryRoot $OutputDirectory))
     }
-    $releaseDirectory = Join-Path $outputRoot "KaraOK-v$VersionName+$BuildNumber-$Mode-android"
+    $releaseDirectory = Join-Path $outputRoot "$ApplicationName-v$VersionName+$BuildNumber-$Mode-android"
     if (Test-Path -LiteralPath $releaseDirectory) {
         $releaseDirectory += "-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
     }
@@ -548,7 +567,7 @@ try {
         if (-not (Test-Path -LiteralPath $artifact -PathType Leaf)) { throw "Expected artifact was not found: $artifact" }
         $extension = [IO.Path]::GetExtension($artifact)
         $architecture = if ($artifact -match 'app-(armeabi-v7a|arm64-v8a|x86_64)-') { "-$($Matches[1])" } else { '' }
-        $fileName = "KaraOK-v$VersionName+$BuildNumber-$Mode$architecture$extension"
+        $fileName = "$ApplicationName-v$VersionName+$BuildNumber-$Mode$architecture$extension"
         $destination = Join-Path $releaseDirectory $fileName
         Copy-Item -LiteralPath $artifact -Destination $destination
 
@@ -577,7 +596,7 @@ try {
     }
 
     [ordered]@{
-        applicationName = 'KaraOK'
+        applicationName = $ApplicationName
         applicationId = $applicationId
         versionName = $VersionName
         buildNumber = $BuildNumber
