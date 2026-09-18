@@ -1,4 +1,33 @@
-# KaraOK
+<div align="center">
+
+<img src="frontend/assets/branding/karaok-icon.png" alt="KaraOK logo" width="128" height="128">
+
+<h1>KaraOK</h1>
+
+<p><strong>Record. Assess. Compare.</strong></p>
+<p>Understand your karaoke audio with five-feature quality assessments,<br>visual reports, and side-by-side comparisons.</p>
+
+<p>
+  <a href="https://github.com/jbl2023-2879-91296-cpu/KaraOK/releases"><img src="https://img.shields.io/badge/version-1.1.0-4A90D9?style=flat-square" alt="Version 1.1.0"></a>
+  <img src="https://img.shields.io/badge/platform-Android-3DDC84?style=flat-square&amp;logo=android&amp;logoColor=white" alt="Platform: Android">
+  <img src="https://img.shields.io/badge/client-Flutter-02569B?style=flat-square&amp;logo=flutter&amp;logoColor=white" alt="Client: Flutter">
+  <img src="https://img.shields.io/badge/API-Flask-182C39?style=flat-square&amp;logo=flask&amp;logoColor=white" alt="API: Flask">
+  <img src="https://img.shields.io/badge/database-MySQL-4479A1?style=flat-square&amp;logo=mysql&amp;logoColor=white" alt="Database: MySQL">
+</p>
+
+<p>
+  <a href="https://github.com/jbl2023-2879-91296-cpu/KaraOK/releases"><strong>Releases</strong></a> &middot;
+  <a href="#quick-start">Quick start</a> &middot;
+  <a href="build.md">Build Android</a> &middot;
+  <a href="deploy.md">Deploy backend</a> &middot;
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
+
+<p><sub>Loudness &middot; Bass &middot; Treble &middot; Sharpness &middot; Flatness</sub></p>
+
+</div>
+
+---
 
 KaraOK is a Flutter application for evaluating karaoke audio quality. A Flask
 API analyzes uploaded or recorded audio, grades five empirical features, stores
