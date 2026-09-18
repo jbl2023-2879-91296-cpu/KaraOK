@@ -171,6 +171,13 @@ Librosa and Numba cache: OK
 
 ## 7. Run the complete release test suites
 
+This step has separate commands for the Windows development computer and the
+Ubuntu VPS. If your prompt is `ubuntu@vps-46347102:/opt/karaok/app/backend$`,
+use **7b** below. The `.ps1` release runner in **7a** is a Windows PowerShell
+command at the repository root, not an Ubuntu Bash command in `backend/`.
+
+### 7a. Windows development computer - PowerShell
+
 First verify the exact release commit from a fresh clone on the development
 computer. From that clone's repository root, run the repository release runner:
 
@@ -197,6 +204,9 @@ The full backend discovery includes the principal calibration suites:
 - `tests.test_settings_trial_validation`
 - `tests.test_control_priors`
 - `tests.test_good_audio_thresholds`
+- `tests.test_median_centered_thresholds`
+
+### 7b. Ubuntu VPS - Bash
 
 After pulling the same verified commit on the live server, run full backend
 discovery there as the service account. Temporary test artifacts belong in a
