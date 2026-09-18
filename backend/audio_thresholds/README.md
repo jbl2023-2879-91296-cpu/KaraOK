@@ -1,5 +1,59 @@
 # Empirical good-audio thresholds
 
+## Active assessment profile: median-centered (2026.09.2-median)
+
+New backend assessments use `median_centered_thresholds.json` by default, based
+on the approved **KaraOK Median.pdf**. This is a user-selected theoretical
+profile, not a newly validated dataset. No server deployment is performed by
+changing this checkout, and stored historical assessments keep their saved scores
+and profile provenance.
+
+The original `good_audio_thresholds.json` remains the unchanged empirical
+reference. Schema 2 adds explicit `assessment_bounds` to each metric, preserving
+the original percentiles, extrema, quartiles, bootstrap intervals, and medians
+as statistics rather than relabeling theoretical boundaries as observations.
+Both schemas retain checksum validation. New assessment details include the
+new version, checksum, rules, and complete reference metrics with these bounds.
+
+Each center is the prior Good-class median shown in the PDF (which equals the
+cohort median for all five factors). Each full Good-band width is preserved:
+2.94 LUFS for loudness and the original P95-P05 width for the other factors.
+With center `m` and width `w`, Good is `[m-w/2, m+w/2]`; improvement extends
+to `m-1.5w` and `m+1.5w`, inclusive; values outside those outer cutoffs are Bad.
+The finite display ends in the PDF (`m +/- 2.5w`) are not cutoffs: Bad continues
+past them. Centers do not move again after reclassification.
+
+| Factor | Lower improvement | Lower Good | Center | Upper Good | Upper improvement |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Loudness (LUFS) | -15.610895335 | -12.670895335 | -11.200895335 | -9.730895335 | -6.790895335 |
+| Bass (%) | 16.70554435725 | 52.70658229575 | 70.707101265 | 88.70762023425 | 124.70865817275 |
+| Treble (%) | -1.1572309932 | -0.2971793714 | 0.1328464395 | 0.5628722504 | 1.4229238722 |
+| Sharpness | -0.00306827395 | -0.00052297665 | 0.000749672 | 0.00202232065 | 0.00456761795 |
+| Flatness | -0.000159873975 | -0.000031791325 | 0.00003225 | 0.000096291325 | 0.000224373975 |
+
+The JSON retains full calculation precision; the PDF table is rounded. Scores
+remain 100 at the center, 80 at each Good edge, and 50 at each improvement edge,
+with linear interpolation and tails clamped to 0-100. Existing feature weights
+and overall 80/50 grade cutoffs remain unchanged.
+
+These mathematical bands are intentionally not clipped to physical domains:
+some low bounds are negative, and the bass upper improvement bound exceeds
+100%. Consequently, valid nonnegative treble, sharpness, and flatness cannot
+enter the low-side improvement/Bad bands, and valid bass cannot enter high-side
+Bad. This is a consequence of the requested symmetry and preserved widths.
+
+Regenerate the active artifact from the original reference, from `backend/`:
+
+```powershell
+python -m audio_thresholds.derive_median_thresholds
+```
+
+Regenerating the original empirical reference alone does not replace the active
+artifact. Explicitly pass its path to `load_thresholds` to evaluate the legacy
+profile. Version the active profile again if its source or policy changes.
+
+## Original empirical reference
+
 This package derives a provisional five-feature reference from completed rows in
 `results/results.csv` whose input path belongs to `audio sample(good)`. It is
 separate from `audio_analyzer.py`: feature extraction continues unchanged, and

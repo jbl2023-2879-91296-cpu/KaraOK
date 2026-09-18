@@ -15,7 +15,8 @@ rendered to supported audio before KaraOK can measure it.
 
 | Artifact | Version fields | Source provenance | Canonical artifact checksum |
 | --- | --- | --- | --- |
-| Empirical quality (`good_audio_thresholds.json`) | Schema `1`; quality profile `2026.09.1`; scoring algorithm `1.0.0` | 30 selected rows from `results/results.csv`; source CSV SHA-256 `bcc5d4c2710f1d49572a17db56c5cc23ff5e8161f17adc9d2486b0edc8adfaa5` | `e86040c27a2d346c7fda3001ca0fd6cfeabed579ea1f63ed70f8e029dfbb20be` |
+| Active quality (`median_centered_thresholds.json`) | Schema `2`; quality profile `2026.09.2-median`; scoring algorithm `1.0.0` | User-approved KaraOK Median PDF policy; fixed prior-Good medians and equal widths derived from the retained empirical reference | `6b6d04daad410bd24051fa22adb177198c018f5a356b7e5e367067984c1fc551` |
+| Original empirical reference (`good_audio_thresholds.json`) | Schema `1`; quality profile `2026.09.1`; scoring algorithm `1.0.0` | 30 selected rows from `results/results.csv`; source CSV SHA-256 `bcc5d4c2710f1d49572a17db56c5cc23ff5e8161f17adc9d2486b0edc8adfaa5` | `e86040c27a2d346c7fda3001ca0fd6cfeabed579ea1f63ed70f8e029dfbb20be` |
 | Genre profiles (`genre_audio_profiles.json`) | Schema `1`; profile `2026.09.1`; generator `1.0.0`; generated `2026-09-02T00:00:00Z` | Licensed FMA-small manifest; manifest SHA-256 `642c6d23d4e2388f80ad5f324a31223054900f2a4d7c6639edb76d6b5e5be74d` | `8b87b9f1106bab8dab4978e4590e84c9bb294400a0d60ce5263e196f44701b61` |
 | Control priors (`amplifier_control_priors.json`) | Schema `1`; prior `2026.09.1` | Cited measurement definitions, neutral tone-control guidance, and explicit project assumptions | `22f1dde7455dd1d6d6c83c54a00d885e6bd3fecd89a8b05f6874bf88a774be71` |
 

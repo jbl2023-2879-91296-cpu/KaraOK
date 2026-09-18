@@ -1,8 +1,8 @@
 {
   "profile_version": "2026.09.1",
   "profile_checksum": "8b87b9f1106bab8dab4978e4590e84c9bb294400a0d60ce5263e196f44701b61",
-  "quality_profile_version": "2026.09.1",
-  "quality_profile_checksum": "e86040c27a2d346c7fda3001ca0fd6cfeabed579ea1f63ed70f8e029dfbb20be",
+  "quality_profile_version": "2026.09.2-median",
+  "quality_profile_checksum": "6b6d04daad410bd24051fa22adb177198c018f5a356b7e5e367067984c1fc551",
   "enabled_genres": ["hip-hop", "pop", "rock"],
   "control_priors": {
     "prior_version": "2026.09.1",
