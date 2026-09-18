@@ -5,7 +5,28 @@ API analyzes uploaded or recorded audio, grades five empirical features, stores
 authenticated-user history in MySQL, and produces real Matplotlib waveform and
 spectrogram reports.
 
-## Latest frontend updates (2026-09-15)
+## Latest updates - v1.1.0 (2026-09-18)
+
+- New audio assessments use the median-centered quality profile
+  `2026.09.2-median` for loudness, bass, treble, sharpness, and flatness.
+  Each Good band is centered on its prior Good-class median, with its width
+  preserved and equally wide improvement bands on either side.
+- The backend retains the original 30-recording statistics and historical
+  assessment scores. Profile versions and checksums identify the thresholds
+  used for new assessments; feature weights and overall grade cutoffs are unchanged.
+- Android builds now prompt for application name, package ID, version, build
+  number, APK/AAB format, and release/debug/profile mode. Defaults and command-line
+  options support both guided and automated builds.
+- Startup widget tests account for the 1.5-second launch screen. Deployment
+  instructions distinguish Windows PowerShell checks from Ubuntu server commands.
+- Validation for the threshold update: 249 backend tests and seven affected
+  Flutter metadata/contract tests passed.
+
+The local signed Android package built on 18 September is **1.1.0+2**.
+Build-time version overrides can differ from `frontend/pubspec.yaml`; check the
+packaged `build-manifest.json` for the version and checksum of a specific APK.
+
+### Comparison, reports, and branding
 
 - Records supports selecting exactly two saved test instances for comparison.
   Selection follows each instance through sorting, including identical filenames;
@@ -21,11 +42,32 @@ spectrogram reports.
   Flutter frame and waits longer when session restoration needs it. Reduced-motion
   settings disable the pulse. Startup errors retain Retry and Continue as Guest.
   Returning to an already-running app does not replay this animation.
-- These changes do not modify backend scoring, reference thresholds, or weights.
-  Report export/sharing remains excluded.
+- Report export/sharing remains excluded.
 
-See [frontend usage and validation](frontend/README.md) and the
-[detailed empirical scoring report](docs/empirical-scoring-report.md).
+See [frontend usage and validation](frontend/README.md), the
+[active assessment profile](backend/audio_thresholds/README.md), and the
+[original empirical scoring report](docs/empirical-scoring-report.md).
+
+## Audio quality assessment
+
+The active artifact is
+[`median_centered_thresholds.json`](backend/audio_thresholds/median_centered_thresholds.json).
+It separates configured assessment boundaries from measured dataset statistics.
+Scores are 100 at each fixed median, 80 at Good-band boundaries, and 50 at the
+outer improvement boundaries, with linear interpolation and scores limited to
+0-100. Overall grades use the existing weighted score: Good at 80 or above,
+Needs improvement from 50 to below 80, and Bad below 50.
+
+These symmetric thresholds are provisional engineering choices based on the
+existing 30-recording reference, not independently validated listener ratings.
+Some mathematical bands extend outside physical measurement limits. Additional
+recordings and independent quality labels are needed to validate those boundaries.
+See the [profile documentation](backend/audio_thresholds/README.md) for exact
+values, domain limitations, generation, and legacy-profile support.
+
+For an existing deployment, this threshold update requires the updated backend,
+passing backend tests, an API restart, and health checks. It requires no database
+rebuild or new APK. Existing saved assessments retain their original scores.
 
 ## Current application flow
 
@@ -55,9 +97,10 @@ See [frontend usage and validation](frontend/README.md) and the
 
 ## Adjusted amplifier settings
 
-The quality-report reference remains the existing 30-recording dataset in
-`results/`. See the [report reference audit](docs/report-reference-audit.md) for
-the source verification, measured ranges, and interpretation limits.
+The quality-report source remains the existing 30-recording dataset in
+`results/`; its active classification boundaries now come from the median-centered
+profile above. The [original report reference audit](docs/report-reference-audit.md)
+documents the source verification and measured ranges.
 
 KaraOK records or accepts rendered karaoke instrumental playback, measures five audio features, and recommends bounded positions for Volume, Bass, Treble, Sharpness, and Flatness. It does not analyze a singer, vocal track, feedback, or microphone effects, and it does not parse symbolic .mid files.
 
@@ -187,13 +230,26 @@ For an Android emulator, use `http://10.0.2.2:5000/api` instead of localhost.
 
 ## Tooling and release guides
 
+Start the interactive Android build from the repository root in PowerShell:
+
+```powershell
+./tools/build_karaok.ps1
+```
+
+Press Enter to accept defaults, including app name `KaraOK`, package ID
+`com.jrpbone.karaok`, and version/build from `frontend/pubspec.yaml`. Format
+(`apk` or `aab`) and mode (`release`, `debug`, or `profile`) are separate choices.
+Use `-NonInteractive` for automation or `-PlanOnly` to preview the configuration.
+Builds apply the selected identity and version without rewriting project defaults.
+
 See [tools](tools/README.md), [Android builds](build.md), [database setup](database/README.md),
 and [deployment](deploy.md). Main commands stay at `tools/`; shared helpers live
 in `tools/lib/`, secret generation in `tools/security/`, and regressions in `tools/tests/`.
 
 ## Testing
 
-Run all repository release groups from the root (backend, Flutter, analysis, and PowerShell):
+On the Windows development computer, run all repository release groups from the
+root in PowerShell (backend, Flutter, analysis, and PowerShell):
 
 ```powershell
 ./tools/run-affected-tests.ps1 -All
@@ -201,6 +257,8 @@ Run all repository release groups from the root (backend, Flutter, analysis, and
 
 Use `-ListOnly` to preview groups or omit `-All` for checks selected from working-tree changes.
 The Admin Console suite and real-service integration are separate, explicit checks.
+On Ubuntu production servers, use the service-account backend commands in
+[deployment step 7b](deploy.md#7b-ubuntu-vps---bash).
 
 Run the lightweight client checks:
 
@@ -227,8 +285,9 @@ composer test
 ## Security and publication
 
 - Passwords use Argon2id hashes.
-- New and temporary passwords are exactly eight characters and must contain an
-  uppercase letter, lowercase letter, number, and symbol.
+- User-chosen passwords accept 8-128 characters; generated temporary passwords
+  are eight characters. Both require an uppercase letter, lowercase letter,
+  number, and symbol.
 - OTPs and tokens are never stored in plaintext.
 - Access and refresh tokens are stored through platform-secure storage; app
   startup uses the refresh token to restore the authoritative server profile.
