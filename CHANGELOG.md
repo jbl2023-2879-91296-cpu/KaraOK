@@ -2,6 +2,15 @@
 
 All notable changes to KaraOK are documented here.
 
+## 2026-09-18 - Median-centered assessment profile
+
+- New backend assessments default to the approved KaraOK Median PDF boundaries,
+  with fixed prior-Good medians and preserved equal band widths.
+- Added schema-2 profile `2026.09.2-median`, reproducible generation, checksum and
+  symmetry validation, and boundary/scoring regression coverage.
+- Retained the original empirical statistics and legacy profile. Extraction,
+  weights, overall grade cutoffs, and stored historical assessments are unchanged.
+
 ## 2026-09-15 - Frontend usability, comparison, and branding
 
 ### Added

@@ -332,13 +332,16 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertIn("quality_profile_version", statement)
         self.assertIn("quality_profile_checksum", statement)
         self.assertEqual(values[0], 11)
-        self.assertAlmostEqual(values[1], 31.51069476184425)
+        self.assertAlmostEqual(values[1], 37.284183926063236)
         self.assertEqual(
             values[2:9],
             (-42.0, 8.0, 40.0, 12.0, -14.0, 0.2, 0.03),
         )
-        self.assertEqual(values[9:12], ("bad", "bad", '["bass", "treble", "sharpness", "flatness"]'))
-        self.assertIn('"overall_score": 31.51069476184425', values[12])
+        self.assertEqual(values[9:12], ("bad", "bad", '["treble", "sharpness", "flatness"]'))
+        details = json.loads(values[12])
+        self.assertAlmostEqual(details["overall_score"], 37.284183926063236)
+        self.assertEqual(details["quality_profile_version"], "2026.09.2-median")
+        self.assertIn("assessment_bounds", details["reference"]["metrics"]["loudness"])
         self.assertEqual(
             values[13:],
             (

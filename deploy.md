@@ -126,10 +126,10 @@ cd /opt/karaok/app/backend
 
 sudo -u karaok test -r .env
 sudo -u karaok test -r audio_thresholds/good_audio_thresholds.json
+sudo -u karaok test -r audio_thresholds/median_centered_thresholds.json
 ```
 
 These commands are silent when successful.
-
 
 ## 6. Prepare the runtime caches
 

@@ -17,7 +17,7 @@ GOOD_BUT_NEEDS_IMPROVEMENT = "good_but_needs_improvement"
 BAD = "bad"
 NOT_EVALUATED = "not_evaluated"
 
-DEFAULT_THRESHOLD_PATH = Path(__file__).with_name("good_audio_thresholds.json")
+DEFAULT_THRESHOLD_PATH = Path(__file__).with_name("median_centered_thresholds.json")
 _STATUS_SEVERITY = {GOOD: 0, GOOD_BUT_NEEDS_IMPROVEMENT: 1, BAD: 2}
 _METRIC_KEYS = tuple(definition.key for definition in METRIC_DEFINITIONS)
 _ALGORITHM_VERSION = "1.0.0"
@@ -97,6 +97,21 @@ _SCORING_ANCHORS = {
     "p05_and_p95": 80.0,
     "observed_min_and_max": 50.0,
 }
+MEDIAN_CLASSIFICATION_RULES = {
+    "good": "good_lower <= value <= good_upper",
+    "good_but_needs_improvement": "improvement_lower <= value < good_lower or good_upper < value <= improvement_upper",
+    "bad": "value < improvement_lower or value > improvement_upper",
+    "not_evaluated": "value is missing or non-finite",
+    "boundary_policy": "Good and improvement boundaries are inclusive; assessment_bounds override reference statistics.",
+}
+MEDIAN_SCORING_ANCHORS = {
+    "center": 100.0,
+    "good_lower_and_upper": 80.0,
+    "improvement_lower_and_upper": 50.0,
+}
+_ASSESSMENT_BOUND_KEYS = (
+    "improvement_lower", "good_lower", "center", "good_upper", "improvement_upper"
+)
 _OVERALL_KEYS = frozenset(
     {
         "weights",
@@ -316,10 +331,13 @@ def _validate_empirical_artifact(artifact: Mapping[str, Any]) -> None:
     ) != 0.95:
         raise ValueError("derivation.bootstrap_confidence_level must match bootstrap_95_ci.")
 
+    median_profile = artifact["schema_version"] == 2
+    classification_rules = MEDIAN_CLASSIFICATION_RULES if median_profile else _CLASSIFICATION_RULES
+    scoring_anchors = MEDIAN_SCORING_ANCHORS if median_profile else _SCORING_ANCHORS
     classification = _exact_mapping(
-        artifact["classification"], frozenset(_CLASSIFICATION_RULES), "classification"
+        artifact["classification"], frozenset(classification_rules), "classification"
     )
-    if dict(classification) != _CLASSIFICATION_RULES:
+    if dict(classification) != classification_rules:
         raise ValueError("classification rules do not match the scoring algorithm.")
 
     scoring = _exact_mapping(artifact["scoring"], _SCORING_KEYS, "scoring")
@@ -332,13 +350,13 @@ def _validate_empirical_artifact(artifact: Mapping[str, Any]) -> None:
     ):
         raise ValueError("scoring.range must be exactly 0-100.")
     anchors = _exact_mapping(
-        scoring["anchors"], frozenset(_SCORING_ANCHORS), "scoring.anchors"
+        scoring["anchors"], frozenset(scoring_anchors), "scoring.anchors"
     )
     parsed_anchors = {
         key: _strict_finite(value, f"scoring.anchors.{key}")
         for key, value in anchors.items()
     }
-    if parsed_anchors != _SCORING_ANCHORS:
+    if parsed_anchors != scoring_anchors:
         raise ValueError("scoring anchors do not match the scoring algorithm.")
     if _required_string(scoring, "interpolation", "scoring") != (
         "directional piecewise linear with scores clamped to 0-100"
@@ -371,7 +389,10 @@ def _validate_empirical_artifact(artifact: Mapping[str, Any]) -> None:
     metrics = _exact_mapping(artifact["metrics"], set(_METRIC_KEYS), "metrics")
     for definition in METRIC_DEFINITIONS:
         field = f"metrics.{definition.key}"
-        metric = _exact_mapping(metrics[definition.key], _METRIC_SCHEMA_KEYS, field)
+        metric_keys = _METRIC_SCHEMA_KEYS | {"assessment_bounds"} if median_profile else _METRIC_SCHEMA_KEYS
+        metric = _exact_mapping(metrics[definition.key], metric_keys, field)
+        if median_profile:
+            _validate_assessment_bounds(metric["assessment_bounds"], field)
         for name, expected_value in (
             ("csv_column", definition.csv_column),
             ("unit", definition.unit),
@@ -504,7 +525,7 @@ def load_thresholds(path: str | Path = DEFAULT_THRESHOLD_PATH) -> dict[str, Any]
     if (
         isinstance(artifact.get("schema_version"), bool)
         or not isinstance(artifact.get("schema_version"), int)
-        or artifact["schema_version"] != 1
+        or artifact["schema_version"] not in (1, 2)
     ):
         raise ValueError("Unsupported or missing empirical-threshold schema_version.")
     for field in ("quality_profile_version", "algorithm_version", "artifact_checksum"):
@@ -532,7 +553,23 @@ def _finite_number(value: object) -> float | None:
     return number if math.isfinite(number) else None
 
 
+def _validate_assessment_bounds(value: Any, field: str) -> tuple[float, float, float, float, float]:
+    data = _exact_mapping(value, set(_ASSESSMENT_BOUND_KEYS), f"{field}.assessment_bounds")
+    bounds = tuple(_strict_finite(data[key], f"{field}.{key}") for key in _ASSESSMENT_BOUND_KEYS)
+    low, gl, center, gu, high = bounds
+    width = gu - gl
+    if not low < gl < center < gu < high:
+        raise ValueError("Assessment bounds must be strictly ordered.")
+    if not all(math.isclose(left, right, rel_tol=1e-12, abs_tol=1e-15) for left, right in (
+        (center-gl, gu-center), (gl-low, width), (high-gu, width)
+    )):
+        raise ValueError("Assessment bounds must be median-centered with equal band widths.")
+    return bounds
+
+
 def _validated_bounds(metric: Mapping[str, Any]) -> tuple[float, float, float, float, float]:
+    if "assessment_bounds" in metric:
+        return _validate_assessment_bounds(metric["assessment_bounds"], "metric")
     names = ("observed_min", "p05", "median", "p95", "observed_max")
     values = tuple(_finite_number(metric.get(name)) for name in names)
     if any(value is None for value in values):
@@ -544,7 +581,7 @@ def _validated_bounds(metric: Mapping[str, Any]) -> tuple[float, float, float, f
 
 
 def classify_feature(value: object, metric: Mapping[str, Any]) -> str:
-    """Apply the inclusive P05/P95 and observed-envelope status rules."""
+    """Apply inclusive assessment bounds, or legacy empirical bounds."""
 
     number = _finite_number(value)
     if number is None:
@@ -571,7 +608,7 @@ def _linear_score(
 
 
 def score_feature(value: object, metric: Mapping[str, Any]) -> float | None:
-    """Return a continuous score anchored at median/P05-P95/envelope bounds."""
+    """Score around the center and inclusive Good/improvement bounds."""
 
     number = _finite_number(value)
     if number is None:
