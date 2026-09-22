@@ -1,3 +1,18 @@
+# Local environment configuration (keep example templates tracked)
+.env
+.env.*
+!.env.example
+
+# Installed dependencies and local package caches
+node_modules/
+vendor/
+.venv/
+.venv.*/
+venv/
+.dart_tool/
+.pub-cache/
+.pub/
+
 /audio sample(good)
 /results
 /project.md
