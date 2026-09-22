@@ -30,3 +30,6 @@ __pycache__/
 /backend/audio_thresholds/README.md
 docs/reports
 tmp/
+
+# Generated documents, diagrams, and reports
+/output/
