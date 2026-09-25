@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:karaok_app/app/app_shell.dart';
 
 import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/sound_settings/data/guest_amplifier_store.dart';
@@ -24,6 +25,7 @@ class SettingsRecommendationScreen extends StatefulWidget {
     this.settingsApi,
     this.guestStore,
     this.onVerify,
+    this.assessmentBuilder,
     this.safetySignals = const {},
   });
 
@@ -31,6 +33,7 @@ class SettingsRecommendationScreen extends StatefulWidget {
   final SettingsApi? settingsApi;
   final GuestAmplifierStore? guestStore;
   final SettingsVerificationCallback? onVerify;
+  final WidgetBuilder? assessmentBuilder;
   final Map<String, dynamic> safetySignals;
 
   @override
@@ -154,8 +157,11 @@ class _SettingsRecommendationScreenState
     widget.onVerify?.call(_nextInput(verification: false));
   }
 
-  Future<void> _finish() async {
-    await Navigator.of(context).maybePop();
+  void _finish() {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const AppShell(initialIndex: 0)),
+      (route) => false,
+    );
   }
 
   @override
@@ -181,6 +187,14 @@ class _SettingsRecommendationScreenState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _ScoreSummary(recommendation: _recommendation),
+              if (widget.assessmentBuilder != null)
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.of(
+                    context,
+                  ).push(MaterialPageRoute(builder: widget.assessmentBuilder!)),
+                  icon: const Icon(Icons.analytics_outlined),
+                  label: const Text('View Audio Assessment'),
+                ),
               const SizedBox(height: 16),
               if (_recommendation.rollbackRecommended) ...[
                 const _Notice(
@@ -211,7 +225,6 @@ class _SettingsRecommendationScreenState
                   label: const Text('Record Again'),
                 ),
                 const SizedBox(height: 8),
-                TextButton(onPressed: _finish, child: const Text('Finish')),
               ] else ...[
                 Text(
                   'Set each physical knob yourself. KaraOK does not move your amplifier controls.',
@@ -259,15 +272,11 @@ class _SettingsRecommendationScreenState
                   ),
                 ],
                 const SizedBox(height: 8),
-                TextButton(
-                  onPressed: _finish,
-                  child: Text(
-                    _canOfferVerification
-                        ? 'Finish Without Verification'
-                        : 'Finish',
-                  ),
-                ),
               ],
+              TextButton(
+                onPressed: _applying ? null : _finish,
+                child: const Text('Done — Back to Main Page'),
+              ),
             ],
           ),
         ),

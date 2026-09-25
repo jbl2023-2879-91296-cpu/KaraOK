@@ -26,6 +26,94 @@ void main() {
 
   tearDown(UserSession.instance.clear);
 
+  for (final scale in ['0–10', '0–100', 'Custom']) {
+    _tallTestWidgets('creates a second named amplifier on $scale', (
+      tester,
+    ) async {
+      UserSession.instance.setUser(
+        id: 7,
+        name: 'Test',
+        email: 't@example.com',
+        userType: 'user',
+      );
+      settingsApi.profiles = [
+        AmplifierProfile(
+          id: 1,
+          name: 'My Amplifier',
+          scale: const AmplifierScale(minimum: 0, maximum: 10, step: 0.5),
+        ),
+      ];
+      SettingsSuggestionInput? submitted;
+      await tester.pumpWidget(
+        _testApp(
+          SettingsSetupScreen(
+            settingsApi: settingsApi,
+            onContinue: (input) => submitted = input,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('amplifier-profile-dropdown')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Create My Amplifier').last);
+      await tester.pumpAndSettle();
+      await _selectScale(tester, scale);
+      await _fillGenreAndFivePositions(tester);
+      await tester.ensureVisible(find.byKey(const Key('settings-continue')));
+      await tester.tap(find.byKey(const Key('settings-continue')));
+      await tester.pumpAndSettle();
+      expect(submitted?.amplifierProfileId, 22);
+      expect(settingsApi.created?.name, 'My Amplifier 2');
+    });
+  }
+
+  _tallTestWidgets(
+    'duplicate response preserves positions and allows a new name',
+    (tester) async {
+      UserSession.instance.setUser(
+        id: 7,
+        name: 'Test',
+        email: 't@example.com',
+        userType: 'user',
+      );
+      settingsApi.saveError = const ApiException(
+        409,
+        'An amplifier profile with that name already exists',
+      );
+      SettingsSuggestionInput? submitted;
+      await tester.pumpWidget(
+        _testApp(
+          SettingsSetupScreen(
+            settingsApi: settingsApi,
+            onContinue: (input) => submitted = input,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _fillGenreAndFivePositions(tester);
+      await tester.ensureVisible(find.byKey(const Key('settings-continue')));
+      await tester.tap(find.byKey(const Key('settings-continue')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('An amplifier profile with that name already exists'),
+        findsOneWidget,
+      );
+      expect(_knobText(tester, 'bass'), '4');
+      expect(submitted, isNull);
+      settingsApi.saveError = null;
+      await tester.ensureVisible(find.byKey(const Key('amplifier-name')));
+      await tester.enterText(
+        find.byKey(const Key('amplifier-name')),
+        'Living Room',
+      );
+      await tester.ensureVisible(find.byKey(const Key('settings-continue')));
+      await tester.tap(find.byKey(const Key('settings-continue')));
+      await tester.pumpAndSettle();
+      expect(settingsApi.created?.name, 'Living Room');
+      expect(submitted?.amplifierProfileId, 22);
+    },
+  );
+
   _tallTestWidgets('requires genre and all five current positions', (
     tester,
   ) async {
@@ -574,11 +662,15 @@ void main() {
           scale: AmplifierScale(minimum: 0, maximum: 10, step: 0.5),
         ),
       ];
-      await tester.pumpWidget(_testApp(SettingsSetupScreen(
-        settingsApi: settingsApi,
-        guestStore: guestStore,
-        onContinue: (_) {},
-      )));
+      await tester.pumpWidget(
+        _testApp(
+          SettingsSetupScreen(
+            settingsApi: settingsApi,
+            guestStore: guestStore,
+            onContinue: (_) {},
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
 
       await tester.ensureVisible(
@@ -599,10 +691,19 @@ void main() {
       await tester.tap(find.text('Empty 0-10').last);
       await tester.pumpAndSettle();
 
-      for (final name in ['volume', 'bass', 'treble', 'sharpness', 'flatness']) {
+      for (final name in [
+        'volume',
+        'bass',
+        'treble',
+        'sharpness',
+        'flatness',
+      ]) {
         expect(_knobText(tester, name), isEmpty);
       }
-      expect(find.byKey(const Key('starting-point-acknowledgement')), findsNothing);
+      expect(
+        find.byKey(const Key('starting-point-acknowledgement')),
+        findsNothing,
+      );
     },
   );
 
@@ -863,6 +964,7 @@ class _FakeSettingsApi extends SettingsApi {
   List<String> enabledGenres = const ['hip-hop', 'pop', 'rock'];
   ApiException? metadataError;
   ApiException? profilesError;
+  ApiException? saveError;
   List<AmplifierProfile> profiles = const [];
   AmplifierProfile? created;
 
@@ -888,6 +990,13 @@ class _FakeSettingsApi extends SettingsApi {
 
   @override
   Future<AmplifierProfile> createProfile(AmplifierProfile profile) async {
+    if (saveError case final error?) throw error;
+    if (profiles.any((existing) => existing.name == profile.name)) {
+      throw const ApiException(
+        409,
+        'An amplifier profile with that name already exists',
+      );
+    }
     created = profile;
     return AmplifierProfile(
       id: 22,

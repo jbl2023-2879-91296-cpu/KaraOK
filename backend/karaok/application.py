@@ -246,6 +246,10 @@ def _profile_response(user: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+class AudioDurationError(ValueError):
+    """Readable audio that falls outside the supported upload duration."""
+
+
 def audio_duration_seconds(path: str) -> int:
     """Return a validated whole-second duration for a readable audio stream."""
     try:
@@ -254,10 +258,10 @@ def audio_duration_seconds(path: str) -> int:
         raise ValueError("No readable audio stream found") from error
     if audio_info is None or audio_info.info is None:
         raise ValueError("No readable audio stream found")
-    duration = int(round(float(audio_info.info.length)))
-    if duration < 1 or duration > MAX_AUDIO_SECONDS:
-        raise ValueError("Audio duration must be between 1 and 300 seconds")
-    return duration
+    duration = float(audio_info.info.length)
+    if not math.isfinite(duration) or duration < 10 or duration > MAX_AUDIO_SECONDS:
+        raise AudioDurationError("Audio duration must be between 10 and 300 seconds")
+    return int(round(duration))
 
 
 def _analysis_directory(user_id: int, assessment_id: int) -> Path:
@@ -2371,6 +2375,9 @@ def create_guest_audio_analysis():
         return jsonify({"error": "Audio file is empty or exceeds the 25 MB limit"}), 413
     try:
         duration = audio_duration_seconds(stored_path)
+    except AudioDurationError as error:
+        os.remove(stored_path)
+        return jsonify({"error": str(error)}), 422
     except Exception:
         os.remove(stored_path)
         return jsonify({"error": "Audio file is corrupted or unreadable"}), 422
@@ -2539,6 +2546,9 @@ def create_audio_upload():
         return jsonify({"error": "Audio file is empty or exceeds the 25 MB limit"}), 413
     try:
         duration = audio_duration_seconds(stored_path)
+    except AudioDurationError as error:
+        os.remove(stored_path)
+        return jsonify({"error": str(error)}), 422
     except Exception:
         os.remove(stored_path)
         return jsonify({"error": "Audio file is corrupted or unreadable"}), 422

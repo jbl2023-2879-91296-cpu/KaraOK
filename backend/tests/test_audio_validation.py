@@ -24,7 +24,7 @@ class AudioValidationTests(unittest.TestCase):
     def tearDown(self):
         api.app.config["TESTING"] = self.previous_testing
 
-    def _post_authenticated_audio(self, extension):
+    def _post_authenticated_audio(self, extension, audio_bytes=b"MThd"):
         connection = MagicMock()
         cursor = connection.cursor.return_value
         cursor.fetchone.side_effect = [
@@ -44,9 +44,10 @@ class AudioValidationTests(unittest.TestCase):
                 "/api/audio-uploads",
                 data={
                     "audio": (
-                        io.BytesIO(b"MThd"),
+                        io.BytesIO(audio_bytes),
                         f"sample.{extension}",
-                    )
+                    ),
+                    "duration_seconds": "20",
                 },
                 headers=self.headers,
                 content_type="multipart/form-data",
@@ -82,6 +83,30 @@ class AudioValidationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 415)
         self.assertEqual(response.get_json()["error"], "Unsupported audio format")
 
+    def test_short_upload_rejected_with_duration_guidance_for_guest_and_user(self):
+        audio = io.BytesIO()
+        with wave.open(audio, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(8000)
+            wav.writeframes(b"\x00\x00" * 8000)
+        with tempfile.TemporaryDirectory() as temporary, patch.object(
+            api, "AUDIO_UPLOAD_DIR", os.path.abspath(temporary)
+        ), patch.object(api, "run_audio_analyzer") as analyzer:
+            for guest in (True, False):
+                with self.subTest(guest=guest):
+                    response = self.client.post(
+                        "/api/guest/audio-analysis",
+                        data={"audio": (io.BytesIO(audio.getvalue()), "short.wav"),
+                              "duration_seconds": "20"},
+                        content_type="multipart/form-data",
+                    ) if guest else self._post_authenticated_audio("wav", audio.getvalue())
+                    self.assertEqual(response.status_code, 422)
+                    self.assertEqual(response.get_json()["error"],
+                                     "Audio duration must be between 10 and 300 seconds")
+            analyzer.assert_not_called()
+            self.assertEqual(list(Path(temporary).rglob("*.wav")), [])
+
     def test_valid_wav_duration_is_read_from_file(self):
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp:
             path = temp.name
@@ -90,8 +115,8 @@ class AudioValidationTests(unittest.TestCase):
                 wav.setnchannels(1)
                 wav.setsampwidth(2)
                 wav.setframerate(8000)
-                wav.writeframes(b"\x00\x00" * 16000)
-            self.assertEqual(api.audio_duration_seconds(path), 2)
+                wav.writeframes(b"\x00\x00" * 80000)
+            self.assertEqual(api.audio_duration_seconds(path), 10)
         finally:
             os.remove(path)
 
@@ -104,6 +129,21 @@ class AudioValidationTests(unittest.TestCase):
                 api.audio_duration_seconds(path)
         finally:
             os.remove(path)
+
+    def test_duration_limits_are_checked_before_rounding(self):
+        for seconds in (0, 1, 9.99, 300.01, float("nan"), float("inf")):
+            with self.subTest(seconds=seconds):
+                info = MagicMock()
+                info.info.length = seconds
+                with patch.object(api, "MutagenFile", return_value=info):
+                    with self.assertRaises(ValueError):
+                        api.audio_duration_seconds("recording.wav")
+        for seconds, expected in ((10, 10), (20.2, 20), (300, 300)):
+            with self.subTest(seconds=seconds):
+                info = MagicMock()
+                info.info.length = seconds
+                with patch.object(api, "MutagenFile", return_value=info):
+                    self.assertEqual(api.audio_duration_seconds("recording.wav"), expected)
 
     def test_deleted_assessment_cleans_upload_and_analysis_artifacts(self):
         with tempfile.TemporaryDirectory() as temporary:

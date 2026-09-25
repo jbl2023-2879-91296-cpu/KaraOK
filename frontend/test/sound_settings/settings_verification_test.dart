@@ -109,7 +109,7 @@ void main() {
     );
 
     expect(find.text('Record Again to Verify'), findsNothing);
-    expect(find.text('Finish'), findsOneWidget);
+    expect(find.text('Done — Back to Main Page'), findsOneWidget);
   });
 
   _screenTest('terminal parent status never offers a second verification', (
@@ -132,7 +132,7 @@ void main() {
     );
 
     expect(find.text('Record Again to Verify'), findsNothing);
-    expect(find.text('Finish'), findsOneWidget);
+    expect(find.text('Done — Back to Main Page'), findsOneWidget);
   });
 
   _screenTest('guest result without a token hides verification action', (
@@ -210,7 +210,30 @@ void main() {
 
     expect(find.byType(SettingsRecommendationScreen), findsOneWidget);
     expect(find.text('Generated Settings'), findsOneWidget);
+    await tester.tap(find.text('View Audio Assessment'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ResultsScreen), findsOneWidget);
+    expect(find.text('View Generated Settings'), findsOneWidget);
   });
+
+  _screenTest(
+    'recent analysis result retains saved settings beside assessment',
+    (tester) async {
+      final record = <String, dynamic>{
+        'test_name': 'saved.wav',
+        'score': 72.0,
+        'analysis_purpose': 'settings_suggestion',
+        'settings_recommendation': _sample().toJson(),
+      };
+      await tester.pumpWidget(_testApp(ResultsScreen.fromRecord(record)));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('View Generated Settings'));
+      await tester.tap(find.text('View Generated Settings'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SettingsRecommendationScreen), findsOneWidget);
+      expect(find.text('4.0 → 5.5'), findsOneWidget);
+    },
+  );
 }
 
 Widget _testApp(Widget home) => MaterialApp(home: home);
