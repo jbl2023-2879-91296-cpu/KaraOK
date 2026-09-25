@@ -68,6 +68,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
   final _minimumController = TextEditingController(text: '0');
   final _maximumController = TextEditingController(text: '10');
   final _stepController = TextEditingController(text: '0.5');
+  final _nameController = TextEditingController(text: 'My Amplifier');
 
   bool _loading = true;
   bool _submitting = false;
@@ -79,6 +80,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
   String? _genreError;
   String? _positionError;
   String? _scaleError;
+  String? _nameError;
   SettingsProfileMetadata? _metadata;
   List<String> _enabledGenres = const [];
   List<AmplifierProfile> _profiles = const [];
@@ -105,6 +107,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     _minimumController.dispose();
     _maximumController.dispose();
     _stepController.dispose();
+    _nameController.dispose();
     super.dispose();
   }
 
@@ -166,6 +169,8 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
   }
 
   void _useProfile(AmplifierProfile profile) {
+    _nameController.text = profile.name;
+    _nameError = null;
     _clearStartingPoint();
     _scale = profile.scale;
     _preset = _presetFor(profile.scale);
@@ -197,6 +202,8 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     if (id == _newProfileSelection) {
       setState(() {
         _selectedProfile = null;
+        _nameController.text = _nextProfileName();
+        _nameError = null;
         _clearStartingPoint();
         _scale = _zeroToTen;
         _preset = _ScalePreset.zeroToTen;
@@ -217,6 +224,18 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
       _clearPositionErrors();
       _useProfile(profile);
     });
+  }
+
+  String _nextProfileName() {
+    final names = _profiles
+        .map((profile) => profile.name.trim().toLowerCase())
+        .toSet();
+    var name = 'My Amplifier';
+    var suffix = 2;
+    while (names.contains(name.toLowerCase())) {
+      name = 'My Amplifier ${suffix++}';
+    }
+    return name;
   }
 
   Future<void> _changePreset(_ScalePreset next) async {
@@ -365,6 +384,18 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
   }
 
   Future<void> _continue() async {
+    if (_submitting) return;
+    final name = _nameController.text.trim().replaceAll(RegExp(r'\s+'), ' ');
+    _nameError = name.isEmpty || name.length > 80
+        ? 'Enter an amplifier name between 1 and 80 characters.'
+        : !_isGuest &&
+              _profiles.any(
+                (profile) =>
+                    profile.id != _selectedProfile?.id &&
+                    profile.name.trim().toLowerCase() == name.toLowerCase(),
+              )
+        ? 'An amplifier profile with that name already exists'
+        : null;
     final scale = _effectiveScaleOrNull();
     _genreError = _genre == null ? 'Select a genre.' : null;
     _scaleError = scale == null ? 'Enter a valid amplifier scale.' : null;
@@ -377,7 +408,8 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
           'Confirm that the five physical controls match these positions.';
     }
     setState(() {});
-    if (_genreError != null ||
+    if (_nameError != null ||
+        _genreError != null ||
         _scaleError != null ||
         _positionError != null ||
         positions == null ||
@@ -389,7 +421,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     try {
       final profile = AmplifierProfile(
         id: _selectedProfile?.id,
-        name: _selectedProfile?.name ?? 'My Amplifier',
+        name: name,
         scale: scale,
         lastPositions: positions,
       );
@@ -405,6 +437,10 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
         final saved = _selectedProfile == null
             ? await _settingsApi.createProfile(profile)
             : await _settingsApi.updateProfile(_selectedProfile!.id!, profile);
+        // Returning from recording edits this saved profile instead of creating
+        // the same name again.
+        _selectedProfile = saved;
+        _profiles = [..._profiles.where((item) => item.id != saved.id), saved];
         input = SettingsSuggestionInput(
           genre: _genre!,
           amplifierProfileId: saved.id,
@@ -413,6 +449,17 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
       }
       if (!mounted) return;
       widget.onContinue(input);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        if (error.statusCode == 409) {
+          _nameError = error.message;
+        } else {
+          _positionError = error.statusCode == 401
+              ? 'Your session expired. Sign in and retry.'
+              : 'Could not save the amplifier setup. Try again.';
+        }
+      });
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -498,13 +545,25 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                         ],
                         onChanged: _submitting ? null : _selectProfile,
                       )
-                    else
+                    else if (_isGuest)
                       Text(
-                        _isGuest
-                            ? 'Saved on this device as My Amplifier.'
-                            : 'A profile named My Amplifier will be created.',
+                        'Guest mode saves one amplifier on this device. Saving updates this local setup.',
                         style: const TextStyle(color: Colors.white60),
                       ),
+                    if (!_isGuest) ...[
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        key: const Key('amplifier-name'),
+                        controller: _nameController,
+                        enabled: !_submitting,
+                        maxLength: 80,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: _decoration(
+                          'Amplifier Name',
+                        ).copyWith(errorText: _nameError),
+                        onChanged: (_) => setState(() => _nameError = null),
+                      ),
+                    ],
                     const SizedBox(height: 14),
                     DropdownButtonFormField<_ScalePreset>(
                       key: const Key('scale-preset-dropdown'),

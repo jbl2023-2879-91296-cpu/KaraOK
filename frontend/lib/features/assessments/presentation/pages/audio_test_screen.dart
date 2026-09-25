@@ -84,6 +84,8 @@ Widget audioResultDestination({
           ? Map<String, dynamic>.from(rawSafetySignals)
           : const {},
       onVerify: onVerify,
+      assessmentBuilder: (_) =>
+          ResultsScreen.fromRecord(record, isGuest: isGuest),
     );
   }
   return ResultsScreen.fromRecord(record, isGuest: isGuest);
@@ -96,21 +98,23 @@ class AudioTestScreen extends StatefulWidget {
     this.selectFileOnOpen = false,
     this.purpose = AudioAnalysisPurpose.qualityEvaluation,
     this.settingsSuggestion,
+    this.stagingService,
   });
   final String? genre;
   final bool selectFileOnOpen;
   final AudioAnalysisPurpose purpose;
   final SettingsSuggestionInput? settingsSuggestion;
+  final AudioStagingService? stagingService;
 
   @override
   State<AudioTestScreen> createState() => _AudioTestScreenState();
 }
 
 class _AudioTestScreenState extends State<AudioTestScreen> {
-  static const _limit = Duration(minutes: 5);
+  static const _limit = AudioStagingService.maxDuration;
   final _recorder = AudioRecorder();
   final _player = AudioPlayer();
-  final _staging = AudioStagingService();
+  late final AudioStagingService _staging;
   AudioInputState _state = AudioInputState.idle;
   Duration _elapsed = Duration.zero;
   Duration _previewPosition = Duration.zero;
@@ -134,6 +138,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   @override
   void initState() {
     super.initState();
+    _staging = widget.stagingService ?? AudioStagingService();
     _playerStateSubscription = _player.playerStateStream.listen((state) {
       if (!mounted) return;
       if (state.processingState == ProcessingState.completed) {
@@ -215,25 +220,24 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
       _state = AudioInputState.requestingPermission;
       _message = null;
     });
-    final permission = kIsWeb ? null : await Permission.microphone.request();
-    final permissionGranted = kIsWeb
-        ? await _recorder.hasPermission()
-        : permission!.isGranted;
-    if (!permissionGranted) {
-      if (!mounted) return;
-      setState(() {
-        _state = AudioInputState.failed;
-        _message = permission?.isPermanentlyDenied == true
-            ? 'Microphone permission is permanently denied. Enable it in Settings.'
-            : 'Microphone permission is required to record audio.';
-      });
-      return;
-    }
     try {
+      final permission = kIsWeb ? null : await Permission.microphone.request();
+      final permissionGranted = kIsWeb
+          ? await _recorder.hasPermission()
+          : permission!.isGranted;
+      if (!permissionGranted) {
+        if (!mounted) return;
+        setState(() {
+          _state = AudioInputState.failed;
+          _message = permission?.isPermanentlyDenied == true
+              ? 'Microphone permission is permanently denied. Enable it in Settings.'
+              : 'Microphone permission is required to record audio.';
+        });
+        return;
+      }
       await _resetPreview();
-      await _staging.discard();
       _recordingFileName =
-          'recording_${DateTime.now().millisecondsSinceEpoch}.wav';
+          'recording_${DateTime.now().microsecondsSinceEpoch}.wav';
       final path = kIsWeb
           ? ''
           : p.join(
@@ -287,6 +291,9 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   }
 
   Future<void> _stop() async {
+    if (_state != AudioInputState.recording && _state != AudioInputState.paused) {
+      return;
+    }
     _timer?.cancel();
     setState(() => _state = AudioInputState.processing);
     try {
@@ -333,7 +340,11 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   }
 
   Future<void> _cancelRecording() async {
+    if (_state != AudioInputState.recording && _state != AudioInputState.paused) {
+      return;
+    }
     _timer?.cancel();
+    setState(() => _state = AudioInputState.processing);
     try {
       await _recorder.cancel();
     } finally {
@@ -341,7 +352,9 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
       if (mounted) {
         setState(() {
           _elapsed = Duration.zero;
-          _state = AudioInputState.idle;
+          _state = _staging.current == null
+              ? AudioInputState.idle
+              : AudioInputState.staged;
           _message = 'Recording cancelled.';
         });
       }
@@ -354,7 +367,9 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Replace staged audio?'),
-            content: const Text('The current staged file will be removed.'),
+            content: const Text(
+              'Your current audio will be kept until a valid replacement is ready.',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
@@ -485,7 +500,18 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
 
   Future<void> _send() async {
     final item = _staging.current;
-    if (item == null || _state == AudioInputState.uploading) return;
+    if (item == null ||
+        _busy ||
+        _state == AudioInputState.recording ||
+        _state == AudioInputState.paused) {
+      return;
+    }
+    try {
+      AudioStagingService.validateDuration(item.duration);
+    } on AudioStagingException catch (error) {
+      setState(() => _message = error.message);
+      return;
+    }
     if (!await _guestCanAssess()) return;
     final isGuest = UserSession.instance.isGuest;
     if (!await _staging.currentIsAvailable()) {
@@ -654,6 +680,11 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
             style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
+          const Text(
+            'Minimum 10 seconds, maximum 5 minutes. For better results, record 20–30 seconds of continuous music.',
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
           if (recording) ...[
             LinearProgressIndicator(
               value: _elapsed.inSeconds / _limit.inSeconds,
@@ -690,7 +721,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
               icon: const Icon(Icons.close),
               label: const Text('Cancel recording'),
             ),
-          ] else ...[
+          ] else if (item == null) ...[
             FilledButton.icon(
               onPressed: _busy ? null : _start,
               icon: const Icon(Icons.mic),
@@ -725,7 +756,9 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
                 ),
               ),
             ),
-          if (item != null) ...[
+          if (item != null &&
+              !recording &&
+              (!_busy || _state == AudioInputState.uploading)) ...[
             const SizedBox(height: 24),
             Card(
               child: Padding(
@@ -776,7 +809,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
                       spacing: 8,
                       children: [
                         TextButton.icon(
-                          onPressed: _preview,
+                          onPressed: _busy ? null : _preview,
                           icon: Icon(
                             _player.playing ? Icons.pause : Icons.play_arrow,
                           ),
@@ -787,6 +820,11 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
                                 ? 'Resume'
                                 : 'Play',
                           ),
+                        ),
+                        TextButton.icon(
+                          onPressed: _busy ? null : _start,
+                          icon: const Icon(Icons.mic),
+                          label: const Text('Record Again'),
                         ),
                         TextButton.icon(
                           onPressed:
@@ -809,7 +847,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
                               ? null
                               : _selectFile,
                           icon: const Icon(Icons.swap_horiz),
-                          label: const Text('Replace'),
+                          label: const Text('Choose Another File'),
                         ),
                       ],
                     ),

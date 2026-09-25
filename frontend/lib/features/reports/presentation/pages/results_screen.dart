@@ -8,6 +8,7 @@ import 'package:karaok_app/features/assessments/presentation/pages/audio_test_sc
 import 'package:karaok_app/features/auth/presentation/pages/login_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/detailed_report_screen.dart';
 import 'package:karaok_app/shared/widgets/guest_banner.dart';
+import 'package:karaok_app/features/sound_settings/domain/settings_recommendation.dart';
 
 class ResultsScreen extends StatefulWidget {
   const ResultsScreen({
@@ -22,6 +23,7 @@ class ResultsScreen extends StatefulWidget {
     this.isGuest = false,
     this.assessmentId,
     this.visualizationImages = const {},
+    this.settingsRecord,
   });
 
   factory ResultsScreen.fromRecord(
@@ -54,6 +56,9 @@ class ResultsScreen extends StatefulWidget {
               (key, value) => MapEntry(key, value.toString()),
             )
           : const {},
+      settingsRecord: record['settings_recommendation'] is Map
+          ? Map<String, dynamic>.from(record)
+          : null,
     );
   }
 
@@ -67,12 +72,40 @@ class ResultsScreen extends StatefulWidget {
   final bool isGuest;
   final int? assessmentId;
   final Map<String, String> visualizationImages;
+  final Map<String, dynamic>? settingsRecord;
 
   @override
   State<ResultsScreen> createState() => _ResultsScreenState();
 }
 
 class _ResultsScreenState extends State<ResultsScreen> {
+  void _openGeneratedSettings() {
+    final record = widget.settingsRecord;
+    if (record == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => audioResultDestination(
+          record: record,
+          purpose: AudioAnalysisPurpose.settingsSuggestion,
+          isGuest: widget.isGuest,
+          onVerify: _openVerification,
+        ),
+      ),
+    );
+  }
+
+  void _openVerification(SettingsSuggestionInput input) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AudioTestScreen(
+          purpose: AudioAnalysisPurpose.settingsSuggestion,
+          genre: input.genre,
+          settingsSuggestion: input,
+        ),
+      ),
+    );
+  }
+
   void _goHome() {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const AppShell(initialIndex: 0)),
@@ -228,6 +261,14 @@ class _ResultsScreenState extends State<ResultsScreen> {
                       ),
                       const SizedBox(height: 20),
                       // Status row
+                      if (widget.settingsRecord != null) ...[
+                        OutlinedButton.icon(
+                          onPressed: _openGeneratedSettings,
+                          icon: const Icon(Icons.tune),
+                          label: const Text('View Generated Settings'),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,

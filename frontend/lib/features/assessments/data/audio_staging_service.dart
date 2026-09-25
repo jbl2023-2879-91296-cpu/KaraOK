@@ -43,6 +43,7 @@ class AudioStagingException implements Exception {
 
 class AudioStagingService {
   static const maxBytes = 25 * 1024 * 1024;
+  static const minDuration = Duration(seconds: 10);
   static const maxDuration = Duration(minutes: 5);
   static const supportedExtensions = {
     'wav',
@@ -54,6 +55,24 @@ class AudioStagingService {
   };
 
   StagedAudio? current;
+
+  static void validateDuration(Duration? duration) {
+    if (duration == null) {
+      throw const AudioStagingException(
+        'Could not determine the audio duration.',
+      );
+    }
+    if (duration < minDuration) {
+      throw const AudioStagingException(
+        'Audio must be at least 10 seconds. Record again or choose a longer file.',
+      );
+    }
+    if (duration > maxDuration) {
+      throw const AudioStagingException(
+        'The audio exceeds the five-minute limit.',
+      );
+    }
+  }
 
   Future<StagedAudio?> pickAudio() async {
     final selectedFile = await openFile(
@@ -119,16 +138,7 @@ class AudioStagingService {
     } finally {
       await player.dispose();
     }
-    if (duration == null || duration == Duration.zero) {
-      throw const AudioStagingException(
-        'Could not determine the audio duration.',
-      );
-    }
-    if (duration > maxDuration) {
-      throw const AudioStagingException(
-        'The audio exceeds the five-minute limit.',
-      );
-    }
+    validateDuration(duration);
 
     final bytes = await selectedFile.readAsBytes();
     if (bytes.isEmpty) {
@@ -139,7 +149,7 @@ class AudioStagingService {
       fileName: fileName,
       path: selectedFile.path,
       sizeBytes: bytes.length,
-      duration: duration,
+      duration: duration!,
       format: extension.toUpperCase(),
       source: source,
       temporary: false,
@@ -184,22 +194,13 @@ class AudioStagingService {
     } finally {
       await player.dispose();
     }
-    if (duration == null || duration == Duration.zero) {
-      throw const AudioStagingException(
-        'Could not determine the audio duration.',
-      );
-    }
-    if (duration > maxDuration) {
-      throw const AudioStagingException(
-        'The audio exceeds the five-minute limit.',
-      );
-    }
+    validateDuration(duration);
     await discard();
     current = StagedAudio(
       fileName: p.basename(path),
       path: path,
       sizeBytes: size,
-      duration: duration,
+      duration: duration!,
       format: extension.toUpperCase(),
       source: source,
       temporary: temporary,

@@ -1,9 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:karaok_app/app/app_shell.dart';
+import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/sound_settings/domain/settings_recommendation.dart';
 import 'package:karaok_app/features/sound_settings/presentation/pages/settings_recommendation_screen.dart';
 
 void main() {
+  _screenTest('Done returns to Home and removes every workflow route', (
+    tester,
+  ) async {
+    FlutterSecureStorage.setMockInitialValues({});
+    UserSession.instance.setGuest('user');
+    addTearDown(UserSession.instance.clear);
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigator,
+        home: const Scaffold(body: Text('Setup route')),
+      ),
+    );
+    navigator.currentState!.push(
+      MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: Text('Recording route')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    navigator.currentState!.push(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsRecommendationScreen(recommendation: _sample()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Done — Back to Main Page'));
+    await tester.tap(find.text('Done — Back to Main Page'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AppShell), findsOneWidget);
+    expect(
+      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+      0,
+    );
+    expect(navigator.currentState!.canPop(), isFalse);
+    expect(find.text('Setup route', skipOffstage: false), findsNothing);
+    expect(find.text('Recording route', skipOffstage: false), findsNothing);
+  });
   _screenTest('renders all five current to recommended settings', (
     tester,
   ) async {
@@ -34,7 +74,7 @@ void main() {
 
     expect(find.text("I've Applied These Settings"), findsOneWidget);
     expect(find.text('Record Again to Verify'), findsOneWidget);
-    expect(find.text('Finish Without Verification'), findsOneWidget);
+    expect(find.text('Done — Back to Main Page'), findsOneWidget);
     final verify = tester.widget<OutlinedButton>(
       find.byKey(const Key('verify-settings')),
     );
