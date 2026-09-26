@@ -34,7 +34,27 @@ API analyzes uploaded or recorded audio, grades five empirical features, stores
 authenticated-user history in MySQL, and produces real Matplotlib waveform and
 spectrogram reports.
 
-## Latest updates - v1.1.0 (2026-09-18)
+## Latest updates - backend modularization (2026-09-26)
+
+- Extracted feature implementations from `karaok/application.py` into shared
+  core, authentication, user profiles, audio pipeline, results, administration,
+  and system packages. Existing endpoints, public function signatures, and
+  legacy `import app` callers remain supported.
+- Application composition now handles Flask setup, request hooks, error
+  handlers, and Blueprint registration. Existing `modules/` routes delegate
+  to the packages that own their implementations.
+- Backend MySQL connections now use UTC sessions, fixing the eight-hour shift
+  in saved-record timestamps on phones in UTC+8. Existing records and the
+  database schema require no rewrite for this fix or the modularization.
+- Validation on 26 September: **264 backend tests passed**, including the
+  opt-in live MySQL timestamp regression. A connected Android phone was tested
+  against local MySQL for login, audio upload and scoring, visualizations,
+  recommendations, saved history, and session restoration.
+
+See [Backend modules](#backend-modules) below and the
+[backend guide](backend/README.md) for package boundaries and test instructions.
+
+### Previous updates - v1.1.0 (2026-09-18)
 
 - New audio assessments use the median-centered quality profile
   `2026.09.2-median` for loudness, bass, treble, sharpness, and flatness.
@@ -193,6 +213,45 @@ KaraOK/
 |-- CHANGELOG.md      User-visible implementation history
 `-- README.md         Public project documentation
 ```
+
+## Backend modules
+
+`backend/app.py` remains the compatibility entry point;
+`backend/karaok/application.py` composes the Flask application. The extracted
+packages live under `backend/karaok/`:
+
+| Package | Responsibility |
+| --- | --- |
+| `core/` | Shared configuration, database connections, validation, models, account helpers, scoring and threshold loaders, audit writing, and artifact paths |
+| `auth/` | Registration, login, token issuance and refresh, password changes, email delivery, and access checks |
+| `users/` | User profile updates |
+| `audio_pipeline/` | Upload validation and orchestration, analyzer execution, feature summaries, quality evaluation, recommendations, and transient visualizations |
+| `results/` | Assessment and upload persistence, saved history, amplifier profiles, saved recommendations, and stored visualization retrieval |
+| `admin/` | Administrative user and log queries; `data/` contains data policies, operations, and reports |
+| `system/` | API and database health checks |
+| `modules/` | Existing Flask Blueprints and route paths, delegating to the owning packages |
+
+The dependency rules keep shared code below feature code:
+
+- `core/` does not import the feature packages.
+- Code outside `audio_pipeline/` uses its public `pipeline.py` interface rather
+  than importing individual processing stages.
+- Results persistence receives prepared analysis summaries. Results do not
+  call back into the audio pipeline to rerun analysis; visualization endpoints
+  serve saved artifacts.
+
+The numerical feature-extraction engine remains in `backend/audio_engine/`,
+invoked through `audio_analyzer.py`. Bounded amplifier adjustments remain in
+`backend/settings_recommendations/engine.py`, and versioned threshold and genre
+artifacts remain in `backend/audio_thresholds/`. Genre-based recommendations
+use the user's selected genre; this refactor does not add automatic genre
+detection. System settings remain configuration rather than a new settings API.
+
+`legacy_exports.py` and `compatibility.py` preserve historical imports and
+dependency overrides used by existing callers and tests. New implementations
+should import the owning package directly. Older `common/`, `infrastructure/`,
+and `security/` paths remain for compatibility. See the
+[backend package guide](backend/README.md#package-layout) for details.
 
 ## Prerequisites
 
