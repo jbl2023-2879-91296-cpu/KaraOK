@@ -5,34 +5,34 @@ blueprint = Blueprint("assessments", __name__, url_prefix="/api")
 
 @blueprint.get("/audio-tests")
 def get_audio_tests():
-    from ... import application
+    from ...results import assessments
 
-    return application.get_audio_tests()
+    return assessments.get_audio_tests()
 
 
 @blueprint.get("/audio-tests/<int:test_id>")
 def get_audio_test(test_id: int):
-    from ... import application
+    from ...results import assessments
 
-    return application.get_audio_test(test_id)
+    return assessments.get_audio_test(test_id)
 
 
 @blueprint.post("/audio-tests")
 def create_audio_test():
-    from ... import application
+    from ...results import assessments
 
-    return application.create_audio_test()
+    return assessments.create_audio_test()
 
 
 @blueprint.delete("/audio-tests/<int:test_id>")
 def delete_audio_test(test_id: int):
-    from ... import application
+    from ...results import assessments
 
-    return application.delete_audio_test(test_id)
+    return assessments.delete_audio_test(test_id)
 
 
 @blueprint.get("/audio-tests/<int:test_id>/visualizations/<kind>")
 def get_audio_visualization(test_id: int, kind: str):
-    from ... import application
+    from ...results import visualizations
 
-    return application.get_audio_visualization(test_id, kind)
+    return visualizations.get_audio_visualization(test_id, kind)

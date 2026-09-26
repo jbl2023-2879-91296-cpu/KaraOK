@@ -3,19 +3,20 @@ from __future__ import annotations
 from flask import Blueprint, g, jsonify, request
 from mysql.connector import Error, IntegrityError
 
-from ...security.admin_data_auth import require_admin_data_key
-from . import service
+from ...auth.admin_data import require_admin_data_key
+from ...admin.data import service
+from ...core.audit import audit
+from ...core.artifacts import cleanup_audio_artifacts
+from ...core.runtime import app
 
 
 blueprint = Blueprint("admin_data", __name__, url_prefix="/api/admin/data")
 
 
 def _audit(action: str, result: str, *, table: str | None = None, record_id: str | None = None) -> None:
-    from ... import application
-
     numeric_id = int(record_id) if record_id and record_id.isdigit() else None
     actor = getattr(g, "authenticated_admin_actor", "local-admin")
-    application.audit(
+    audit(
         action,
         result,
         resource_type=table or "admin_data",
@@ -95,14 +96,12 @@ def delete_record(table: str, record_id: str):
         _audit("admin_data_deleted", "failure", table=table, record_id=record_id)
         return result
     if table == "assessment" and result.get_json().get("owner_user_id") is not None:
-        from ... import application
-
         try:
-            application.cleanup_audio_artifacts(
+            cleanup_audio_artifacts(
                 int(result.get_json()["owner_user_id"]), int(record_id)
             )
         except (OSError, RuntimeError, ValueError):
-            application.app.logger.exception(
+            app.logger.exception(
                 "Admin-deleted assessment artifact cleanup failed"
             )
     _audit("admin_data_deleted", "success", table=table, record_id=record_id)
@@ -124,19 +123,19 @@ def analytics():
 @blueprint.get('/reports/<section>')
 @require_admin_data_key
 def product_report(section):
-    from .reports import report
+    from ...admin.data.reports import report
     return _execute(report, section, request.args.to_dict())
 
 
 @blueprint.get('/directory/<kind>')
 @require_admin_data_key
 def product_directory(kind):
-    from .reports import directory
+    from ...admin.data.reports import directory
     return _execute(directory, kind, request.args.to_dict())
 
 
 @blueprint.get('/directory/<kind>/<record_id>')
 @require_admin_data_key
 def product_detail(kind, record_id):
-    from .reports import detail
+    from ...admin.data.reports import detail
     return _execute(detail, kind, record_id, request.args.to_dict())

@@ -21,7 +21,7 @@ from .models import (
 )
 
 
-ALGORITHM_VERSION = "1.0.0"
+from karaok.core.recommendation_models import ALGORITHM_VERSION
 SENSITIVITY_NORMALIZED = 15.0
 INITIAL_DELTA_CAP = 15.0
 VERIFICATION_DELTA_CAP = 7.5
