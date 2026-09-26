@@ -5,48 +5,48 @@ blueprint = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 @blueprint.post("/register")
 def register():
-    from ... import application
+    from ...auth import accounts
 
-    return application.register()
+    return accounts.register()
 
 
 @blueprint.post("/register/verify")
 def verify_registration():
-    from ... import application
+    from ...auth import accounts
 
-    return application.verify_registration()
+    return accounts.verify_registration()
 
 
 @blueprint.post("/login")
 def login():
-    from ... import application
+    from ...auth import accounts
 
-    return application.login()
+    return accounts.login()
 
 
 @blueprint.post("/refresh")
 def refresh():
-    from ... import application
+    from ...auth import accounts
 
-    return application.refresh()
+    return accounts.refresh()
 
 
 @blueprint.post("/logout")
 def logout():
-    from ... import application
+    from ...auth import accounts
 
-    return application.logout()
+    return accounts.logout()
 
 
 @blueprint.post("/forgot-password")
 def forgot_password():
-    from ... import application
+    from ...auth import accounts
 
-    return application.forgot_password()
+    return accounts.forgot_password()
 
 
 @blueprint.post("/change-password")
 def change_password():
-    from ... import application
+    from ...auth import accounts
 
-    return application.change_password()
+    return accounts.change_password()

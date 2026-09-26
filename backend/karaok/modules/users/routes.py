@@ -5,13 +5,13 @@ blueprint = Blueprint("users", __name__, url_prefix="/api")
 
 @blueprint.get("/users")
 def get_users():
-    from ... import application
+    from ...admin import users
 
-    return application.get_users()
+    return users.get_users()
 
 
 @blueprint.patch("/users/me")
 def update_profile():
-    from ... import application
+    from ...users import profiles
 
-    return application.update_profile()
+    return profiles.update_profile()

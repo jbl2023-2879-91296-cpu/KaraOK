@@ -4,17 +4,53 @@ The Flask backend owns authentication, audio analysis, persisted assessments,
 amplifier profiles, and adjusted-settings recommendations. Run commands in this
 document from `backend/` unless a command says otherwise.
 
+## Package layout
+
+`app.py` remains the development/WSGI compatibility entry point. The Flask
+application is wired in `karaok/application.py`; feature implementations live
+in the following packages:
+
+| Package | Responsibility |
+| --- | --- |
+| `karaok/core/` | Configuration, database access, validation, shared account and recommendation values, scoring/profile loaders, audit writing, and safe artifact operations |
+| `karaok/auth/` | Registration, login, tokens, password changes, email delivery, and authorization |
+| `karaok/users/` | User profile updates |
+| `karaok/audio_pipeline/` | Upload orchestration, analyzer subprocess execution, summaries, adjustment recommendations, and transient visualization handling |
+| `karaok/results/` | Assessment/upload persistence, historical presentation, amplifier profiles, saved recommendations, and visualization retrieval |
+| `karaok/admin/` | Administrative user/log queries, data operations, and reports |
+| `karaok/system/` | Health checks |
+| `karaok/modules/` | Existing Flask Blueprint names and route import paths |
+
+Use `karaok.audio_pipeline.pipeline` as the processing interface outside the
+pipeline package. Results never call back into the pipeline: record writers
+receive prepared summaries, while history preserves stored scoring snapshots
+and the existing legacy-null-score fallback through shared core scoring.
+Recommendation writes retain ownership and verification checks under the
+original database transaction and row locks.
+
+The numerical audio engine remains in `audio_engine/`, launched through
+`audio_analyzer.py` as a subprocess. The bounded recommendation engine remains
+in `settings_recommendations/engine.py`. Threshold JSON files retain their
+existing paths in `audio_thresholds/`; their shared loaders now live in core.
+
+Historical imports remain supported. `karaok/legacy_exports.py` exposes the
+former application helpers, and `karaok/compatibility.py` connects legacy
+dependency overrides to the extracted implementations. New feature code should
+import its owning modules directly, never `application.py` or `legacy_exports.py`.
+`core/runtime.py` owns the shared Flask instance and extensions; application
+composition registers request hooks, error handlers, and Blueprints.
+
 ## Settings generation module flow
 
 1. `karaok/modules/settings_recommendations/routes.py` exposes feature-flagged,
    ownership-checked amplifier-profile and recommendation endpoints.
-2. `karaok/modules/settings_recommendations/service.py` validates the selected
+2. `karaok/audio_pipeline/recommendations.py` validates the selected
    genre, profile scale, all five current positions, and verification context.
 3. `audio_engine` measures loudness, bass, treble, sharpness, and flatness from
    the uploaded recording.
 4. `settings_recommendations/engine.py` converts the difference from the
    versioned genre targets into bounded, scale-aligned physical knob targets.
-5. `karaok/application.py` saves the assessment, analysis, five-target
+5. `karaok/results/records.py` saves the assessment, analysis, five-target
    recommendation, and optional verification relationship in one owned history.
 
 KaraOK only recommends positions. It never connects to, controls, or moves an
@@ -111,3 +147,16 @@ rerunning all automated and controlled-trial gates.
 .\.venv\Scripts\python.exe -m compileall karaok audio_thresholds settings_recommendations
 .\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py" -v
 ```
+
+Use the interpreter from a working local virtual environment. The package
+contract tests cover route/signature preservation, independent imports,
+the pipeline import boundary, and legacy dependency-override restoration.
+The suite does not replace live MySQL, SMTP, or deployed client smoke tests.
+
+Backend database connections use UTC sessions so MySQL `TIMESTAMP` values
+serialize correctly before clients convert them to local time. Workbench and
+the MySQL server's global timezone do not need to change.
+
+To include the timestamp round-trip integration test against the configured
+local MySQL database, set `$env:KARAOK_TEST_MYSQL='1'` before running the suite.
+It uses a temporary table and does not modify application records.

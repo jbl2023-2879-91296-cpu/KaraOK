@@ -5,13 +5,13 @@ blueprint = Blueprint("audit", __name__, url_prefix="/api")
 
 @blueprint.get("/audit-logs")
 def get_audit_logs():
-    from ... import application
+    from ...admin import logs
 
-    return application.get_audit_logs()
+    return logs.get_audit_logs()
 
 
 @blueprint.get("/request-logs")
 def get_request_logs():
-    from ... import application
+    from ...admin import logs
 
-    return application.get_request_logs()
+    return logs.get_request_logs()

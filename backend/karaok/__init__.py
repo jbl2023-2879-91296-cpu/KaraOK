@@ -1,8 +1,5 @@
 """KaraOK backend application package."""
 
-from .application import app
-
-
 def create_app():
     """Return the configured Flask application.
 
@@ -11,7 +8,15 @@ def create_app():
     applied directly to the returned Flask instance.
     """
 
+    from .application import app
+
     return app
+
+
+def __getattr__(name):
+    if name == "app":
+        return create_app()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = ["app", "create_app"]

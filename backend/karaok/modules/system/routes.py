@@ -5,6 +5,6 @@ blueprint = Blueprint("system", __name__, url_prefix="/api")
 
 @blueprint.get("/health")
 def health():
-    from ... import application
+    from ...system import health
 
-    return application.health()
+    return health.health()

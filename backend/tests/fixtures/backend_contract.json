@@ -1,0 +1,438 @@
+{
+  "routes": [
+    [
+      "/api/admin/data/analytics",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "admin_data.analytics"
+    ],
+    [
+      "/api/admin/data/directory/<kind>",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "admin_data.product_directory"
+    ],
+    [
+      "/api/admin/data/directory/<kind>/<record_id>",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "admin_data.product_detail"
+    ],
+    [
+      "/api/admin/data/health",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "admin_data.health"
+    ],
+    [
+      "/api/admin/data/relationships",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "admin_data.relationships"
+    ],
+    [
+      "/api/admin/data/reports/<section>",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "admin_data.product_report"
+    ],
+    [
+      "/api/admin/data/tables",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "admin_data.tables"
+    ],
+    [
+      "/api/admin/data/tables/<table>",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "admin_data.table_details"
+    ],
+    [
+      "/api/admin/data/tables/<table>/records",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "admin_data.records"
+    ],
+    [
+      "/api/admin/data/tables/<table>/records",
+      [
+        "OPTIONS",
+        "POST"
+      ],
+      "admin_data.create_record"
+    ],
+    [
+      "/api/admin/data/tables/<table>/records/<record_id>",
+      [
+        "DELETE",
+        "OPTIONS"
+      ],
+      "admin_data.delete_record"
+    ],
+    [
+      "/api/admin/data/tables/<table>/records/<record_id>",
+      [
+        "OPTIONS",
+        "PATCH"
+      ],
+      "admin_data.update_record"
+    ],
+    [
+      "/api/amplifier-profiles",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "settings_recommendations.list_profiles"
+    ],
+    [
+      "/api/amplifier-profiles",
+      [
+        "OPTIONS",
+        "POST"
+      ],
+      "settings_recommendations.create_profile"
+    ],
+    [
+      "/api/amplifier-profiles/<int:profile_id>",
+      [
+        "DELETE",
+        "OPTIONS"
+      ],
+      "settings_recommendations.delete_profile"
+    ],
+    [
+      "/api/amplifier-profiles/<int:profile_id>",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "settings_recommendations.get_profile"
+    ],
+    [
+      "/api/amplifier-profiles/<int:profile_id>",
+      [
+        "OPTIONS",
+        "PATCH"
+      ],
+      "settings_recommendations.update_profile"
+    ],
+    [
+      "/api/audio-tests",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "assessments.get_audio_tests"
+    ],
+    [
+      "/api/audio-tests",
+      [
+        "OPTIONS",
+        "POST"
+      ],
+      "assessments.create_audio_test"
+    ],
+    [
+      "/api/audio-tests/<int:test_id>",
+      [
+        "DELETE",
+        "OPTIONS"
+      ],
+      "assessments.delete_audio_test"
+    ],
+    [
+      "/api/audio-tests/<int:test_id>",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "assessments.get_audio_test"
+    ],
+    [
+      "/api/audio-tests/<int:test_id>/visualizations/<kind>",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "assessments.get_audio_visualization"
+    ],
+    [
+      "/api/audio-uploads",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "audio_analysis.get_audio_uploads"
+    ],
+    [
+      "/api/audio-uploads",
+      [
+        "OPTIONS",
+        "POST"
+      ],
+      "audio_analysis.create_audio_upload"
+    ],
+    [
+      "/api/audio-uploads/<int:upload_id>/analysis-dump",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "audio_analysis.get_audio_analysis_dump"
+    ],
+    [
+      "/api/audit-logs",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "audit.get_audit_logs"
+    ],
+    [
+      "/api/auth/change-password",
+      [
+        "OPTIONS",
+        "POST"
+      ],
+      "auth.change_password"
+    ],
+    [
+      "/api/auth/forgot-password",
+      [
+        "OPTIONS",
+        "POST"
+      ],
+      "auth.forgot_password"
+    ],
+    [
+      "/api/auth/login",
+      [
+        "OPTIONS",
+        "POST"
+      ],
+      "auth.login"
+    ],
+    [
+      "/api/auth/logout",
+      [
+        "OPTIONS",
+        "POST"
+      ],
+      "auth.logout"
+    ],
+    [
+      "/api/auth/refresh",
+      [
+        "OPTIONS",
+        "POST"
+      ],
+      "auth.refresh"
+    ],
+    [
+      "/api/auth/register",
+      [
+        "OPTIONS",
+        "POST"
+      ],
+      "auth.register"
+    ],
+    [
+      "/api/auth/register/verify",
+      [
+        "OPTIONS",
+        "POST"
+      ],
+      "auth.verify_registration"
+    ],
+    [
+      "/api/guest/audio-analysis",
+      [
+        "OPTIONS",
+        "POST"
+      ],
+      "audio_analysis.create_guest_audio_analysis"
+    ],
+    [
+      "/api/health",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "system.health"
+    ],
+    [
+      "/api/request-logs",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "audit.get_request_logs"
+    ],
+    [
+      "/api/settings-profile-metadata",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "settings_recommendations.profile_metadata"
+    ],
+    [
+      "/api/settings-recommendations/<int:recommendation_id>",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "settings_recommendations.get_recommendation"
+    ],
+    [
+      "/api/settings-recommendations/<int:recommendation_id>/apply",
+      [
+        "OPTIONS",
+        "POST"
+      ],
+      "settings_recommendations.apply_recommendation"
+    ],
+    [
+      "/api/users",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "users.get_users"
+    ],
+    [
+      "/api/users/me",
+      [
+        "OPTIONS",
+        "PATCH"
+      ],
+      "users.update_profile"
+    ],
+    [
+      "/static/<path:filename>",
+      [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "static"
+    ]
+  ],
+  "signatures": {
+    "utcnow": "() -> 'datetime'",
+    "_clean_profile_image": "(data: 'dict[str, Any]') -> 'tuple[bytes | None, str | None]'",
+    "_clean_birthday": "(value: 'Any') -> 'str'",
+    "_clean_phone": "(value: 'Any') -> 'str'",
+    "_profile_response": "(user: 'dict[str, Any]') -> 'dict[str, Any]'",
+    "audio_duration_seconds": "(path: 'str') -> 'int'",
+    "_analysis_directory": "(user_id: 'int', assessment_id: 'int') -> 'Path'",
+    "cleanup_audio_artifacts": "(user_id: 'int', assessment_id: 'int', temporary_audio_path: 'str | None' = None) -> 'None'",
+    "_remove_temporary_audio": "(path: 'str') -> 'None'",
+    "_analysis_artifact_relative_path": "(path: 'Path') -> 'str'",
+    "_visualization_paths": "(destination: 'Path') -> 'dict[str, str]'",
+    "_guest_visualization_images": "(dump: 'dict[str, Any]') -> 'dict[str, str]'",
+    "_process_text": "(value: 'str | bytes | None', limit: 'int' = 20000) -> 'str'",
+    "_execute_analyzer_command": "(command: 'list[str]', *, cwd: 'str', environment: 'dict[str, str]', timeout_seconds: 'int') -> 'subprocess.CompletedProcess[str]'",
+    "_run_audio_analyzer": "(audio_path: 'str', *, user_id: 'int', assessment_id: 'int', original_name: 'str', analysis_purpose: 'str') -> 'dict[str, Any]'",
+    "run_audio_analyzer": "(audio_path: 'str', *, user_id: 'int', assessment_id: 'int', original_name: 'str', analysis_purpose: 'str') -> 'dict[str, Any]'",
+    "_nested_number": "(data: 'dict[str, Any]', *keys: 'str') -> 'float | None'",
+    "_empirical_feature_values": "(analysis: 'dict[str, Any]') -> 'dict[str, float | None]'",
+    "_score_empirical_values": "(values: 'dict[str, float | None]') -> 'tuple[dict[str, Any], dict[str, Any]]'",
+    "_score_analyzer_output": "(analysis: 'dict[str, Any]') -> 'dict[str, Any]'",
+    "_empirical_result_status": "(empirical: 'dict[str, Any]') -> 'str'",
+    "_finite_stored_number": "(value: 'Any') -> 'float | None'",
+    "_decoded_object": "(value: 'Any') -> 'dict[str, Any]'",
+    "_decoded_string_list": "(value: 'Any') -> 'list[str] | None'",
+    "_valid_detail_provenance": "(row_field: 'str', value: 'Any') -> 'Any | None'",
+    "_stored_empirical_result": "(row: 'dict[str, Any]') -> 'dict[str, Any]'",
+    "_enrich_audio_test_row": "(row: 'dict[str, Any]') -> 'dict[str, Any]'",
+    "_attach_stored_recommendation": "(row: 'dict[str, Any]') -> 'dict[str, Any]'",
+    "_analysis_safety_signals": "(analysis: 'dict[str, Any]') -> 'dict[str, Any]'",
+    "summarize_audio_analysis": "(dump: 'dict[str, Any]') -> 'dict[str, Any]'",
+    "persist_audio_analysis": "(assessment_id: 'int', upload_id: 'int', dump: 'dict[str, Any]', *, recommendation: 'settings_recommendation_service.SettingsRecommendation | None' = None, recommendation_context: 'settings_recommendation_service.SuggestionContext | None' = None) -> 'dict[str, Any]'",
+    "mark_audio_analysis_failed": "(assessment_id: 'int', upload_id: 'int', duration_seconds: 'float | None' = None) -> 'None'",
+    "send_registration_otp": "(email: 'str', code: 'str') -> 'None'",
+    "send_temporary_password_email": "(email: 'str', temporary_password: 'str') -> 'None'",
+    "client_ip": "() -> 'str'",
+    "begin_api_request_log": "() -> 'None'",
+    "complete_api_request_log": "(response)",
+    "audit": "(action: 'str', result: 'str', *, user_id: 'int | None' = None, resource_type: 'str | None' = None, resource_id: 'int | None' = None, details: 'str | None' = None) -> 'None'",
+    "issue_access_token": "(user: 'dict[str, Any]') -> 'tuple[str, int]'",
+    "create_refresh_token": "(user_id: 'int') -> 'tuple[str, datetime]'",
+    "auth_response": "(user: 'dict[str, Any]', status: 'int' = 200)",
+    "_token_precedes_security_update": "(payload: 'dict[str, Any]', account: 'dict[str, Any]') -> 'bool'",
+    "require_auth": "(*roles: 'str') -> 'Callable'",
+    "handle_validation_error": "(error: 'ValueError')",
+    "handle_database_error": "(error: 'Error')",
+    "handle_http_error": "(error: 'HTTPException')",
+    "handle_unexpected_error": "(error: 'Exception')",
+    "security_headers": "(response)",
+    "health": "()",
+    "register": "()",
+    "verify_registration": "()",
+    "login": "()",
+    "refresh": "()",
+    "logout": "()",
+    "forgot_password": "()",
+    "change_password": "()",
+    "get_users": "()",
+    "update_profile": "()",
+    "get_audio_tests": "()",
+    "get_audio_test": "(test_id: 'int')",
+    "create_audio_test": "()",
+    "delete_audio_test": "(test_id: 'int')",
+    "get_audio_uploads": "()",
+    "create_guest_audio_analysis": "()",
+    "create_audio_upload": "()",
+    "get_audio_visualization": "(test_id: 'int', kind: 'str')",
+    "get_audio_analysis_dump": "(upload_id: 'int')",
+    "get_audit_logs": "()",
+    "get_request_logs": "()"
+  },
+  "constructors": {
+    "AudioAnalyzerExecutionError": "(self, message: 'str', dump: 'dict[str, Any]')",
+    "AudioDurationError": "(self, /, *args, **kwargs)"
+  }
+}
