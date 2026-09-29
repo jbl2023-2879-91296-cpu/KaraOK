@@ -1,3 +1,4 @@
+import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/app/app_shell.dart';
 import 'package:karaok_app/core/security/guest_assessment_service.dart';
@@ -27,7 +28,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _hasRememberedIdentifier = false;
   String? _error;
 
-  static const _accentColor = Color(0xFF4A90D9);
+  static const _accentColor = AppColors.primary;
 
   @override
   void initState() {
@@ -131,12 +132,12 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0D),
+        backgroundColor: AppColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left, color: Colors.white),
+          icon: const Icon(Icons.chevron_left, color: AppColors.ink),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -160,10 +161,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 Text(
                   'Sign in to continue',
-                  style: const TextStyle(
-                    color: Color(0xFF888888),
-                    fontSize: 14,
-                  ),
+                  style: const TextStyle(color: AppColors.muted, fontSize: 14),
                 ),
                 const SizedBox(height: 36),
                 _FieldLabel('Username or Email'),
@@ -179,7 +177,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               : _forgetRememberedIdentifier,
                           icon: const Icon(
                             Icons.close,
-                            color: Color(0xFF666666),
+                            color: AppColors.muted,
                             size: 20,
                           ),
                         )
@@ -202,7 +200,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   suffixIcon: IconButton(
                     icon: Icon(
                       _obscure ? Icons.visibility_off : Icons.visibility,
-                      color: const Color(0xFF666666),
+                      color: AppColors.muted,
                       size: 20,
                     ),
                     onPressed: () => setState(() => _obscure = !_obscure),
@@ -235,7 +233,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Text(
                       _error!,
                       style: const TextStyle(
-                        color: Color(0xFFF44336),
+                        color: AppColors.error,
                         fontSize: 13,
                       ),
                     ),
@@ -258,14 +256,14 @@ class _LoginScreenState extends State<LoginScreen> {
                             width: 22,
                             height: 22,
                             child: CircularProgressIndicator(
-                              color: Colors.white,
+                              color: AppColors.onPrimary,
                               strokeWidth: 2.5,
                             ),
                           )
                         : const Text(
                             'Log In',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: AppColors.onPrimary,
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
                             ),
@@ -274,12 +272,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 16),
                 // Sign up redirect
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     const Text(
                       "Don't have an account? ",
-                      style: TextStyle(color: Color(0xFF888888), fontSize: 14),
+                      style: TextStyle(color: AppColors.muted, fontSize: 14),
                     ),
                     GestureDetector(
                       onTap: () {
@@ -305,18 +304,15 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Divider
                 Row(
                   children: [
-                    const Expanded(child: Divider(color: Color(0xFF2A2A3E))),
+                    const Expanded(child: Divider(color: AppColors.outline)),
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 12),
                       child: Text(
                         'or',
-                        style: TextStyle(
-                          color: Color(0xFF666666),
-                          fontSize: 13,
-                        ),
+                        style: TextStyle(color: AppColors.muted, fontSize: 13),
                       ),
                     ),
-                    const Expanded(child: Divider(color: Color(0xFF2A2A3E))),
+                    const Expanded(child: Divider(color: AppColors.outline)),
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -328,19 +324,19 @@ class _LoginScreenState extends State<LoginScreen> {
                     onPressed: _continueAsGuest,
                     icon: const Icon(
                       Icons.person_outline,
-                      color: Color(0xFF888888),
+                      color: AppColors.muted,
                     ),
                     label: const Text(
                       'Continue as Guest (3 evaluations)',
                       style: TextStyle(
-                        color: Color(0xFFAAAAAA),
+                        color: AppColors.muted,
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(
-                        color: Color(0xFF3A3A5E),
+                        color: AppColors.outline,
                         width: 1.5,
                       ),
                       shape: RoundedRectangleBorder(
@@ -354,7 +350,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   'Guest mode allows three audio evaluations on this device. Guest reports stay on this device and remain separate from account history.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Color(0xFF666666),
+                    color: AppColors.muted,
                     fontSize: 11,
                     height: 1.5,
                   ),
@@ -379,7 +375,7 @@ class _FieldLabel extends StatelessWidget {
   Widget build(BuildContext context) => Text(
     text,
     style: const TextStyle(
-      color: Color(0xFFCCCCCC),
+      color: AppColors.muted,
       fontSize: 13,
       fontWeight: FontWeight.w600,
     ),
@@ -406,19 +402,19 @@ class _AuthField extends StatelessWidget {
     return TextFormField(
       controller: controller,
       obscureText: obscure,
-      style: const TextStyle(color: Colors.white, fontSize: 15),
+      style: const TextStyle(color: AppColors.ink, fontSize: 15),
       validator: validator,
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: Color(0xFF444444)),
+        hintStyle: const TextStyle(color: AppColors.muted),
         suffixIcon: suffixIcon,
         filled: true,
-        fillColor: const Color(0xFF1C1C2E),
+        fillColor: AppColors.surface,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide.none,
         ),
-        errorStyle: const TextStyle(color: Color(0xFFF44336)),
+        errorStyle: const TextStyle(color: AppColors.error),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 14,

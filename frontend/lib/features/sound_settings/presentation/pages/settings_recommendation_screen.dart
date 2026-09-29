@@ -1,3 +1,4 @@
+import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/app/app_shell.dart';
 
@@ -172,10 +173,10 @@ class _SettingsRecommendationScreenState
         _recommendation.verificationScore != null;
     final warnings = _safetyWarnings(_recommendation, widget.safetySignals);
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0D),
-        foregroundColor: Colors.white,
+        backgroundColor: AppColors.background,
+        foregroundColor: AppColors.ink,
         title: Text(
           verificationResult ? 'Verification Result' : 'Generated Settings',
         ),
@@ -199,7 +200,7 @@ class _SettingsRecommendationScreenState
               if (_recommendation.rollbackRecommended) ...[
                 const _Notice(
                   icon: Icons.undo,
-                  color: Color(0xFFF44336),
+                  color: AppColors.error,
                   message: 'Return to your previous settings',
                 ),
                 const SizedBox(height: 12),
@@ -207,7 +208,7 @@ class _SettingsRecommendationScreenState
               for (final warning in warnings) ...[
                 _Notice(
                   icon: Icons.warning_amber_rounded,
-                  color: const Color(0xFFFFA726),
+                  color: AppColors.orangeInk,
                   message: warning,
                 ),
                 const SizedBox(height: 12),
@@ -215,7 +216,7 @@ class _SettingsRecommendationScreenState
               if (unavailable) ...[
                 _Notice(
                   icon: Icons.info_outline,
-                  color: const Color(0xFFFFA726),
+                  color: AppColors.orangeInk,
                   message: _blockerMessage(_recommendation),
                 ),
                 const SizedBox(height: 20),
@@ -230,7 +231,7 @@ class _SettingsRecommendationScreenState
                   'Set each physical knob yourself. KaraOK does not move your amplifier controls.',
                   style: Theme.of(
                     context,
-                  ).textTheme.bodyMedium?.copyWith(color: Colors.white70),
+                  ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
                 ),
                 const SizedBox(height: 18),
                 for (final name in amplifierKnobNames) ...[
@@ -244,7 +245,7 @@ class _SettingsRecommendationScreenState
                 ],
                 if (_applyError case final error?) ...[
                   const SizedBox(height: 4),
-                  Text(error, style: const TextStyle(color: Color(0xFFF44336))),
+                  Text(error, style: const TextStyle(color: AppColors.error)),
                 ],
                 const SizedBox(height: 14),
                 FilledButton.icon(
@@ -296,7 +297,7 @@ class _ScoreSummary extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A2E),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -305,7 +306,7 @@ class _ScoreSummary extends StatelessWidget {
           Text(
             'Quality score: ${recommendation.originalScore.toStringAsFixed(1)}',
             style: const TextStyle(
-              color: Colors.white,
+              color: AppColors.ink,
               fontSize: 20,
               fontWeight: FontWeight.w700,
             ),
@@ -313,7 +314,7 @@ class _ScoreSummary extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             '${_genreLabel(recommendation.genre)} profile • ${recommendation.overallConfidence} confidence',
-            style: const TextStyle(color: Colors.white70),
+            style: const TextStyle(color: AppColors.muted),
           ),
           if (recommendation.verificationScore case final after?) ...[
             const SizedBox(height: 10),
@@ -322,13 +323,13 @@ class _ScoreSummary extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'Before: ${recommendation.beforeScore.toStringAsFixed(1)}',
-                    style: const TextStyle(color: Colors.white70),
+                    style: const TextStyle(color: AppColors.muted),
                   ),
                 ),
                 Text(
                   'After: ${after.toStringAsFixed(1)}',
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: AppColors.ink,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -340,9 +341,7 @@ class _ScoreSummary extends StatelessWidget {
             Text(
               'Score change: ${_signed(scoreChange, 1)}',
               style: TextStyle(
-                color: scoreChange < 0
-                    ? const Color(0xFFF44336)
-                    : const Color(0xFF4CAF50),
+                color: scoreChange < 0 ? AppColors.error : AppColors.success,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -383,9 +382,9 @@ class _AdjustmentCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1C1C2E),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white12),
+        border: Border.all(color: AppColors.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -396,7 +395,7 @@ class _AdjustmentCard extends StatelessWidget {
                 child: Text(
                   label,
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: AppColors.ink,
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
                   ),
@@ -405,7 +404,7 @@ class _AdjustmentCard extends StatelessWidget {
               Icon(
                 icon,
                 key: Key('direction-$knob-$direction'),
-                color: const Color(0xFFFF8C00),
+                color: AppColors.orangeInk,
               ),
             ],
           ),
@@ -416,7 +415,7 @@ class _AdjustmentCard extends StatelessWidget {
                 child: Text(
                   '${_physical(adjustment.current, scale)} → ${recommended == null ? '—' : _physical(recommended, scale)}',
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: AppColors.ink,
                     fontSize: 22,
                     fontWeight: FontWeight.w600,
                   ),
@@ -427,7 +426,7 @@ class _AdjustmentCard extends StatelessWidget {
                     ? '—'
                     : _signed(adjustment.delta!, _decimalPlaces(scale.step)),
                 style: const TextStyle(
-                  color: Color(0xFFFF8C00),
+                  color: AppColors.orangeInk,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -436,12 +435,12 @@ class _AdjustmentCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             _reasonMessage(adjustment.reasonCode),
-            style: const TextStyle(color: Colors.white70),
+            style: const TextStyle(color: AppColors.muted),
           ),
           const SizedBox(height: 4),
           Text(
             '${adjustment.confidence} confidence',
-            style: const TextStyle(color: Colors.white54, fontSize: 12),
+            style: const TextStyle(color: AppColors.muted, fontSize: 12),
           ),
         ],
       ),
@@ -473,7 +472,7 @@ class _Notice extends StatelessWidget {
         Icon(icon, color: color),
         const SizedBox(width: 10),
         Expanded(
-          child: Text(message, style: const TextStyle(color: Colors.white)),
+          child: Text(message, style: const TextStyle(color: AppColors.ink)),
         ),
       ],
     ),

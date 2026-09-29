@@ -1,3 +1,4 @@
+import '../support/settle_with_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -25,16 +26,16 @@ void main() {
         builder: (_) => const Scaffold(body: Text('Recording route')),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWithStorage(tester);
     navigator.currentState!.push(
       MaterialPageRoute<void>(
         builder: (_) => SettingsRecommendationScreen(recommendation: _sample()),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWithStorage(tester);
     await tester.ensureVisible(find.text('Done — Back to Main Page'));
     await tester.tap(find.text('Done — Back to Main Page'));
-    await tester.pumpAndSettle();
+    await settleWithStorage(tester);
     expect(find.byType(AppShell), findsOneWidget);
     expect(
       tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
