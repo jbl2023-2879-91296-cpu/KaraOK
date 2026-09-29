@@ -1,3 +1,4 @@
+import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
 
 import 'package:karaok_app/features/auth/data/auth_api.dart';
@@ -57,9 +58,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0D),
+        backgroundColor: AppColors.background,
         title: const Text('Forgot Password'),
       ),
       body: SafeArea(
@@ -75,7 +76,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               const SizedBox(height: 8),
               const Text(
                 'Enter your verified email address. We will send a temporary password that you can use to sign in. You must change it immediately after login.',
-                style: TextStyle(color: Color(0xFFAAAAAA), height: 1.4),
+                style: TextStyle(color: AppColors.muted, height: 1.4),
               ),
               const SizedBox(height: 24),
               TextFormField(
@@ -103,7 +104,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               ),
               if (_error != null) ...[
                 const SizedBox(height: 16),
-                Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+                Text(_error!, style: const TextStyle(color: AppColors.error)),
               ],
             ],
           ),

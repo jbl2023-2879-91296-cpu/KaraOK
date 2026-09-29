@@ -1,3 +1,4 @@
+import 'support/settle_with_storage.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -174,7 +175,7 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWithStorage(tester);
 
     expect(UserSession.instance.isGuest, isTrue);
     expect(find.text('Evaluate Audio Quality'), findsOneWidget);
@@ -198,14 +199,14 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWithStorage(tester);
 
     expect(find.text('Could not restore your session'), findsOneWidget);
     expect(find.text('Retry'), findsOneWidget);
     expect(await SecureTokenStore.instance.readRefreshToken(), 'refresh-token');
 
     await tester.tap(find.text('Continue as Guest'));
-    await tester.pumpAndSettle();
+    await settleWithStorage(tester);
     expect(UserSession.instance.isGuest, isTrue);
     expect(await SecureTokenStore.instance.readRefreshToken(), 'refresh-token');
   });

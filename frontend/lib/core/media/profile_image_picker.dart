@@ -1,3 +1,4 @@
+import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -24,7 +25,7 @@ abstract final class ProfileImagePicker {
   static Future<ProfileImagePickResult?> pick(BuildContext context) async {
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
-      backgroundColor: const Color(0xFF1C1C2E),
+      backgroundColor: AppColors.surface,
       builder: (context) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),

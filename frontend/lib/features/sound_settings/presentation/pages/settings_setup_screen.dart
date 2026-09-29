@@ -1,3 +1,4 @@
+import 'package:karaok_app/app/app_theme.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -479,16 +480,16 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
         _metadata != null &&
         !_submitting;
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0D),
-        foregroundColor: Colors.white,
+        backgroundColor: AppColors.background,
+        foregroundColor: AppColors.ink,
         title: const Text('Set Up Your Amplifier'),
       ),
       body: SafeArea(
         child: _loading
             ? const Center(
-                child: CircularProgressIndicator(color: Color(0xFFFF8C00)),
+                child: CircularProgressIndicator(color: AppColors.orangeInk),
               )
             : SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
@@ -519,7 +520,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                       'Tell KaraOK how your physical controls are set now.',
                       style: Theme.of(
                         context,
-                      ).textTheme.bodyLarge?.copyWith(color: Colors.white70),
+                      ).textTheme.bodyLarge?.copyWith(color: AppColors.muted),
                     ),
                     const SizedBox(height: 20),
                     _sectionTitle('1. Amplifier'),
@@ -529,8 +530,8 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                         isExpanded: true,
                         initialValue:
                             _selectedProfile?.id ?? _newProfileSelection,
-                        dropdownColor: const Color(0xFF242424),
-                        style: const TextStyle(color: Colors.white),
+                        dropdownColor: AppColors.surface,
+                        style: const TextStyle(color: AppColors.ink),
                         decoration: _decoration('Saved amplifier'),
                         items: [
                           const DropdownMenuItem(
@@ -548,7 +549,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                     else if (_isGuest)
                       Text(
                         'Guest mode saves one amplifier on this device. Saving updates this local setup.',
-                        style: const TextStyle(color: Colors.white60),
+                        style: const TextStyle(color: AppColors.muted),
                       ),
                     if (!_isGuest) ...[
                       const SizedBox(height: 14),
@@ -557,7 +558,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                         controller: _nameController,
                         enabled: !_submitting,
                         maxLength: 80,
-                        style: const TextStyle(color: Colors.white),
+                        style: const TextStyle(color: AppColors.ink),
                         decoration: _decoration(
                           'Amplifier Name',
                         ).copyWith(errorText: _nameError),
@@ -569,8 +570,8 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                       key: const Key('scale-preset-dropdown'),
                       isExpanded: true,
                       initialValue: _preset,
-                      dropdownColor: const Color(0xFF242424),
-                      style: const TextStyle(color: Colors.white),
+                      dropdownColor: AppColors.surface,
+                      style: const TextStyle(color: AppColors.ink),
                       decoration: _decoration('Control scale'),
                       items: const [
                         DropdownMenuItem(
@@ -629,8 +630,8 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                       key: const Key('genre-dropdown'),
                       isExpanded: true,
                       initialValue: _genre,
-                      dropdownColor: const Color(0xFF242424),
-                      style: const TextStyle(color: Colors.white),
+                      dropdownColor: AppColors.surface,
+                      style: const TextStyle(color: AppColors.ink),
                       decoration: _decoration('Song genre'),
                       items: [
                         for (final genre in _enabledGenres)
@@ -653,7 +654,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                       'Enter every current position before recording karaoke instrumental playback.',
                       style: Theme.of(
                         context,
-                      ).textTheme.bodyMedium?.copyWith(color: Colors.white60),
+                      ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
                     ),
                     const SizedBox(height: 12),
                     OutlinedButton.icon(
@@ -674,7 +675,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                         controlAffinity: ListTileControlAffinity.leading,
                         title: const Text(
                           'I set all five physical controls to these positions.',
-                          style: TextStyle(color: Colors.white),
+                          style: TextStyle(color: AppColors.ink),
                         ),
                         onChanged: _submitting
                             ? null
@@ -705,8 +706,8 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                       key: const Key('settings-continue'),
                       onPressed: canContinue ? _continue : null,
                       style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF8C00),
-                        foregroundColor: Colors.black,
+                        backgroundColor: AppColors.orangeInk,
+                        foregroundColor: AppColors.onPrimary,
                         padding: const EdgeInsets.symmetric(vertical: 15),
                       ),
                       icon: _submitting
@@ -732,7 +733,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     key: key,
     controller: controller,
     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-    style: const TextStyle(color: Colors.white),
+    style: const TextStyle(color: AppColors.ink),
     decoration: _decoration(label),
     onChanged: (_) => setState(() {
       _clearStartingPoint();
@@ -759,7 +760,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
           Text(
             _knobLabels[name]!,
             style: const TextStyle(
-              color: Colors.white,
+              color: AppColors.ink,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -771,7 +772,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                   min: scale.minimum,
                   max: scale.maximum,
                   divisions: divisions,
-                  activeColor: const Color(0xFFFF8C00),
+                  activeColor: AppColors.orangeInk,
                   onChanged: _submitting
                       ? null
                       : (value) => setState(() {
@@ -789,7 +790,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  style: const TextStyle(color: Colors.white),
+                  style: const TextStyle(color: AppColors.ink),
                   decoration: _decoration('Position'),
                   onChanged: (_) => setState(() {
                     _clearStartingPoint();
@@ -809,7 +810,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     child: Text(
       text,
       style: const TextStyle(
-        color: Color(0xFFFF8C00),
+        color: AppColors.orangeInk,
         fontSize: 17,
         fontWeight: FontWeight.w700,
       ),
@@ -818,22 +819,22 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
 
   InputDecoration _decoration(String label) => InputDecoration(
     labelText: label,
-    labelStyle: const TextStyle(color: Colors.white60),
+    labelStyle: const TextStyle(color: AppColors.muted),
     filled: true,
-    fillColor: const Color(0xFF1C1C1C),
+    fillColor: AppColors.surface,
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(10),
-      borderSide: const BorderSide(color: Colors.white24),
+      borderSide: const BorderSide(color: AppColors.outline),
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(10),
-      borderSide: const BorderSide(color: Color(0xFFFF8C00)),
+      borderSide: const BorderSide(color: AppColors.orangeInk),
     ),
   );
 
   Widget _errorText(String text) => Padding(
     padding: const EdgeInsets.only(top: 8),
-    child: Text(text, style: const TextStyle(color: Colors.redAccent)),
+    child: Text(text, style: const TextStyle(color: AppColors.error)),
   );
 
   String _genreLabel(String key) {
@@ -863,16 +864,16 @@ class _Notice extends StatelessWidget {
     margin: const EdgeInsets.only(bottom: 16),
     padding: const EdgeInsets.all(12),
     decoration: BoxDecoration(
-      color: Colors.orange.withValues(alpha: 0.12),
+      color: AppColors.orangeInk.withValues(alpha: 0.12),
       borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: Colors.orange.withValues(alpha: 0.45)),
+      border: Border.all(color: AppColors.orangeInk.withValues(alpha: 0.45)),
     ),
     child: Row(
       children: [
-        Icon(icon, color: Colors.orange),
+        Icon(icon, color: AppColors.orangeInk),
         const SizedBox(width: 10),
         Expanded(
-          child: Text(message, style: const TextStyle(color: Colors.white)),
+          child: Text(message, style: const TextStyle(color: AppColors.ink)),
         ),
       ],
     ),
@@ -894,13 +895,13 @@ class _GuidanceItem extends StatelessWidget {
           padding: EdgeInsets.only(top: 2),
           child: Icon(
             Icons.check_circle_outline,
-            color: Color(0xFFFF8C00),
+            color: AppColors.orangeInk,
             size: 18,
           ),
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(text, style: const TextStyle(color: Colors.white70)),
+          child: Text(text, style: const TextStyle(color: AppColors.muted)),
         ),
       ],
     ),

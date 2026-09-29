@@ -1,3 +1,5 @@
+import 'package:karaok_app/features/reports/domain/sample_assessments.dart';
+import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/features/reports/domain/report_values.dart';
 import 'package:karaok_app/features/reports/presentation/widgets/empirical_feature_table.dart';
@@ -21,6 +23,7 @@ class ResultsScreen extends StatefulWidget {
     this.referenceRecordingCount,
     this.featureResults = const {},
     this.isGuest = false,
+    this.isSample = false,
     this.assessmentId,
     this.visualizationImages = const {},
     this.settingsRecord,
@@ -48,6 +51,7 @@ class ResultsScreen extends StatefulWidget {
       ),
       featureResults: features,
       isGuest: isGuest,
+      isSample: isSampleAssessment(record),
       assessmentId: isGuest
           ? null
           : reportNumber(record['assessment_id'] ?? record['id'])?.toInt(),
@@ -70,6 +74,7 @@ class ResultsScreen extends StatefulWidget {
   final int? referenceRecordingCount;
   final Map<String, dynamic> featureResults;
   final bool isGuest;
+  final bool isSample;
   final int? assessmentId;
   final Map<String, String> visualizationImages;
   final Map<String, dynamic>? settingsRecord;
@@ -116,10 +121,10 @@ class _ResultsScreenState extends State<ResultsScreen> {
   String get _grade => reportGrade(widget.score, widget.empiricalStatus);
 
   Color get _gradeColor => switch (_grade) {
-    'GOOD' => const Color(0xFF4CAF50),
-    'NEEDS IMPROVEMENT' => const Color(0xFFFF9800),
-    'BAD' => const Color(0xFFF44336),
-    _ => const Color(0xFF888888),
+    'GOOD' => AppColors.success,
+    'NEEDS IMPROVEMENT' => AppColors.orangeInk,
+    'BAD' => AppColors.error,
+    _ => AppColors.muted,
   };
 
   String get _scoreLabel => reportScoreLabel(widget.score);
@@ -143,25 +148,25 @@ class _ResultsScreenState extends State<ResultsScreen> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: false,
+      canPop: widget.isSample,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) _goHome();
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFF0D0D0D),
+        backgroundColor: AppColors.background,
         appBar: AppBar(
           automaticallyImplyLeading: false,
           leading: IconButton(
-            tooltip: 'Back to Home',
-            onPressed: _goHome,
+            tooltip: widget.isSample ? 'Back' : 'Back to Home',
+            onPressed: widget.isSample ? () => Navigator.pop(context) : _goHome,
             icon: const Icon(Icons.arrow_back),
           ),
-          backgroundColor: const Color(0xFF0D0D0D),
+          backgroundColor: AppColors.background,
           elevation: 0,
           title: const Text(
             'Results',
             style: TextStyle(
-              color: Color(0xFF4A90D9),
+              color: AppColors.primary,
               fontSize: 18,
               fontWeight: FontWeight.w700,
             ),
@@ -182,12 +187,24 @@ class _ResultsScreenState extends State<ResultsScreen> {
                   ),
                   child: Column(
                     children: [
+                      if (widget.isSample) ...[
+                        const Text(
+                          'Sample assessment',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          sampleAssessmentExplanation,
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                       // Score card
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1C1C2E),
+                          color: AppColors.surface,
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: Column(
@@ -195,13 +212,14 @@ class _ResultsScreenState extends State<ResultsScreen> {
                             Text(
                               'Audio Quality Score : ${widget.testName}',
                               style: const TextStyle(
-                                color: Color(0xFFCCCCCC),
+                                color: AppColors.muted,
                                 fontSize: 13,
                               ),
                             ),
                             const SizedBox(height: 10),
                             RichText(
                               text: TextSpan(
+                                style: Theme.of(context).textTheme.bodyMedium,
                                 children: [
                                   TextSpan(
                                     text: _scoreLabel,
@@ -233,10 +251,12 @@ class _ResultsScreenState extends State<ResultsScreen> {
                             ),
                             const SizedBox(height: 10),
                             Text(
-                              _interpretation,
+                              widget.isSample
+                                  ? "Example of the app's weighted audio-quality score. Values are illustrative, not measurements of your audio."
+                                  : _interpretation,
                               textAlign: TextAlign.center,
                               style: const TextStyle(
-                                color: Color(0xFF888888),
+                                color: AppColors.muted,
                                 fontSize: 13,
                                 height: 1.5,
                               ),
@@ -248,6 +268,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                       if (widget.featureResults.isNotEmpty ||
                           widget.referenceRecordingCount != null)
                         EmpiricalFeatureTable(
+                          isSample: widget.isSample,
                           features: widget.featureResults,
                           referenceRecordingCount:
                               widget.referenceRecordingCount,
@@ -275,7 +296,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                           vertical: 14,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1C1C2E),
+                          color: AppColors.surface,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Row(
@@ -284,7 +305,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                             const Text(
                               'STATUS',
                               style: TextStyle(
-                                color: Color(0xFF888888),
+                                color: AppColors.muted,
                                 fontSize: 13,
                                 letterSpacing: 1.5,
                               ),
@@ -318,7 +339,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                       ),
                       const SizedBox(height: 28),
                       // View Visual Report
-                      if (widget.score != null)
+                      if (!widget.isSample && widget.score != null)
                         SizedBox(
                           width: double.infinity,
                           height: 52,
@@ -344,7 +365,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                               );
                             },
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1E5BB5),
+                              backgroundColor: AppColors.mint,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
@@ -352,7 +373,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                             child: const Text(
                               'View Visual Report',
                               style: TextStyle(
-                                color: Colors.white,
+                                color: AppColors.ink,
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -361,79 +382,80 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         ),
                       const SizedBox(height: 12),
                       // Test another audio
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: OutlinedButton(
-                          onPressed: () async {
-                            if (widget.isGuest) {
-                              final remaining = await GuestAssessmentService
-                                  .instance
-                                  .remainingAttempts();
-                              if (!context.mounted) return;
+                      if (!widget.isSample)
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: OutlinedButton(
+                            onPressed: () async {
+                              if (widget.isGuest) {
+                                final remaining = await GuestAssessmentService
+                                    .instance
+                                    .remainingAttempts();
+                                if (!context.mounted) return;
+                                Navigator.pushAndRemoveUntil(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => remaining > 0
+                                        ? const AudioTestScreen()
+                                        : const LoginScreen(),
+                                  ),
+                                  (route) => remaining > 0 && route.isFirst,
+                                );
+                                return;
+                              }
                               Navigator.pushAndRemoveUntil(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => remaining > 0
-                                      ? const AudioTestScreen()
-                                      : const LoginScreen(),
+                                  builder: (_) => const AudioTestScreen(),
                                 ),
-                                (route) => remaining > 0 && route.isFirst,
+                                (route) => route.isFirst,
                               );
-                              return;
-                            }
-                            Navigator.pushAndRemoveUntil(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const AudioTestScreen(),
+                            },
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(
+                                color: AppColors.outline,
+                                width: 1.5,
                               ),
-                              (route) => route.isFirst,
-                            );
-                          },
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(
-                              color: Color(0xFF3A3A5E),
-                              width: 1.5,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: widget.isGuest
-                              ? FutureBuilder<int>(
-                                  future: GuestAssessmentService.instance
-                                      .remainingAttempts(),
-                                  builder: (context, snapshot) => Text(
-                                    (snapshot.data ?? 0) > 0
-                                        ? 'Evaluate another audio'
-                                        : 'Create Account or Log In',
-                                    style: const TextStyle(
-                                      color: Colors.white,
+                            child: widget.isGuest
+                                ? FutureBuilder<int>(
+                                    future: GuestAssessmentService.instance
+                                        .remainingAttempts(),
+                                    builder: (context, snapshot) => Text(
+                                      (snapshot.data ?? 0) > 0
+                                          ? 'Evaluate another audio'
+                                          : 'Create Account or Log In',
+                                      style: const TextStyle(
+                                        color: AppColors.ink,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  )
+                                : const Text(
+                                    'Test another audio',
+                                    style: TextStyle(
+                                      color: AppColors.ink,
                                       fontSize: 15,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
-                                )
-                              : const Text(
-                                  'Test another audio',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
+                          ),
                         ),
-                      ),
                       // Guest sign-in nudge
-                      if (widget.isGuest) ...[
+                      if (widget.isGuest && !widget.isSample) ...[
                         const SizedBox(height: 20),
                         Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF1C1C2E),
+                            color: AppColors.surface,
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: const Color(0xFF3A3A5E),
+                              color: AppColors.outline,
                               width: 1,
                             ),
                           ),
@@ -442,7 +464,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                               const Text(
                                 'Guest assessment complete',
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: AppColors.ink,
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -459,7 +481,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                                         : 'All three guest audio evaluations are used. Create an account or log in to continue.',
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(
-                                      color: Color(0xFF888888),
+                                      color: AppColors.muted,
                                       fontSize: 12,
                                       height: 1.4,
                                     ),
@@ -480,7 +502,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                                     );
                                   },
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF4A90D9),
+                                    backgroundColor: AppColors.primary,
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(10),
                                     ),
@@ -488,7 +510,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                                   child: const Text(
                                     'Create Account / Sign In',
                                     style: TextStyle(
-                                      color: Colors.white,
+                                      color: AppColors.onPrimary,
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),

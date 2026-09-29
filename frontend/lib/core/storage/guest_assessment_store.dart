@@ -1,17 +1,21 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
-/// Durable, app-private guest reports. Android backup is disabled so these
-/// files survive app restarts but are removed permanently on uninstall.
+/// Durable guest reports in browser storage on web and app-private files on
+/// native platforms. Android backup is disabled; uninstall removes those files.
 class GuestAssessmentStore {
   GuestAssessmentStore({Future<Directory> Function()? supportDirectoryProvider})
     : _supportDirectoryProvider =
           supportDirectoryProvider ?? getApplicationSupportDirectory;
 
   static final GuestAssessmentStore instance = GuestAssessmentStore();
+  static const _webStorage = FlutterSecureStorage();
+  static const _webHistoryKey = 'karaok_guest_reports_v1';
 
   final Future<Directory> Function() _supportDirectoryProvider;
 
@@ -26,21 +30,28 @@ class GuestAssessmentStore {
       File(path.join((await _directory()).path, 'assessments.json'));
 
   Future<List<Map<String, dynamic>>> _readIndex() async {
-    try {
+    String? contents;
+    if (kIsWeb) {
+      contents = await _webStorage.read(key: _webHistoryKey);
+    } else {
       final file = await _indexFile();
-      if (!await file.exists()) return [];
-      final decoded = jsonDecode(await file.readAsString());
-      if (decoded is! List) return [];
-      return decoded
-          .whereType<Map>()
-          .map((item) => Map<String, dynamic>.from(item))
-          .toList();
-    } catch (_) {
-      return [];
+      if (await file.exists()) contents = await file.readAsString();
     }
+    if (contents == null) return [];
+    final decoded = jsonDecode(contents);
+    if (decoded is! List || decoded.any((item) => item is! Map)) {
+      throw const FormatException('Guest assessment history is invalid.');
+    }
+    return decoded
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
   }
 
   Future<void> _writeIndex(List<Map<String, dynamic>> entries) async {
+    if (kIsWeb) {
+      await _webStorage.write(key: _webHistoryKey, value: jsonEncode(entries));
+      return;
+    }
     final file = await _indexFile();
     await file.writeAsString(jsonEncode(entries), flush: true);
   }
@@ -51,6 +62,26 @@ class GuestAssessmentStore {
       throw const FormatException('Completed guest report is incomplete.');
     }
     final localId = DateTime.now().microsecondsSinceEpoch.toString();
+    if (kIsWeb) {
+      for (final kind in const ['waveform', 'spectrogram']) {
+        final encoded = visualizations[kind];
+        if (encoded is! String || encoded.isEmpty) {
+          throw FormatException('$kind visualization is missing.');
+        }
+        base64Decode(encoded);
+      }
+      final stored = Map<String, dynamic>.from(record)
+        ..remove('analysis_dump')
+        ..remove('guest_import_receipt')
+        ..['local_guest_id'] = localId
+        ..['created_at'] =
+            (record['created_at'] ?? DateTime.now().toUtc().toIso8601String())
+                .toString();
+      final entries = await _readIndex();
+      entries.insert(0, stored);
+      await _writeIndex(entries);
+      return;
+    }
     final directory = await _directory();
     final written = <File>[];
     try {
@@ -85,6 +116,7 @@ class GuestAssessmentStore {
   Future<Map<String, dynamic>> _withVisualizations(
     Map<String, dynamic> entry,
   ) async {
+    if (kIsWeb) return Map<String, dynamic>.from(entry);
     final localId = entry['local_guest_id'].toString();
     final directory = await _directory();
     final images = <String, String>{};
@@ -106,6 +138,10 @@ class GuestAssessmentStore {
   }
 
   Future<void> clearAll() async {
+    if (kIsWeb) {
+      await _webStorage.delete(key: _webHistoryKey);
+      return;
+    }
     final support = await _supportDirectoryProvider();
     final directory = Directory(path.join(support.path, 'karaok_guest'));
     if (await directory.exists()) await directory.delete(recursive: true);

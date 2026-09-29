@@ -96,6 +96,22 @@ void main() {
     }
   });
 
+  test(
+    'corrupt guest history is an error rather than an empty sample-eligible history',
+    () async {
+      final directory = Directory('${supportDirectory.path}/karaok_guest');
+      await directory.create();
+      final index = File('${directory.path}/assessments.json');
+      final store = GuestAssessmentStore(
+        supportDirectoryProvider: () async => supportDirectory,
+      );
+      for (final invalid in ['broken json', '{}', '[42]']) {
+        await index.writeAsString(invalid);
+        await expectLater(store.guestHistory(), throwsFormatException);
+      }
+    },
+  );
+
   test('guest reports persist locally until authentication cleanup', () async {
     final guestStore = GuestAssessmentStore(
       supportDirectoryProvider: () async => supportDirectory,

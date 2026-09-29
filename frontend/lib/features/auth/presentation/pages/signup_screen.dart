@@ -1,3 +1,4 @@
+import 'package:karaok_app/app/app_theme.dart';
 import 'dart:convert';
 
 import 'package:country_picker/country_picker.dart';
@@ -18,7 +19,7 @@ class SignUpScreen extends StatefulWidget {
 }
 
 class _SignUpScreenState extends State<SignUpScreen> {
-  static const _accentColor = Color(0xFF4A90D9);
+  static const _accentColor = AppColors.primary;
 
   final _formKey = GlobalKey<FormState>();
   final _usernameCtrl = TextEditingController();
@@ -177,12 +178,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0D),
+        backgroundColor: AppColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left, color: Colors.white),
+          icon: const Icon(Icons.chevron_left, color: AppColors.ink),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -204,7 +205,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 ),
                 const Text(
                   'Create your user profile and save future results',
-                  style: TextStyle(color: Color(0xFF888888), fontSize: 14),
+                  style: TextStyle(color: AppColors.muted, fontSize: 14),
                 ),
                 const SizedBox(height: 24),
                 Center(
@@ -215,7 +216,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         customBorder: const CircleBorder(),
                         child: CircleAvatar(
                           radius: 46,
-                          backgroundColor: const Color(0xFF1A1A2E),
+                          backgroundColor: AppColors.surface,
                           backgroundImage: _profileImage == null
                               ? null
                               : MemoryImage(_profileImage!),
@@ -231,10 +232,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       const SizedBox(height: 8),
                       const Text(
                         'Profile image (optional, max 5 MB)',
-                        style: TextStyle(
-                          color: Color(0xFF888888),
-                          fontSize: 12,
-                        ),
+                        style: TextStyle(color: AppColors.muted, fontSize: 12),
                       ),
                     ],
                   ),
@@ -337,7 +335,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                               Text(
                                 _countryCode!,
                                 style: const TextStyle(
-                                  color: Color(0xFFAAAAAA),
+                                  color: AppColors.muted,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -427,10 +425,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 16),
-                  Text(
-                    _error!,
-                    style: const TextStyle(color: Colors.redAccent),
-                  ),
+                  Text(_error!, style: const TextStyle(color: AppColors.error)),
                 ],
                 const SizedBox(height: 24),
                 SizedBox(
@@ -453,7 +448,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         : const Text(
                             'Send Verification Code',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: AppColors.onPrimary,
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
                             ),
@@ -466,7 +461,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   children: [
                     const Text(
                       'Already have an account? ',
-                      style: TextStyle(color: Color(0xFF888888)),
+                      style: TextStyle(color: AppColors.muted),
                     ),
                     TextButton(
                       onPressed: () => Navigator.pushReplacement(
@@ -521,7 +516,7 @@ class _LabeledField extends StatelessWidget {
         Text(
           label,
           style: const TextStyle(
-            color: Color(0xFFCCCCCC),
+            color: AppColors.muted,
             fontSize: 13,
             fontWeight: FontWeight.w600,
           ),
@@ -536,14 +531,14 @@ class _LabeledField extends StatelessWidget {
           readOnly: readOnly,
           maxLength: maxLength,
           inputFormatters: inputFormatters,
-          style: const TextStyle(color: Colors.white, fontSize: 15),
+          style: const TextStyle(color: AppColors.ink, fontSize: 15),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: const TextStyle(color: Color(0x52FFFFFF), fontSize: 15),
+            hintStyle: const TextStyle(color: AppColors.muted, fontSize: 15),
             suffixIcon: suffixIcon,
             counterText: '',
             filled: true,
-            fillColor: const Color(0xFF1C1C2E),
+            fillColor: AppColors.surface,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
               borderSide: BorderSide.none,

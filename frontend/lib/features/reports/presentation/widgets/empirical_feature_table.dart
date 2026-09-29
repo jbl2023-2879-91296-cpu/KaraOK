@@ -1,3 +1,4 @@
+import 'package:karaok_app/app/app_theme.dart';
 import 'measurement_guide.dart';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/features/reports/domain/report_values.dart';
@@ -7,10 +8,12 @@ class EmpiricalFeatureTable extends StatelessWidget {
     super.key,
     required this.features,
     this.referenceRecordingCount,
+    this.isSample = false,
   });
 
   final Map<String, dynamic> features;
   final int? referenceRecordingCount;
+  final bool isSample;
 
   static const _labels = {
     'loudness': 'Loudness',
@@ -42,10 +45,10 @@ class EmpiricalFeatureTable extends StatelessWidget {
   };
 
   Color _statusColor(String status) => switch (status) {
-    'good' => const Color(0xFF4CAF50),
-    'good_but_needs_improvement' => const Color(0xFFFF9800),
-    'bad' => const Color(0xFFF44336),
-    _ => const Color(0xFF888888),
+    'good' => AppColors.success,
+    'good_but_needs_improvement' => AppColors.orangeInk,
+    'bad' => AppColors.error,
+    _ => AppColors.muted,
   };
 
   @override
@@ -54,7 +57,7 @@ class EmpiricalFeatureTable extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1C1C2E),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -63,17 +66,19 @@ class EmpiricalFeatureTable extends StatelessWidget {
           const Text(
             'Empirical five-feature grading',
             style: TextStyle(
-              color: Colors.white,
+              color: AppColors.ink,
               fontSize: 15,
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 4),
           Text(
-            referenceRecordingCount == null
+            isSample
+                ? 'Illustrative feature values; no recording was analyzed.'
+                : referenceRecordingCount == null
                 ? 'Reference size unavailable for this saved assessment'
                 : 'Reference derived from $referenceRecordingCount analyzed good-audio recordings',
-            style: const TextStyle(color: Color(0xFF888888), fontSize: 11),
+            style: const TextStyle(color: AppColors.muted, fontSize: 11),
           ),
           const MeasurementGuide(),
           const SizedBox(height: 12),
@@ -96,7 +101,7 @@ class EmpiricalFeatureTable extends StatelessWidget {
                             Text(
                               _labels[key]!,
                               style: const TextStyle(
-                                color: Colors.white,
+                                color: AppColors.ink,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -105,7 +110,7 @@ class EmpiricalFeatureTable extends StatelessWidget {
                                   ? 'Not measured'
                                   : _measurement(key, value),
                               style: const TextStyle(
-                                color: Color(0xFF888888),
+                                color: AppColors.muted,
                                 fontSize: 11,
                               ),
                             ),
@@ -141,7 +146,7 @@ class EmpiricalFeatureTable extends StatelessWidget {
               },
             ),
             if (key != _labels.keys.last)
-              const Divider(height: 1, color: Color(0xFF303044)),
+              const Divider(height: 1, color: AppColors.outline),
           ],
         ],
       ),

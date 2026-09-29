@@ -1,3 +1,4 @@
+import 'package:karaok_app/app/app_theme.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -293,14 +294,14 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 children: [
                   CircleAvatar(
                     radius: 48,
-                    backgroundColor: const Color(0xFF1A1A2E),
+                    backgroundColor: AppColors.surface,
                     backgroundImage: shownImage == null
                         ? null
                         : MemoryImage(shownImage),
                     child: shownImage == null
                         ? const Icon(
                             Icons.person_outline,
-                            color: Color(0xFF4A90D9),
+                            color: AppColors.primary,
                             size: 46,
                           )
                         : null,
@@ -338,7 +339,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               child: Text(
                 'Account Details',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: AppColors.ink,
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                 ),
@@ -360,9 +361,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFF14141F),
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF2A2A3E)),
+            border: Border.all(color: AppColors.outline),
           ),
           child: _AccountDetailRow(
             icon: Icons.lock_outline,
@@ -383,9 +384,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A2E),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF2A2A3E)),
+        border: Border.all(color: AppColors.outline),
       ),
       child: Column(
         children: [
@@ -394,25 +395,25 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
             label: 'Name',
             value: session.name ?? 'Not available',
           ),
-          const Divider(height: 24, color: Color(0xFF2A2A3E)),
+          const Divider(height: 24, color: AppColors.outline),
           _AccountDetailRow(
             icon: Icons.alternate_email,
             label: 'Username',
             value: session.username ?? 'Not available',
           ),
-          const Divider(height: 24, color: Color(0xFF2A2A3E)),
+          const Divider(height: 24, color: AppColors.outline),
           _AccountDetailRow(
             icon: Icons.phone_outlined,
             label: 'Phone number',
             value: session.phoneNumber ?? 'Not available',
           ),
-          const Divider(height: 24, color: Color(0xFF2A2A3E)),
+          const Divider(height: 24, color: AppColors.outline),
           _AccountDetailRow(
             icon: Icons.cake_outlined,
             label: 'Birthday',
             value: session.birthday ?? 'Not available',
           ),
-          const Divider(height: 24, color: Color(0xFF2A2A3E)),
+          const Divider(height: 24, color: AppColors.outline),
           _AccountDetailRow(
             icon: Icons.location_on_outlined,
             label: 'Address',
@@ -436,9 +437,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A2E),
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF2A2A3E)),
+          border: Border.all(color: AppColors.outline),
         ),
         child: Column(
           children: [
@@ -540,7 +541,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                           Text(
                             _countryCode!,
                             style: const TextStyle(
-                              color: Color(0xFFAAAAAA),
+                              color: AppColors.muted,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -568,7 +569,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 alignment: Alignment.centerLeft,
                 child: Text(
                   _profileError!,
-                  style: const TextStyle(color: Colors.redAccent),
+                  style: const TextStyle(color: AppColors.error),
                 ),
               ),
             ],
@@ -653,10 +654,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   Widget _guestSettings() {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        backgroundColor: const Color(0xFF0D0D0D),
+        backgroundColor: AppColors.background,
         title: const Text('Settings'),
         centerTitle: true,
       ),
@@ -668,10 +669,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               children: [
                 const CircleAvatar(
                   radius: 38,
-                  backgroundColor: Color(0xFF1A1A2E),
+                  backgroundColor: AppColors.surface,
                   child: Icon(
                     Icons.person_outline,
-                    color: Color(0xFF4A90D9),
+                    color: AppColors.primary,
                     size: 38,
                   ),
                 ),
@@ -680,7 +681,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   'You are using KaraOK as a guest',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.white,
+                    color: AppColors.ink,
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                   ),
@@ -689,7 +690,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 const Text(
                   'Create an account to save future records and continue evaluating audio after your guest attempts. Existing guest-only reports stay on this device and remain separate from your account history.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Color(0xFFAAAAAA), height: 1.5),
+                  style: TextStyle(color: AppColors.muted, height: 1.5),
                 ),
                 const SizedBox(height: 28),
                 SizedBox(
@@ -731,10 +732,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     return PopScope(
       canPop: !widget.forceChange,
       child: Scaffold(
-        backgroundColor: const Color(0xFF0D0D0D),
+        backgroundColor: AppColors.background,
         appBar: AppBar(
           automaticallyImplyLeading: false,
-          backgroundColor: const Color(0xFF0D0D0D),
+          backgroundColor: AppColors.background,
           title: Text(
             widget.forceChange ? 'Password Change Required' : 'Settings',
           ),
@@ -751,7 +752,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   const Text(
                     'Change Password',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: AppColors.ink,
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
                     ),
@@ -762,7 +763,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   widget.forceChange
                       ? 'You signed in with a temporary password. Change it now before continuing.'
                       : 'Enter your current password, then choose a new secure password.',
-                  style: const TextStyle(color: Color(0xFFAAAAAA), height: 1.4),
+                  style: const TextStyle(color: AppColors.muted, height: 1.4),
                 ),
                 const SizedBox(height: 24),
                 if (!widget.forceChange) ...[
@@ -800,10 +801,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 16),
-                  Text(
-                    _error!,
-                    style: const TextStyle(color: Colors.redAccent),
-                  ),
+                  Text(_error!, style: const TextStyle(color: AppColors.error)),
                 ],
                 const SizedBox(height: 24),
                 ElevatedButton(
@@ -821,10 +819,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   const SizedBox(height: 16),
                   OutlinedButton.icon(
                     onPressed: _loading ? null : _logOut,
-                    icon: const Icon(Icons.logout, color: Colors.redAccent),
+                    icon: const Icon(Icons.logout, color: AppColors.error),
                     label: const Text(
                       'Log Out',
-                      style: TextStyle(color: Colors.redAccent),
+                      style: TextStyle(color: AppColors.error),
                     ),
                   ),
                 ],
@@ -853,7 +851,7 @@ class _AccountDetailRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, color: const Color(0xFF4A90D9), size: 22),
+        Icon(icon, color: AppColors.primary, size: 22),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -861,13 +859,13 @@ class _AccountDetailRow extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: const TextStyle(color: Color(0xFF888888), fontSize: 12),
+                style: const TextStyle(color: AppColors.muted, fontSize: 12),
               ),
               const SizedBox(height: 3),
               Text(
                 value,
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: AppColors.ink,
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
                 ),
