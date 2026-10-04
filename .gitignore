@@ -14,7 +14,9 @@ venv/
 .pub/
 
 /audio sample(good)
+/audio sample(bad)
 /results
+/results_bad
 /project.md
 backend/uploads/
 /backend/.tmp-tests/
