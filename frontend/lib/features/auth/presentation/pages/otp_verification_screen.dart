@@ -1,3 +1,4 @@
+import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
 
 import 'package:karaok_app/app/app_shell.dart';
@@ -27,7 +28,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   bool _loading = false;
   String? _error;
 
-  static const _accentColor = Color(0xFF4A90D9);
+  static const _accentColor = AppColors.primary;
 
   @override
   void dispose() {
@@ -78,12 +79,12 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0D),
+        backgroundColor: AppColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left, color: Colors.white),
+          icon: const Icon(Icons.chevron_left, color: AppColors.ink),
           onPressed: _loading ? null : () => Navigator.pop(context),
         ),
       ),
@@ -108,7 +109,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 Text(
                   'Enter the 6-digit code sent to ${widget.email}.',
                   style: const TextStyle(
-                    color: Color(0xFF888888),
+                    color: AppColors.muted,
                     fontSize: 14,
                     height: 1.5,
                   ),
@@ -117,14 +118,14 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                   const SizedBox(height: 12),
                   Text(
                     'Development OTP: ${widget.developmentCode}',
-                    style: const TextStyle(color: Color(0xFFFFB74D)),
+                    style: const TextStyle(color: AppColors.orangeInk),
                   ),
                 ],
                 const SizedBox(height: 32),
                 const Text(
                   'Verification Code',
                   style: TextStyle(
-                    color: Color(0xFFCCCCCC),
+                    color: AppColors.muted,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),
@@ -136,7 +137,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                   keyboardType: TextInputType.number,
                   maxLength: 6,
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: AppColors.ink,
                     fontSize: 22,
                     letterSpacing: 8,
                   ),
@@ -148,9 +149,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                   decoration: InputDecoration(
                     hintText: '000000',
                     counterText: '',
-                    hintStyle: const TextStyle(color: Color(0xFF444444)),
+                    hintStyle: const TextStyle(color: AppColors.muted),
                     filled: true,
-                    fillColor: const Color(0xFF1C1C2E),
+                    fillColor: AppColors.surface,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                       borderSide: BorderSide.none,
@@ -166,7 +167,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                   Text(
                     _error!,
                     style: const TextStyle(
-                      color: Color(0xFFF44336),
+                      color: AppColors.error,
                       fontSize: 13,
                     ),
                   ),
@@ -188,14 +189,14 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                             width: 22,
                             height: 22,
                             child: CircularProgressIndicator(
-                              color: Colors.white,
+                              color: AppColors.onPrimary,
                               strokeWidth: 2.5,
                             ),
                           )
                         : const Text(
                             'Verify Email',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: AppColors.onPrimary,
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
                             ),

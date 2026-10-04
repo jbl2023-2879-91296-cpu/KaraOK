@@ -1,3 +1,6 @@
+import 'package:karaok_app/core/security/guest_assessment_service.dart';
+import 'package:karaok_app/features/reports/domain/sample_assessments.dart';
+import 'package:karaok_app/app/app_theme.dart';
 import 'report_comparison_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
@@ -15,10 +18,12 @@ class PreviousResultsScreen extends StatefulWidget {
   const PreviousResultsScreen({
     super.key,
     this.title = 'Reports',
-    this.accentColor = const Color(0xFF4A90D9),
+    this.accentColor = AppColors.primary,
     this.resultsLoader,
+    this.refreshToken = 0,
   });
 
+  final int refreshToken;
   final String title;
   final Color accentColor;
   final PreviousResultsLoader? resultsLoader;
@@ -54,12 +59,22 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
   }
 
   @override
+  void didUpdateWidget(covariant PreviousResultsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshToken != widget.refreshToken) _load();
+  }
+
+  bool get _showingSamples =>
+      _results.any((item) => item is Map && isSampleAssessment(item));
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
+    if (_showingSamples) _results = [];
     if (mounted) {
       setState(() {
         _loading =
@@ -75,7 +90,7 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
         final tests = await loader();
         if (!mounted) return;
         setState(() {
-          _results = tests;
+          _results = assessmentHistoryForDisplay(tests);
           _loading = false;
         });
       } catch (_) {
@@ -90,9 +105,14 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
     if (UserSession.instance.isGuest) {
       try {
         final tests = await GuestAssessmentStore.instance.guestHistory();
+        final allowSamples = !await GuestAssessmentService.instance
+            .hasUsedAssessment();
         if (!mounted) return;
         setState(() {
-          _results = tests;
+          _results = assessmentHistoryForDisplay(
+            tests,
+            allowSamples: allowSamples,
+          );
           _loading = false;
         });
       } catch (_) {
@@ -108,7 +128,7 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
     final api = AssessmentApi();
     final cached = await api.getCachedAudioTests();
     if (!mounted) return;
-    if (cached != null) {
+    if (cached != null && cached.isNotEmpty) {
       setState(() {
         _results = cached;
         _loading = false;
@@ -118,7 +138,7 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
       final tests = await api.getAudioTests();
       if (!mounted) return;
       setState(() {
-        _results = tests;
+        _results = assessmentHistoryForDisplay(tests);
         _loading = false;
         _loadError = null;
       });
@@ -168,7 +188,7 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1C1C2E),
+      backgroundColor: AppColors.surface,
       builder: (sheetContext) => StatefulBuilder(
         builder: (context, setSheetState) {
           String? validateNumber(String? value) {
@@ -198,7 +218,7 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
                       const Text(
                         'Filter reports',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: AppColors.ink,
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
                         ),
@@ -337,25 +357,25 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
     final filtered = _filtered;
     final query = _query;
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        backgroundColor: const Color(0xFF0D0D0D),
+        backgroundColor: AppColors.background,
         elevation: 0,
-        title: Text(
-          widget.title,
-          style: TextStyle(
-            color: widget.accentColor,
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+        title: Text(widget.title),
         centerTitle: true,
       ),
       body: SafeArea(
         child: Column(
           children: [
-            if (UserSession.instance.isGuest && _results.isNotEmpty)
+            if (_showingSamples)
+              const Padding(
+                padding: EdgeInsets.all(12),
+                child: Text(sampleAssessmentExplanation),
+              ),
+            if (UserSession.instance.isGuest &&
+                _results.isNotEmpty &&
+                !_showingSamples)
               const _GuestMigrationPrompt(),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
@@ -363,7 +383,7 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
                 key: const Key('historySearchField'),
                 controller: _searchController,
                 onChanged: (_) => setState(() {}),
-                style: const TextStyle(color: Colors.white),
+                style: const TextStyle(color: AppColors.ink),
                 decoration: InputDecoration(
                   hintText: 'Search report names',
                   prefixIcon: const Icon(Icons.search),
@@ -378,7 +398,7 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
                           icon: const Icon(Icons.close),
                         ),
                   filled: true,
-                  fillColor: const Color(0xFF1C1C2E),
+                  fillColor: AppColors.surface,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                     borderSide: BorderSide.none,
@@ -418,7 +438,7 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
                           ? '${_results.length} ${_reportWord(_results.length)}'
                           : '${filtered.length} of ${_results.length} reports',
                       style: const TextStyle(
-                        color: Color(0xFFAAAAAA),
+                        color: AppColors.muted,
                         fontSize: 12,
                       ),
                     ),
@@ -456,7 +476,7 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
                         _sortOrder == ReportHistorySort.newest
                             ? Icons.south
                             : Icons.north,
-                        color: Colors.white70,
+                        color: AppColors.muted,
                       ),
                     ),
                   ),
@@ -470,7 +490,7 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
                   children: [
                     const Icon(
                       Icons.cloud_off_outlined,
-                      color: Color(0xFFFFB74D),
+                      color: AppColors.orangeInk,
                       size: 18,
                     ),
                     const SizedBox(width: 8),
@@ -478,7 +498,7 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
                       child: Text(
                         _loadError!,
                         style: const TextStyle(
-                          color: Color(0xFFFFB74D),
+                          color: AppColors.orangeInk,
                           fontSize: 12,
                         ),
                       ),
@@ -487,7 +507,7 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
                   ],
                 ),
               ),
-            if (_results.whereType<Map>().length >= 2)
+            if (!_showingSamples && _results.whereType<Map>().length >= 2)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Wrap(
@@ -505,7 +525,7 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
                     else ...[
                       Text(
                         '${_selectedReports.length} of 2 selected',
-                        style: const TextStyle(color: Colors.white70),
+                        style: const TextStyle(color: AppColors.muted),
                       ),
                       FilledButton(
                         key: const Key('compareSelectedReports'),
@@ -627,9 +647,9 @@ class _StatusChip extends StatelessWidget {
         selected: selected,
         onSelected: (_) => onSelected(),
         selectedColor: accentColor,
-        backgroundColor: const Color(0xFF1C1C2E),
+        backgroundColor: AppColors.surface,
         labelStyle: TextStyle(
-          color: selected ? Colors.white : const Color(0xFFAAAAAA),
+          color: selected ? AppColors.onPrimary : AppColors.muted,
           fontSize: 12,
         ),
         side: BorderSide.none,
@@ -657,13 +677,13 @@ class _ReportCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final status = entry.status;
     final color = switch (status) {
-      'Acceptable' => const Color(0xFF4CAF50),
-      'Needs Improvement' => const Color(0xFFFF9800),
-      'Problematic' => const Color(0xFFF44336),
-      _ => const Color(0xFFAAAAAA),
+      'Acceptable' => AppColors.success,
+      'Needs Improvement' => AppColors.orangeInk,
+      'Problematic' => AppColors.error,
+      _ => AppColors.muted,
     };
     return Card(
-      color: const Color(0xFF1C1C2E),
+      color: AppColors.surface,
       margin: const EdgeInsets.only(bottom: 10),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -687,7 +707,7 @@ class _ReportCard extends StatelessWidget {
                     Text(
                       entry.name ?? 'Name unavailable',
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: AppColors.ink,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
@@ -695,10 +715,12 @@ class _ReportCard extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       entry.createdAt == null
-                          ? 'Date unavailable'
+                          ? isSampleAssessment(entry.raw)
+                                ? 'Illustrative sample'
+                                : 'Date unavailable'
                           : _formatTimestamp(entry.createdAt!),
                       style: const TextStyle(
-                        color: Color(0xFF777777),
+                        color: AppColors.muted,
                         fontSize: 11,
                       ),
                     ),
@@ -730,11 +752,7 @@ class _ReportCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(width: 6),
-              const Icon(
-                Icons.chevron_right,
-                color: Color(0xFF555555),
-                size: 20,
-              ),
+              const Icon(Icons.chevron_right, color: AppColors.muted, size: 20),
             ],
           ),
         ),
@@ -754,11 +772,11 @@ class _LoadErrorView extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.cloud_off_outlined, color: Color(0xFFFFB74D)),
+          const Icon(Icons.cloud_off_outlined, color: AppColors.orangeInk),
           const SizedBox(height: 10),
           const Text(
             'Couldn’t load reports',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+            style: TextStyle(color: AppColors.ink, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           OutlinedButton(onPressed: onRetry, child: const Text('Retry')),
@@ -776,7 +794,7 @@ class _NoFilterMatchesView extends StatelessWidget {
     return const Center(
       child: Text(
         'No reports match your filters',
-        style: TextStyle(color: Color(0xFF888888)),
+        style: TextStyle(color: AppColors.muted),
       ),
     );
   }
@@ -788,7 +806,7 @@ class _EmptyRecordsView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Center(
-      child: Text('No reports yet', style: TextStyle(color: Color(0xFF888888))),
+      child: Text('No reports yet', style: TextStyle(color: AppColors.muted)),
     );
   }
 }
@@ -807,14 +825,14 @@ class _GuestRecordsView extends StatelessWidget {
             const Icon(
               Icons.receipt_long_outlined,
               size: 64,
-              color: Color(0xFF4A90D9),
+              color: AppColors.primary,
             ),
             const SizedBox(height: 20),
             const Text(
               'No guest reports yet',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white,
+                color: AppColors.ink,
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
               ),
@@ -823,7 +841,7 @@ class _GuestRecordsView extends StatelessWidget {
             const Text(
               'Completed guest evaluations and visual reports stay on this device so you can reopen them here.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Color(0xFFAAAAAA), height: 1.5),
+              style: TextStyle(color: AppColors.muted, height: 1.5),
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
@@ -850,7 +868,7 @@ class _GuestMigrationPrompt extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(20, 10, 20, 0),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF16253A),
+        color: AppColors.mint,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -858,7 +876,7 @@ class _GuestMigrationPrompt extends StatelessWidget {
           const Expanded(
             child: Text(
               'Guest reports stay on this device and remain separate after you sign in or create an account.',
-              style: TextStyle(color: Color(0xFFCCCCCC), fontSize: 12),
+              style: TextStyle(color: AppColors.muted, fontSize: 12),
             ),
           ),
           const SizedBox(width: 8),

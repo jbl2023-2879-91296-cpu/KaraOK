@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/brand_logo.dart';
 import 'package:flutter/material.dart';
 
 class LaunchAnimation extends StatefulWidget {
@@ -40,28 +41,7 @@ class _LaunchAnimationState extends State<LaunchAnimation>
           scale: Tween<double>(begin: 0.94, end: 1).animate(
             CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
           ),
-          child: Image.asset(
-            'assets/branding/karaok-icon.png',
-            width: 200,
-            height: 200,
-            excludeFromSemantics: true,
-          ),
-        ),
-        const Text.rich(
-          TextSpan(
-            children: [
-              TextSpan(
-                text: 'Kara',
-                style: TextStyle(color: Color(0xFF4A90D9)),
-              ),
-              TextSpan(
-                text: 'OK',
-                style: TextStyle(color: Color(0xFFFF8C00)),
-              ),
-            ],
-          ),
-          style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-          semanticsLabel: 'KaraOK',
+          child: const BrandLogo(width: 280),
         ),
         const SizedBox(height: 24),
         Semantics(

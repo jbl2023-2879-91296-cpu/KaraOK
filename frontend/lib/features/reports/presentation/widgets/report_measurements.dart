@@ -1,3 +1,4 @@
+import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/features/reports/domain/report_values.dart';
 
@@ -58,25 +59,25 @@ class _Measurement extends StatelessWidget {
     width: double.infinity,
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
-      color: const Color(0xFF1C1C2E),
+      color: AppColors.surface,
       borderRadius: BorderRadius.circular(10),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: Color(0xFFAAAAAA))),
+        Text(label, style: const TextStyle(color: AppColors.muted)),
         const SizedBox(height: 4),
         Text(
           value,
           style: const TextStyle(
-            color: Colors.white,
+            color: AppColors.ink,
             fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 6),
         Text(
           explanation,
-          style: const TextStyle(color: Color(0xFFAAAAAA), fontSize: 12),
+          style: const TextStyle(color: AppColors.muted, fontSize: 12),
         ),
       ],
     ),

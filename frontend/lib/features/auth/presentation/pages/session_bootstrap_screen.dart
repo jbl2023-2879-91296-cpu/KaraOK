@@ -1,3 +1,4 @@
+import 'package:karaok_app/app/app_theme.dart';
 import 'dart:async';
 import 'launch_animation.dart';
 import 'package:flutter/material.dart';
@@ -102,7 +103,7 @@ class _SessionBootstrapScreenState extends State<SessionBootstrapScreen> {
     if (_launchReady && _destination != null) return _destination!;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Center(
           child: Padding(
@@ -114,7 +115,7 @@ class _SessionBootstrapScreenState extends State<SessionBootstrapScreen> {
                     children: [
                       const Icon(
                         Icons.cloud_off_outlined,
-                        color: Color(0xFFFFB74D),
+                        color: AppColors.orangeInk,
                         size: 48,
                       ),
                       const SizedBox(height: 18),
@@ -122,7 +123,7 @@ class _SessionBootstrapScreenState extends State<SessionBootstrapScreen> {
                         'Could not restore your session',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: Colors.white,
+                          color: AppColors.ink,
                           fontSize: 20,
                           fontWeight: FontWeight.w700,
                         ),
@@ -132,7 +133,7 @@ class _SessionBootstrapScreenState extends State<SessionBootstrapScreen> {
                         _error!,
                         textAlign: TextAlign.center,
                         style: const TextStyle(
-                          color: Color(0xFFAAAAAA),
+                          color: AppColors.muted,
                           height: 1.4,
                         ),
                       ),

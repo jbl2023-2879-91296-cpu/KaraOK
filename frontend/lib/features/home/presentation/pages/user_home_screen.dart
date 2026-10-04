@@ -1,3 +1,8 @@
+import 'package:karaok_app/core/security/guest_assessment_service.dart';
+import 'package:karaok_app/core/storage/guest_assessment_store.dart';
+import 'package:karaok_app/features/reports/domain/sample_assessments.dart';
+import 'package:karaok_app/shared/widgets/brand_logo.dart';
+import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/assessments/data/assessment_api.dart';
@@ -8,7 +13,9 @@ import 'package:karaok_app/features/reports/presentation/pages/results_screen.da
 import 'package:karaok_app/shared/widgets/guest_banner.dart';
 
 class UserHomeScreen extends StatefulWidget {
-  const UserHomeScreen({super.key, this.onOpenRecords});
+  const UserHomeScreen({super.key, this.onOpenRecords, this.resultsLoader});
+
+  final Future<List<dynamic>> Function()? resultsLoader;
 
   final VoidCallback? onOpenRecords;
 
@@ -28,12 +35,38 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   }
 
   Future<void> _loadAnalysis() async {
-    if (UserSession.instance.isGuest) {
+    if (_recentAnalysis.any(
+      (item) => item is Map && isSampleAssessment(item),
+    )) {
+      _recentAnalysis = [];
+    }
+    if (widget.resultsLoader != null || UserSession.instance.isGuest) {
       setState(() {
-        _recentAnalysis = [];
-        _loading = false;
+        _loading = true;
         _loadError = null;
       });
+      try {
+        final tests =
+            await (widget.resultsLoader?.call() ??
+                GuestAssessmentStore.instance.guestHistory());
+        final allowSamples =
+            !UserSession.instance.isGuest ||
+            !await GuestAssessmentService.instance.hasUsedAssessment();
+        if (!mounted) return;
+        setState(() {
+          _recentAnalysis = assessmentHistoryForDisplay(
+            tests,
+            allowSamples: allowSamples,
+          ).take(4).toList();
+          _loading = false;
+        });
+      } catch (_) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _loadError = 'Could not load your analysis records.';
+        });
+      }
       return;
     }
 
@@ -45,23 +78,23 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     final cached = await api.getCachedAudioTests();
     if (!mounted) return;
     setState(() {
-      if (cached != null) {
+      if (cached != null && cached.isNotEmpty) {
         _recentAnalysis = cached.take(4).toList();
       }
-      _loading = false;
+      _loading = cached == null || cached.isEmpty;
     });
     try {
       final tests = await api.getAudioTests();
       if (!mounted) return;
       setState(() {
-        _recentAnalysis = tests.take(4).toList();
+        _recentAnalysis = assessmentHistoryForDisplay(tests).take(4).toList();
         _loading = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _loadError = cached == null
+        _loadError = cached == null || cached.isEmpty
             ? 'Could not load your analysis records.'
             : null;
       });
@@ -71,44 +104,20 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        backgroundColor: const Color(0xFF0D0D0D),
+        backgroundColor: AppColors.background,
         elevation: 0,
-        title: Semantics(
-          label: 'KaraOK',
-          child: const ExcludeSemantics(
-            child: Text.rich(
-              TextSpan(
-                children: [
-                  TextSpan(
-                    text: 'karaO',
-                    style: TextStyle(color: Color(0xFF4A90D9)),
-                  ),
-                  TextSpan(
-                    text: 'K',
-                    style: TextStyle(color: Color(0xFFFF8C00)),
-                  ),
-                ],
-              ),
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w900,
-                fontStyle: FontStyle.italic,
-                letterSpacing: -1,
-              ),
-            ),
-          ),
-        ),
+        title: const BrandLogo(width: 100, height: 52),
         centerTitle: true,
       ),
       body: RefreshIndicator(
         onRefresh: _loadAnalysis,
-        color: const Color(0xFFFF8C00),
+        color: AppColors.orangeInk,
         child: Column(
           children: [
-            const GuestBanner(),
+            const GuestBanner(showSignIn: true),
             Expanded(
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -123,7 +132,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                       icon: Icons.graphic_eq,
                       title: 'Evaluate Audio Quality',
                       subtitle: 'Record audio or select an audio file',
-                      color: const Color(0xFF1E5BB5),
+                      color: AppColors.mint,
                       onTap: () async {
                         await Navigator.push(
                           context,
@@ -139,7 +148,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                       icon: Icons.tune,
                       title: 'Generate Audio Settings Suggestion',
                       subtitle: 'Record or upload audio for suggested settings',
-                      color: const Color(0xFFE07B00),
+                      color: AppColors.peach,
                       onTap: () async {
                         await Navigator.push(
                           context,
@@ -151,17 +160,24 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                         if (mounted) _loadAnalysis();
                       },
                     ),
-                    if (!UserSession.instance.isGuest) ...[
+                    ...[
                       const SizedBox(height: 24),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            'Recent Analysis',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                          Expanded(
+                            child: Text(
+                              _recentAnalysis.any(
+                                    (item) =>
+                                        item is Map && isSampleAssessment(item),
+                                  )
+                                  ? 'Sample assessments'
+                                  : 'Recent Analysis',
+                              style: TextStyle(
+                                color: AppColors.ink,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                           GestureDetector(
@@ -177,7 +193,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                             child: const Text(
                               'View all',
                               style: TextStyle(
-                                color: Color(0xFFFF8C00),
+                                color: AppColors.orangeInk,
                                 fontSize: 13,
                               ),
                             ),
@@ -185,12 +201,22 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                         ],
                       ),
                       const SizedBox(height: 12),
+                      if (_recentAnalysis.any(
+                        (item) => item is Map && isSampleAssessment(item),
+                      ))
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 12),
+                          child: Text(
+                            sampleAssessmentExplanation,
+                            style: TextStyle(color: AppColors.muted),
+                          ),
+                        ),
                       if (_loading)
                         const Center(
                           child: Padding(
                             padding: EdgeInsets.all(24),
                             child: CircularProgressIndicator(
-                              color: Color(0xFFFF8C00),
+                              color: AppColors.orangeInk,
                             ),
                           ),
                         )
@@ -200,7 +226,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                           child: Center(
                             child: Text(
                               _loadError!,
-                              style: const TextStyle(color: Color(0xFFF44336)),
+                              style: const TextStyle(color: AppColors.error),
                             ),
                           ),
                         )
@@ -210,7 +236,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                           child: Center(
                             child: Text(
                               'No analyses yet. Evaluate your first audio recording!',
-                              style: TextStyle(color: Color(0xFF666666)),
+                              style: TextStyle(color: AppColors.muted),
                             ),
                           ),
                         )
@@ -221,7 +247,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                             onTap: () => Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => ResultsScreen.fromRecord(item),
+                                builder: (_) => ResultsScreen.fromRecord(
+                                  item,
+                                  isGuest: UserSession.instance.isGuest,
+                                ),
                               ),
                             ),
                           ),
@@ -268,7 +297,7 @@ class _ActionCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(icon, color: Colors.white, size: 28),
+            Icon(icon, color: AppColors.ink, size: 28),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
@@ -277,7 +306,7 @@ class _ActionCard extends StatelessWidget {
                   Text(
                     title,
                     style: const TextStyle(
-                      color: Colors.white,
+                      color: AppColors.ink,
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
                     ),
@@ -287,7 +316,7 @@ class _ActionCard extends StatelessWidget {
                     Text(
                       subtitle,
                       style: const TextStyle(
-                        color: Color(0xCCFFFFFF),
+                        color: AppColors.muted,
                         fontSize: 12,
                       ),
                     ),
@@ -310,20 +339,22 @@ class _AnalysisListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = (test['test_name'] ?? '').toString();
-    final date = (test['created_at'] ?? '').toString();
+    final date = isSampleAssessment(test)
+        ? 'Illustrative sample'
+        : (test['created_at'] ?? '').toString();
     final score = test['score'] as num?;
     final status = (test['status'] ?? 'Pending').toString();
     final color = status == 'Acceptable'
-        ? const Color(0xFF4CAF50)
+        ? AppColors.success
         : status == 'Needs Improvement'
-        ? const Color(0xFFFF9800)
-        : const Color(0xFFF44336);
+        ? AppColors.orangeInk
+        : AppColors.error;
     return Semantics(
       button: true,
       label: 'View analysis $name',
       child: Card(
         margin: const EdgeInsets.only(bottom: 10),
-        color: const Color(0xFF1C1C2E),
+        color: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         child: InkWell(
           onTap: onTap,
@@ -339,7 +370,7 @@ class _AnalysisListItem extends StatelessWidget {
                       Text(
                         name,
                         style: const TextStyle(
-                          color: Colors.white,
+                          color: AppColors.ink,
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                         ),
@@ -348,7 +379,7 @@ class _AnalysisListItem extends StatelessWidget {
                       Text(
                         date,
                         style: const TextStyle(
-                          color: Color(0xFF888888),
+                          color: AppColors.muted,
                           fontSize: 11,
                         ),
                       ),
@@ -379,7 +410,7 @@ class _AnalysisListItem extends StatelessWidget {
                 const SizedBox(width: 8),
                 const Icon(
                   Icons.chevron_right,
-                  color: Color(0xFF666666),
+                  color: AppColors.muted,
                   size: 20,
                 ),
               ],

@@ -1,3 +1,4 @@
+import 'package:karaok_app/app/app_theme.dart';
 import 'recording_checklist.dart';
 import 'dart:async';
 import 'dart:developer' as developer;
@@ -291,7 +292,8 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   }
 
   Future<void> _stop() async {
-    if (_state != AudioInputState.recording && _state != AudioInputState.paused) {
+    if (_state != AudioInputState.recording &&
+        _state != AudioInputState.paused) {
       return;
     }
     _timer?.cancel();
@@ -340,7 +342,8 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   }
 
   Future<void> _cancelRecording() async {
-    if (_state != AudioInputState.recording && _state != AudioInputState.paused) {
+    if (_state != AudioInputState.recording &&
+        _state != AudioInputState.paused) {
       return;
     }
     _timer?.cancel();
@@ -636,7 +639,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
     final recording =
         _state == AudioInputState.recording || _state == AudioInputState.paused;
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: AppColors.background,
       appBar: AppBar(title: Text(widget.purpose.pageTitle), centerTitle: true),
       body: ListView(
         padding: const EdgeInsets.all(20),
@@ -644,7 +647,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A1A2E),
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -655,8 +658,8 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
                       : Icons.tune,
                   color:
                       widget.purpose == AudioAnalysisPurpose.qualityEvaluation
-                      ? const Color(0xFF4A90D9)
-                      : const Color(0xFFFF8C00),
+                      ? AppColors.primary
+                      : AppColors.orangeInk,
                   size: 30,
                 ),
                 const SizedBox(width: 14),
@@ -664,7 +667,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
                   child: Text(
                     widget.purpose.description,
                     style: const TextStyle(
-                      color: Color(0xFFCCCCCC),
+                      color: AppColors.muted,
                       height: 1.35,
                     ),
                   ),
@@ -688,7 +691,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
           if (recording) ...[
             LinearProgressIndicator(
               value: _elapsed.inSeconds / _limit.inSeconds,
-              color: const Color(0xFFE91E8C),
+              color: AppColors.orangeInk,
             ),
             const SizedBox(height: 20),
             Row(
@@ -878,8 +881,8 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: _state == AudioInputState.success
-                      ? Colors.green
-                      : Colors.orange,
+                      ? AppColors.success
+                      : AppColors.orangeInk,
                 ),
               ),
             ),

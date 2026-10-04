@@ -1,3 +1,4 @@
+import 'package:karaok_app/app/app_theme.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -62,23 +63,23 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
   String get _grade => reportGrade(widget.score, widget.empiricalStatus);
 
   Color get _gradeColor => switch (_grade) {
-    'GOOD' => const Color(0xFF4CAF50),
-    'NEEDS IMPROVEMENT' => const Color(0xFFFF9800),
-    'BAD' => const Color(0xFFF44336),
-    _ => const Color(0xFF888888),
+    'GOOD' => AppColors.success,
+    'NEEDS IMPROVEMENT' => AppColors.orangeInk,
+    'BAD' => AppColors.error,
+    _ => AppColors.muted,
   };
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0D),
+        backgroundColor: AppColors.background,
         elevation: 0,
         title: const Text(
           'Detailed Report with Visual',
           style: TextStyle(
-            color: Color(0xFF4A90D9),
+            color: AppColors.primary,
             fontSize: 16,
             fontWeight: FontWeight.w700,
           ),
@@ -94,7 +95,7 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
               Text(
                 widget.testName,
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: AppColors.ink,
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
                 ),
@@ -104,7 +105,7 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
               const Text(
                 'Waveform Analysis',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: AppColors.ink,
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
                 ),
@@ -114,9 +115,9 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
                 height: 220,
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0A1628),
+                  color: AppColors.mint,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFF1E3A5F), width: 1),
+                  border: Border.all(color: AppColors.outline, width: 1),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: _VisualizationImage(image: _waveformImage),
@@ -126,7 +127,7 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
               const Text(
                 'Spectrogram Analysis',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: AppColors.ink,
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
                 ),
@@ -137,8 +138,8 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
                 width: double.infinity,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(10),
-                  color: const Color(0xFF0A1628),
-                  border: Border.all(color: const Color(0xFF1E3A5F), width: 1),
+                  color: AppColors.mint,
+                  border: Border.all(color: AppColors.outline, width: 1),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: _VisualizationImage(image: _spectrogramImage),
@@ -162,7 +163,7 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1C1C2E),
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
@@ -170,7 +171,7 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
                   children: [
                     const Text(
                       'Overall Audio Quality Score',
-                      style: TextStyle(color: Color(0xFFAAAAAA), fontSize: 13),
+                      style: TextStyle(color: AppColors.muted, fontSize: 13),
                     ),
                     const SizedBox(height: 8),
                     FittedBox(
@@ -246,13 +247,13 @@ class _VisualizationImage extends StatelessWidget {
               child: Text(
                 'Visualization is unavailable for this analysis.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Color(0xFF888888), fontSize: 12),
+                style: TextStyle(color: AppColors.muted, fontSize: 12),
               ),
             ),
           );
         }
         return const Center(
-          child: CircularProgressIndicator(color: Color(0xFF4A90D9)),
+          child: CircularProgressIndicator(color: AppColors.primary),
         );
       },
     );

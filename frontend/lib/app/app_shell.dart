@@ -1,3 +1,4 @@
+import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
 
 import 'package:karaok_app/features/account/presentation/pages/change_password_screen.dart';
@@ -19,6 +20,7 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   late int _currentIndex;
+  int _recordsRefreshToken = 0;
 
   @override
   void initState() {
@@ -28,24 +30,28 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFFFF8C00);
+    const accent = AppColors.orangeInk;
     final home = UserHomeScreen(onOpenRecords: () => _selectTab(1));
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: AppColors.background,
       body: IndexedStack(
         index: _currentIndex,
         children: [
           home,
-          PreviousResultsScreen(title: 'Records', accentColor: accent),
+          PreviousResultsScreen(
+            title: 'Records',
+            accentColor: accent,
+            refreshToken: _recordsRefreshToken,
+          ),
           const ChangePasswordScreen(),
         ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: _selectTab,
-        backgroundColor: const Color(0xFF151520),
-        indicatorColor: accent.withValues(alpha: 0.2),
+        backgroundColor: AppColors.background,
+        indicatorColor: AppColors.mint,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
@@ -69,5 +75,6 @@ class _AppShellState extends State<AppShell> {
 
   void _selectTab(int index) => setState(() {
     _currentIndex = index;
+    if (index == 1) _recordsRefreshToken++;
   });
 }

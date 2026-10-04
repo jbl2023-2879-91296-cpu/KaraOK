@@ -1,3 +1,4 @@
+import 'support/settle_with_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,7 +21,9 @@ void main() {
   });
   tearDown(UserSession.instance.clear);
 
-  testWidgets('KaraOK opens in guest mode after the launch screen', (tester) async {
+  testWidgets('KaraOK opens in guest mode after the launch screen', (
+    tester,
+  ) async {
     await tester.pumpWidget(const KaraOKApp());
     await tester.pump();
 
@@ -30,12 +33,15 @@ void main() {
     expect(find.byType(LaunchAnimation), findsOneWidget);
     expect(find.text('Home'), findsNothing);
     await tester.pump(const Duration(milliseconds: 1));
-    await tester.pumpAndSettle();
+    await settleWithStorage(tester);
     expect(find.byType(LaunchAnimation), findsNothing);
 
     expect(find.byType(MaterialApp), findsOneWidget);
     expect(UserSession.instance.isGuest, isTrue);
-    expect(find.text('karaOK', findRichText: true), findsOneWidget);
+    expect(
+      find.image(const AssetImage('assets/branding/karaok-wordmark.jpg')),
+      findsOneWidget,
+    );
     expect(find.text('Owner'), findsNothing);
     expect(find.text('Evaluate Audio Quality'), findsOneWidget);
     expect(find.text('Home'), findsOneWidget);
@@ -70,7 +76,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(home: AudioSettingsSuggestionScreen()),
     );
-    await tester.pumpAndSettle();
+    await settleWithStorage(tester);
 
     expect(find.text('Guest evaluation limit reached'), findsOneWidget);
     expect(find.text('Sign In'), findsOneWidget);
@@ -81,22 +87,26 @@ void main() {
   ) async {
     UserSession.instance.setGuest('user');
 
-    await tester.pumpWidget(const MaterialApp(home: UserHomeScreen()));
-    await tester.pump();
+    await tester.pumpWidget(
+      MaterialApp(home: UserHomeScreen(resultsLoader: () async => [])),
+    );
+    await tester.pumpAndSettle();
 
     expect(find.text('Evaluate Audio Quality'), findsOneWidget);
     expect(find.text('Generate Audio Settings Suggestion'), findsOneWidget);
     expect(find.text('Start Audio Test'), findsNothing);
     expect(find.text('Upload Audio File'), findsNothing);
-    expect(find.text('Recent Analysis'), findsNothing);
-    expect(find.text('View all'), findsNothing);
+    expect(find.text('Sample assessments'), findsOneWidget);
+    expect(find.text('View all'), findsOneWidget);
   });
 
   testWidgets('each user action opens its own record or upload page', (
     tester,
   ) async {
     UserSession.instance.setGuest('user');
-    await tester.pumpWidget(const MaterialApp(home: UserHomeScreen()));
+    await tester.pumpWidget(
+      MaterialApp(home: UserHomeScreen(resultsLoader: () async => [])),
+    );
     await tester.pump();
 
     await tester.tap(find.text('Evaluate Audio Quality'));
@@ -125,7 +135,7 @@ void main() {
   ) async {
     await tester.pumpWidget(const KaraOKApp());
     await tester.pump(const Duration(milliseconds: 1500));
-    await tester.pumpAndSettle();
+    await settleWithStorage(tester);
 
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Records'), findsOneWidget);
@@ -134,8 +144,8 @@ void main() {
     expect(find.byType(Drawer), findsNothing);
 
     await tester.tap(find.text('Records'));
-    await tester.pumpAndSettle();
-    expect(find.text('No guest reports yet'), findsOneWidget);
+    await settleWithStorage(tester);
+    expect(find.text('Sample: Balanced audio'), findsOneWidget);
     expect(find.byIcon(Icons.info_outline), findsNothing);
 
     await tester.tap(find.text('Settings'));
@@ -370,11 +380,11 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: _ResultFlowLauncher()));
 
     await tester.tap(find.text('Open result'));
-    await tester.pumpAndSettle();
+    await settleWithStorage(tester);
     expect(find.text('Results'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Back to Home'));
-    await tester.pumpAndSettle();
+    await settleWithStorage(tester);
 
     expect(find.text('Evaluate Audio Quality'), findsOneWidget);
     expect(find.text('Recording screen'), findsNothing);
@@ -388,9 +398,9 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: _ResultFlowLauncher()));
 
     await tester.tap(find.text('Open result'));
-    await tester.pumpAndSettle();
+    await settleWithStorage(tester);
     await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
+    await settleWithStorage(tester);
 
     expect(find.text('Evaluate Audio Quality'), findsOneWidget);
     expect(find.text('Recording screen'), findsNothing);

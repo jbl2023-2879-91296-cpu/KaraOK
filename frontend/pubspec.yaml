@@ -68,6 +68,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/branding/karaok-icon.png
+    - assets/branding/karaok-wordmark.jpg
 
   # To add assets to your application, add an assets section, like this:
   # assets:
