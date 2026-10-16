@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/assessments/data/assessment_api.dart';
 import 'package:karaok_app/features/assessments/presentation/pages/audio_settings_suggestion_screen.dart';
-import 'package:karaok_app/features/assessments/presentation/pages/audio_test_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/user_previous_results_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/results_screen.dart';
 import 'package:karaok_app/shared/widgets/guest_banner.dart';
@@ -131,13 +130,15 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                     _ActionCard(
                       icon: Icons.graphic_eq,
                       title: 'Evaluate Audio Quality',
-                      subtitle: 'Record audio or select an audio file',
+                      subtitle:
+                          'Evaluate playback and get Bass/Treble suggestions',
                       color: AppColors.mint,
                       onTap: () async {
                         await Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const AudioTestScreen(),
+                            builder: (_) =>
+                                const AudioSettingsSuggestionScreen(),
                           ),
                         );
                         if (mounted) _loadAnalysis();
@@ -147,7 +148,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                     _ActionCard(
                       icon: Icons.tune,
                       title: 'Generate Audio Settings Suggestion',
-                      subtitle: 'Record or upload audio for suggested settings',
+                      subtitle: 'Enter your positions, evaluate, then adjust',
                       color: AppColors.peach,
                       onTap: () async {
                         await Navigator.push(

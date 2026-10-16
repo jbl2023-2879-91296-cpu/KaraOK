@@ -88,6 +88,7 @@ class GenreProfile:
     sample_count: int
     corpus_status: InstrumentalStatus
     metrics: Mapping[str, MetricTarget]
+    knob_preferences: Mapping[str, MetricTarget] | None = None
 
 
 @dataclass(frozen=True)
@@ -280,9 +281,9 @@ def parse_genre_profile_artifact(data: Mapping[str, Any]) -> GenreProfileArtifac
     if (
         isinstance(data.get("schema_version"), bool)
         or not isinstance(data.get("schema_version"), int)
-        or data["schema_version"] != 1
+        or data["schema_version"] not in (1, 2)
     ):
-        raise ValueError("Unsupported genre profile schema_version; expected 1")
+        raise ValueError("Unsupported genre profile schema_version; expected 1 or 2")
 
     profile_version = _required_string(data, "profile_version")
     generated_at = _required_string(data, "generated_at")
@@ -315,7 +316,7 @@ def parse_genre_profile_artifact(data: Mapping[str, Any]) -> GenreProfileArtifac
         if not isinstance(raw_profile, Mapping):
             raise ValueError(f"Genre profile {key!r} must be an object")
         raw_profile = _exact_mapping(
-            raw_profile, PROFILE_KEYS, f"Genre profile {key!r}"
+            raw_profile, PROFILE_KEYS | ({"knob_preferences"} if data["schema_version"] == 2 else set()), f"Genre profile {key!r}"
         )
         sample_count = raw_profile.get("sample_count")
         if isinstance(sample_count, bool) or not isinstance(sample_count, int) or sample_count < 5:
@@ -340,14 +341,48 @@ def parse_genre_profile_artifact(data: Mapping[str, Any]) -> GenreProfileArtifac
                 if isinstance(error, ValueError):
                     raise
                 raise ValueError(f"Genre metric {metric!r} is incomplete") from error
+        preferences = None
+        if data["schema_version"] == 2:
+            raw_preferences = _exact_mapping(raw_profile["knob_preferences"], {"bass", "treble"}, "knob_preferences")
+            preferences = {}
+            for knob, raw in raw_preferences.items():
+                raw = _exact_mapping(raw, TARGET_KEYS, knob)
+                numbers = [_strict_finite(raw[name], name) for name in ("lower", "preferred", "upper", "robust_scale")]
+                low, middle, high, spread = numbers
+                if not -10 <= low <= middle <= high <= 10 or spread <= 0 or raw["unit"] != "knob_position":
+                    raise ValueError("Invalid technician knob preference")
+                preferences[knob] = MetricTarget(*numbers, "knob_position")
+            preferences = MappingProxyType(preferences)
         profiles[key] = GenreProfile(
             key,
             sample_count,
             corpus_status,
             MappingProxyType(metrics),
+            preferences,
         )
 
-    _validated_source_recordings(sources, profiles)
+    if data["schema_version"] == 1:
+        _validated_source_recordings(sources, profiles)
+    else:
+        if not isinstance(sources, Mapping) or sources.get("kind") != "technician_speaker_recordings":
+            raise ValueError("Technician recording provenance is required")
+        recordings = sources.get("recordings")
+        if not isinstance(recordings, list):
+            raise ValueError("Technician recording manifest is required")
+        seen = set()
+        counts = {genre: 0 for genre in profiles}
+        for row in recordings:
+            if not isinstance(row, Mapping) or row.get("genre") not in profiles:
+                raise ValueError("Invalid technician recording genre")
+            identity = row.get("recording_id")
+            if not isinstance(identity, str) or not identity or identity in seen:
+                raise ValueError("Duplicate or missing technician recording ID")
+            seen.add(identity)
+            if not isinstance(row.get("sha256"), str) or not re.fullmatch(r"[0-9a-f]{64}", row["sha256"]):
+                raise ValueError("Recording checksum is required")
+            counts[row["genre"]] += 1
+        if any(counts[key] != profile.sample_count for key, profile in profiles.items()):
+            raise ValueError("Technician recording counts do not match profiles")
 
     checksum = _required_string(data, "artifact_checksum")
     if re.fullmatch(r"[0-9a-f]{64}", checksum) is None:
@@ -357,7 +392,7 @@ def parse_genre_profile_artifact(data: Mapping[str, Any]) -> GenreProfileArtifac
         raise ValueError("Genre profile artifact checksum does not match canonical content")
 
     return GenreProfileArtifact(
-        schema_version=1,
+        schema_version=data["schema_version"],
         profile_version=profile_version,
         generated_at=generated_at,
         generator_version=generator_version,

@@ -1,14 +1,27 @@
 {
-  "profile_version": "2026.09.1",
-  "profile_checksum": "8b87b9f1106bab8dab4978e4590e84c9bb294400a0d60ce5263e196f44701b61",
-  "quality_profile_version": "2026.09.2-median",
-  "quality_profile_checksum": "6b6d04daad410bd24051fa22adb177198c018f5a356b7e5e367067984c1fc551",
-  "enabled_genres": ["hip-hop", "pop", "rock"],
+  "profile_version": "2026.10.1-technician",
+  "profile_checksum": "acefe9949cd6eb8f8a713bcd4d0b5080820bcdd7de81f25e81676388d0c9f03d",
+  "quality_profile_version": "2026.10.1-technician",
+  "quality_profile_checksum": "acefe9949cd6eb8f8a713bcd4d0b5080820bcdd7de81f25e81676388d0c9f03d",
+  "enabled_genres": [
+    "pop",
+    "r&b",
+    "rock"
+  ],
   "control_priors": {
     "prior_version": "2026.09.1",
     "artifact_checksum": "22f1dde7455dd1d6d6c83c54a00d885e6bd3fecd89a8b05f6874bf88a774be71",
-    "normalized_scale": {"minimum": 0.0, "maximum": 100.0},
-    "positions": {"volume": 40.0, "bass": 50.0, "treble": 50.0, "sharpness": 50.0, "flatness": 50.0},
+    "normalized_scale": {
+      "minimum": 0.0,
+      "maximum": 100.0
+    },
+    "positions": {
+      "volume": 40.0,
+      "bass": 50.0,
+      "treble": 50.0,
+      "sharpness": 50.0,
+      "flatness": 50.0
+    },
     "requires_physical_confirmation": true
   }
 }

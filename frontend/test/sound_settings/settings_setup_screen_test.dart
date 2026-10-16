@@ -168,6 +168,32 @@ void main() {
     },
   );
 
+  _tallTestWidgets(
+    'signed technician scale accepts negative half-step positions',
+    (tester) async {
+      SettingsSuggestionInput? submitted;
+      await tester.pumpWidget(
+        _testApp(
+          SettingsSetupScreen(
+            settingsApi: settingsApi,
+            guestStore: guestStore,
+            onContinue: (value) => submitted = value,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _selectScale(tester, '-10 to +10 (technician reference)');
+      await _fillGenreAndFivePositions(tester);
+      await tester.enterText(find.byKey(const Key('knob-bass')), '-4.5');
+      await tester.ensureVisible(find.byKey(const Key('settings-continue')));
+      await tester.tap(find.byKey(const Key('settings-continue')));
+      await tester.pumpAndSettle();
+      expect(submitted?.current.bass, -4.5);
+      expect(submitted?.amplifierScale?.minimum, -10);
+      expect(submitted?.amplifierScale?.maximum, 10);
+    },
+  );
+
   _tallTestWidgets('renders only genres enabled by profile metadata', (
     tester,
   ) async {
@@ -870,13 +896,15 @@ void main() {
     );
   });
 
-  test('settings upload describes rendered instrumental audio', () {
-    expect(
-      AudioAnalysisPurpose.settingsSuggestion.description,
-      'Record the karaoke machine\'s rendered instrumental playback or '
-      'select a rendered audio file to generate five amplifier settings.',
-    );
-  });
+  test(
+    'settings upload explains evaluation and suggestions share a recording',
+    () {
+      expect(
+        AudioAnalysisPurpose.settingsSuggestion.description,
+        'Record playback at your entered knob positions. Evaluate its genre balance, then view Bass and Treble suggestions from the same recording.',
+      );
+    },
+  );
 }
 
 Widget _testApp(Widget home) => MaterialApp(home: home);

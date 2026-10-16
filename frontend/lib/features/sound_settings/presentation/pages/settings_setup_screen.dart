@@ -11,7 +11,7 @@ import 'package:karaok_app/features/sound_settings/domain/amplifier_profile.dart
 import 'package:karaok_app/features/sound_settings/domain/settings_profile_metadata.dart';
 import 'package:karaok_app/features/sound_settings/domain/settings_recommendation.dart';
 
-enum _ScalePreset { zeroToTen, zeroToHundred, custom }
+enum _ScalePreset { signedTone, zeroToTen, zeroToHundred, custom }
 
 enum _ScaleChangeChoice { keepValues, rescaleValues }
 
@@ -43,17 +43,24 @@ class SettingsSetupScreen extends StatefulWidget {
     required this.onContinue,
     this.settingsApi,
     this.guestStore,
+    this.onEvaluateOnly,
   });
 
   final ValueChanged<SettingsSuggestionInput> onContinue;
   final SettingsApi? settingsApi;
   final GuestAmplifierStore? guestStore;
+  final VoidCallback? onEvaluateOnly;
 
   @override
   State<SettingsSetupScreen> createState() => _SettingsSetupScreenState();
 }
 
 class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
+  static const _signedTone = AmplifierScale(
+    minimum: -10,
+    maximum: 10,
+    step: 0.5,
+  );
   static const _zeroToTen = AmplifierScale(minimum: 0, maximum: 10, step: 0.5);
   static const _zeroToHundred = AmplifierScale(
     minimum: 0,
@@ -193,6 +200,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
   }
 
   _ScalePreset _presetFor(AmplifierScale scale) {
+    if (scale == _signedTone) return _ScalePreset.signedTone;
     if (scale == _zeroToTen) return _ScalePreset.zeroToTen;
     if (scale == _zeroToHundred) return _ScalePreset.zeroToHundred;
     return _ScalePreset.custom;
@@ -243,6 +251,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     if (next == _preset) return;
     final oldScale = _effectiveScaleOrNull() ?? _scale;
     final newScale = switch (next) {
+      _ScalePreset.signedTone => _signedTone,
       _ScalePreset.zeroToTen => _zeroToTen,
       _ScalePreset.zeroToHundred => _zeroToHundred,
       _ScalePreset.custom => oldScale,
@@ -496,6 +505,13 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (widget.onEvaluateOnly != null)
+                      TextButton(
+                        onPressed: widget.onEvaluateOnly,
+                        child: const Text(
+                          'Evaluate only, without knob suggestions',
+                        ),
+                      ),
                     if (_featureDisabled)
                       const _Notice(
                         icon: Icons.block,
@@ -574,6 +590,10 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                       style: const TextStyle(color: AppColors.ink),
                       decoration: _decoration('Control scale'),
                       items: const [
+                        DropdownMenuItem(
+                          value: _ScalePreset.signedTone,
+                          child: Text('-10 to +10 (technician reference)'),
+                        ),
                         DropdownMenuItem(
                           value: _ScalePreset.zeroToTen,
                           child: Text('0–10'),
@@ -789,6 +809,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                   controller: controller,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
+                    signed: true,
                   ),
                   style: const TextStyle(color: AppColors.ink),
                   decoration: _decoration('Position'),

@@ -269,4 +269,4 @@ class SettingsRecommendation:
         return payload
 
 
-ALGORITHM_VERSION = "1.0.0"
+ALGORITHM_VERSION = "1.1.0"

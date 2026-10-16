@@ -16,6 +16,8 @@ venv/
 /audio sample(good)
 /audio sample(bad)
 /results
+/sample
+/Generate Settings songs
 /results_bad
 /project.md
 backend/uploads/

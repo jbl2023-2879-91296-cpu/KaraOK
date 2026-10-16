@@ -2,8 +2,9 @@
 
 Uses backend/.venv when available, otherwise the current Python environment.
 Dependencies can be installed with: python -m pip install -r backend/requirements.txt
-Outputs: results_bad/results/<sample stem>/*_analysis.json and six PNGs,
-plus results_bad/results/results.csv. Repeated runs append timestamped results.
+Reads audio sample(good) and audio sample(bad).
+Outputs: sample/<good or bad>/<sample stem>/*_analysis.json, six PNGs,
+and results.csv in each sample's output folder. Repeated runs append timestamped results.
 Uses the current analyzer/settings; historical measurements may differ.
 """
 
@@ -22,20 +23,28 @@ EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg"}
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input-dir", type=Path, default=ROOT / "audio sample(bad)")
     parser.add_argument("--dry-run", action="store_true", help="List inputs without analyzing")
     args = parser.parse_args(argv)
-    source = args.input_dir.expanduser().resolve()
-    if not source.is_dir():
-        parser.error(f"Input directory does not exist: {source}")
-    samples = sorted(
-        (path for path in source.iterdir() if path.is_file() and path.suffix.lower() in EXTENSIONS),
-        key=lambda path: path.name.casefold(),
-    )
-    if not samples:
-        parser.error(f"No supported audio files found in: {source}")
+    samples: list[tuple[Path, Path]] = []
+    output = ROOT / "sample"
+    for origin in ("good", "bad"):
+        source = ROOT / f"audio sample({origin})"
+        if not source.is_dir():
+            parser.error(f"Input directory does not exist: {source}")
+        inputs = sorted(
+            (path for path in source.iterdir() if path.is_file() and path.suffix.lower() in EXTENSIONS),
+            key=lambda path: path.name.casefold(),
+        )
+        if not inputs:
+            parser.error(f"No supported audio files found in: {source}")
+        samples.extend((path, output / origin / path.stem) for path in inputs)
 
-    output = ROOT / "results_bad" / "results"
+    print(f"Found {len(samples)} samples. Output: {output}", flush=True)
+    if args.dry_run:
+        for sample, destination in samples:
+            print(f"  {sample.relative_to(ROOT)} -> {destination}")
+        return 0
+
     candidates = [ROOT / "backend/.venv/Scripts/python.exe", ROOT / "backend/.venv/bin/python"]
     python = sys.executable
     for candidate in candidates:
@@ -51,12 +60,7 @@ def main(argv: list[str] | None = None) -> int:
                 break
     analyzer = ROOT / "backend/audio_analyzer.py"
     settings = ROOT / "backend/audio_analyzer_settings.json"
-    print(f"Found {len(samples)} samples. Output: {output}", flush=True)
     print(f"Python: {python}", flush=True)
-    if args.dry_run:
-        for sample in samples:
-            print(f"  {sample.name} -> {output / sample.stem}")
-        return 0
 
     # Check dependencies once before starting a potentially long batch.
     environment = dict(os.environ, MPLBACKEND="Agg", PYTHONUNBUFFERED="1")
@@ -81,10 +85,11 @@ def main(argv: list[str] | None = None) -> int:
     quality_exit = behavior["quality_failure_exit_code"]
     completed = quality_failed = 0
     failures: list[str] = []
-    for index, sample in enumerate(samples, 1):
-        print(f"\n[{index}/{len(samples)}] {sample.name}", flush=True)
+    for index, (sample, destination) in enumerate(samples, 1):
+        label = str(sample.relative_to(ROOT))
+        print(f"\n[{index}/{len(samples)}] {label}", flush=True)
         process = subprocess.run(
-            [python, str(analyzer), str(sample), "--output-dir", str(output / sample.stem),
+            [python, str(analyzer), str(sample), "--output-dir", str(destination),
              "--settings", str(settings), "--save-json", "--save-csv", "--save-plots"],
             cwd=ROOT, env=environment,
         )
@@ -96,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
             completed += 1
             quality_failed += 1
         else:
-            failures.append(sample.name)
+            failures.append(label)
             print(f"Technical failure (exit {process.returncode}); continuing.", flush=True)
 
     print(f"\nCompleted: {completed}/{len(samples)}; quality failures: {quality_failed}; "

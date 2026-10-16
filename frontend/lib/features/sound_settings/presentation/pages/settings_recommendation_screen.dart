@@ -228,7 +228,7 @@ class _SettingsRecommendationScreenState
                 const SizedBox(height: 8),
               ] else ...[
                 Text(
-                  'Set each physical knob yourself. KaraOK does not move your amplifier controls.',
+                  'These suggestions use your evaluation and genre references. Apply the changes yourself, then record the same passage at the same volume and phone position to check the result.',
                   style: Theme.of(
                     context,
                   ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
@@ -531,6 +531,10 @@ String _blockerMessage(SettingsRecommendation recommendation) {
 }
 
 String _reasonMessage(String reasonCode) => switch (reasonCode) {
+  'tone_increase_blocked_by_distortion' =>
+    'Keep unchanged: clipping or excessive distortion was detected. Resolve it before boosting tone controls.',
+  'no_tone_calibration' =>
+    'Keep unchanged. The technician references calibrate Bass and Treble only.',
   'below_genre_range' => 'This measurement is below the genre target range.',
   'above_genre_range' => 'This measurement is above the genre target range.',
   'within_genre_range' => 'This measurement is already in the target range.',

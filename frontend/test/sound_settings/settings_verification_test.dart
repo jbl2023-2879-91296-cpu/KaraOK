@@ -24,6 +24,34 @@ void main() {
 
   tearDown(UserSession.instance.clear);
 
+  _screenTest('initial evaluation opens suggestions without another upload', (
+    tester,
+  ) async {
+    final recommendation = _sample(guest: true, verificationToken: 'guest-jwt');
+    final record = <String, dynamic>{
+      'test_name': 'R&B speaker recording',
+      'score': 72.4,
+      'settings_recommendation': recommendation.toJson(),
+    };
+    await tester.pumpWidget(
+      _testApp(
+        audioResultDestination(
+          record: record,
+          purpose: AudioAnalysisPurpose.settingsSuggestion,
+          isGuest: true,
+          showEvaluationFirst: true,
+        ),
+      ),
+    );
+    expect(find.byType(ResultsScreen), findsOneWidget);
+    expect(find.byType(SettingsRecommendationScreen), findsNothing);
+    await tester.ensureVisible(find.text('Generate Audio Settings'));
+    await tester.tap(find.text('Generate Audio Settings'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SettingsRecommendationScreen), findsOneWidget);
+    expect(find.byType(AudioTestScreen), findsNothing);
+  });
+
   _screenTest('guest apply saves targets and enables token verification', (
     tester,
   ) async {
@@ -213,7 +241,7 @@ void main() {
     await tester.tap(find.text('View Audio Assessment'));
     await tester.pumpAndSettle();
     expect(find.byType(ResultsScreen), findsOneWidget);
-    expect(find.text('View Generated Settings'), findsOneWidget);
+    expect(find.text('Generate Audio Settings'), findsOneWidget);
   });
 
   _screenTest(
@@ -227,8 +255,8 @@ void main() {
       };
       await tester.pumpWidget(_testApp(ResultsScreen.fromRecord(record)));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('View Generated Settings'));
-      await tester.tap(find.text('View Generated Settings'));
+      await tester.ensureVisible(find.text('Generate Audio Settings'));
+      await tester.tap(find.text('Generate Audio Settings'));
       await tester.pumpAndSettle();
       expect(find.byType(SettingsRecommendationScreen), findsOneWidget);
       expect(find.text('4.0 → 5.5'), findsOneWidget);

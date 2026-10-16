@@ -392,14 +392,14 @@ class GenreProfileDerivationTests(unittest.TestCase):
                 report_text,
             )
 
-    def test_committed_production_artifact_enables_only_real_five_track_cohorts(self):
+    def test_committed_production_artifact_enables_fifteen_song_technician_cohorts(self):
         artifact_path = Path(__file__).resolve().parents[1] / "audio_thresholds" / "genre_audio_profiles.json"
         artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
 
-        self.assertEqual(set(artifact["genres"]), {"rock", "pop", "hip-hop"})
+        self.assertEqual(set(artifact["genres"]), {"rock", "pop", "r&b"})
         self.assertEqual(
             {genre: profile["sample_count"] for genre, profile in artifact["genres"].items()},
-            {"rock": 5, "pop": 5, "hip-hop": 5},
+            {"rock": 15, "pop": 15, "r&b": 15},
         )
 
     @staticmethod
