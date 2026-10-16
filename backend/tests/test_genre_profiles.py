@@ -73,7 +73,7 @@ class GenreProfileTests(unittest.TestCase):
             parse_genre_profile_artifact(payload)
 
         payload = valid_payload()
-        payload["schema_version"] = 2
+        payload["schema_version"] = 99
         with self.assertRaisesRegex(ValueError, "schema_version"):
             parse_genre_profile_artifact(payload)
 

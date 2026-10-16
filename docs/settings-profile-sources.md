@@ -1,5 +1,10 @@
 # Instrumental settings calibration sources
 
+> The active genre data has been replaced by the 45-recording technician cohort.
+> See [Evaluation-guided calibration](technician-genre-calibration.md) for the
+> current derivation, scoring and limitations. The FMA details below document
+> the previous genre artifact; the global evaluation-only artifact is retained.
+
 KaraOK uses three immutable, versioned JSON artifacts. They are provisional
 starting evidence for recorded or selected rendered karaoke instrumental
 playback, not universally optimal settings for every amplifier, loudspeaker,

@@ -252,11 +252,37 @@ def _adjustment(
     normalized_error = _clamp(distance / target.robust_scale, -1.0, 1.0)
     cap = VERIFICATION_DELTA_CAP if request.verification else INITIAL_DELTA_CAP
     raw_delta = MONOTONIC_DIRECTION[knob] * SENSITIVITY_NORMALIZED * normalized_error
+    if profile.knob_preferences is not None:
+        # Technician evidence covers tone controls only. Other controls stay put.
+        cap = 5.0 if request.verification else 10.0
+        if knob not in ("bass", "treble"):
+            raw_delta = 0.0
+            reason_code = "no_tone_calibration"
+        elif distance != 0:
+            raw_delta = math.copysign(min(abs(normalized_error) * 10.0, cap), distance)
+            # Absolute technician positions only transfer to the documented scale.
+            # The measured error always determines direction, even outside the prior.
+            if request.scale.minimum == -10 and request.scale.maximum == 10:
+                prior = profile.knob_preferences[knob]
+                prior_delta = (prior.preferred - getattr(request.current, knob)) * 5.0
+                if prior_delta * raw_delta > 0:
+                    raw_delta = math.copysign(
+                        min(cap, .75 * abs(raw_delta) + .25 * abs(prior_delta)), raw_delta
+                    )
+            # A supported step makes a small out-of-range correction actionable.
+            step_normalized = request.scale.step * 100 / (request.scale.maximum - request.scale.minimum)
+            if step_normalized <= cap:
+                raw_delta = math.copysign(max(abs(raw_delta), step_normalized), raw_delta)
     bounded_delta = _clamp(raw_delta, -cap, cap)
 
     current = getattr(request.current, knob)
     current_normalized = request.scale.normalize(current)
     target_normalized = _clamp(current_normalized + bounded_delta, 0.0, 100.0)
+
+    if profile.knob_preferences is not None and knob in ("bass", "treble") and bounded_delta > 0:
+        if request.safety.clipping or request.safety.excessive_distortion:
+            target_normalized = current_normalized
+            reason_code = "tone_increase_blocked_by_distortion"
 
     if knob == "volume" and bounded_delta > 0:
         if request.safety.clipping:

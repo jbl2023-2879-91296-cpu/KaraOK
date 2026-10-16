@@ -77,7 +77,7 @@ class EmpiricalFeatureTable extends StatelessWidget {
                 ? 'Illustrative feature values; no recording was analyzed.'
                 : referenceRecordingCount == null
                 ? 'Reference size unavailable for this saved assessment'
-                : 'Reference derived from $referenceRecordingCount analyzed good-audio recordings',
+                : 'Reference derived from $referenceRecordingCount analyzed recordings',
             style: const TextStyle(color: AppColors.muted, fontSize: 11),
           ),
           const MeasurementGuide(),
@@ -131,7 +131,15 @@ class EmpiricalFeatureTable extends StatelessWidget {
                       Expanded(
                         flex: 3,
                         child: Text(
-                          _statusLabel(status),
+                          switch (feature['direction']) {
+                            'above' =>
+                              '${_statusLabel(status)} — above genre range',
+                            'below' =>
+                              '${_statusLabel(status)} — below genre range',
+                            'within' =>
+                              '${_statusLabel(status)} — within genre range',
+                            _ => _statusLabel(status),
+                          },
                           textAlign: TextAlign.right,
                           style: TextStyle(
                             color: _statusColor(status),

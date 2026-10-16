@@ -18,7 +18,7 @@ void main() {
   test('profile metadata parses all artifact provenance and five priors', () {
     final metadata = SettingsProfileMetadata.fromJson(validJson());
 
-    expect(metadata.enabledGenres, ['hip-hop', 'pop', 'rock']);
+    expect(metadata.enabledGenres, ['pop', 'r&b', 'rock']);
     expect(metadata.profileChecksum, hasLength(64));
     expect(metadata.qualityProfileChecksum, hasLength(64));
     expect(metadata.controlPriors.requiresPhysicalConfirmation, isTrue);

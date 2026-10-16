@@ -6,6 +6,20 @@ from karaok.core.quality import _empirical_result_status
 from karaok.core.quality import _score_empirical_values
 from karaok.core.values import _nested_number
 from typing import Any
+from karaok.core.thresholds.genre_scoring import score_genre_values
+
+
+def apply_genre_evaluation(dump: dict[str, Any], genre: str | None) -> None:
+    """Attach scoring once, before persistence and recommendation generation."""
+    if not genre:
+        return
+    try:
+        result = score_genre_values(_empirical_feature_values(dump['analysis']), genre)
+    except (OSError, ValueError):
+        # Missing profiles leave ordinary quality evaluation available.
+        return
+    if result is not None:
+        dump['empirical_quality'] = result
 
 
 def _empirical_feature_values(analysis: dict[str, Any]) -> dict[str, float | None]:

@@ -141,8 +141,8 @@ def recommendation_row(**overrides):
         "original_score": 72.4,
         "verification_score": None,
         "overall_confidence": "medium",
-        "algorithm_version": "1.0.0",
-        "genre_profile_version": "2026.09.1",
+        "algorithm_version": recommendation_service.ALGORITHM_VERSION,
+        "genre_profile_version": recommendation_service.load_genre_profiles().profile_version,
         "genre_profile_checksum": (
             recommendation_service.load_genre_profiles().artifact_checksum
         ),
@@ -878,6 +878,8 @@ class SettingsRecommendationApiTests(unittest.TestCase):
 
     def test_get_recommendation_matches_shared_cross_layer_fixture(self):
         expected = json.loads(RECOMMENDATION_FIXTURE.read_text(encoding="utf-8"))
+        expected["profile_version"] = recommendation_service.load_genre_profiles().profile_version
+        expected["algorithm_version"] = recommendation_service.ALGORITHM_VERSION
         expected["profile_checksum"] = (
             recommendation_service.load_genre_profiles().artifact_checksum
         )

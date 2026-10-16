@@ -1,335 +1,1493 @@
 {
-  "artifact_checksum": "8b87b9f1106bab8dab4978e4590e84c9bb294400a0d60ce5263e196f44701b61",
-  "generated_at": "2026-09-02T00:00:00Z",
+  "schema_version": 2,
+  "profile_version": "2026.10.1-technician",
+  "generated_at": "2026-10-16T00:00:00Z",
   "generator_version": "1.0.0",
+  "sources": {
+    "kind": "technician_speaker_recordings",
+    "provenance": "User-supplied speaker recordings and photographed technician notes; redistribution rights not established.",
+    "notes_sha256": "323ab3d2ce6f12611c7c5f6de237df43c944e9047cee1d826025a19c6bcd8f1a",
+    "calculation": "Equal weight per song; linear p25/median/p75. Initial 10-second trim is an approximate calibration exclusion, not a detected settling point.",
+    "recordings": [
+      {
+        "recording_id": "pop-01",
+        "genre": "pop",
+        "file": "Pop1.mp3",
+        "sha256": "306e64d497b288331518249aaf1de6faed5eba13a44904500a7059c72df4e34f",
+        "skip_seconds": 10,
+        "analyzed_seconds": 50.074666666666666,
+        "measurements": {
+          "loudness": -19.413391476777498,
+          "bass": 68.1299708161178,
+          "treble": 0.07244255355316401,
+          "sharpness": 0.0005687824533570134,
+          "flatness": 2.672087612154428e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 60.9020625,
+          "recovered_frame_percentage": 98.64143216277226,
+          "discarded_duration_seconds": 0.8273958333333333,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 60.075-second prefix (98.641% of declared frames); approximately 0.827 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": -4,
+          "treble": 4
+        }
+      },
+      {
+        "recording_id": "pop-10",
+        "genre": "pop",
+        "file": "Pop10.mp3",
+        "sha256": "54441de1c1045e13e2bf244a59d65a6e0ba07938ffe470d3de4f7c0d08747b72",
+        "skip_seconds": 10,
+        "analyzed_seconds": 59.632,
+        "measurements": {
+          "loudness": -14.069759119567692,
+          "bass": 94.65949659192164,
+          "treble": 0.44103898180892903,
+          "sharpness": 0.010755550425879374,
+          "flatness": 0.0003467088972683996
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 70.04270833333334,
+          "recovered_frame_percentage": 99.41363156407549,
+          "discarded_duration_seconds": 0.41070833333333334,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 69.632-second prefix (99.414% of declared frames); approximately 0.411 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 4,
+          "treble": 4
+        }
+      },
+      {
+        "recording_id": "pop-11",
+        "genre": "pop",
+        "file": "Pop11.mp3",
+        "sha256": "14e90226b5b478b0376b689912510c497bab318d1122e05eeb7ae752d9272a7f",
+        "skip_seconds": 10,
+        "analyzed_seconds": 63.728,
+        "measurements": {
+          "loudness": -17.849886031446168,
+          "bass": 87.48013758114202,
+          "treble": 0.773875056634091,
+          "sharpness": 0.0028286583791297597,
+          "flatness": 0.00014783095684833825
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 74.006375,
+          "recovered_frame_percentage": 99.62384997238414,
+          "discarded_duration_seconds": 0.278375,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 73.728-second prefix (99.624% of declared frames); approximately 0.278 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 4,
+          "treble": 4
+        }
+      },
+      {
+        "recording_id": "pop-12",
+        "genre": "pop",
+        "file": "Pop12.mp3",
+        "sha256": "861720c292124074a998eb1aacb7d7827c8af2668e7ce92a4cdef256d79f6276",
+        "skip_seconds": 10,
+        "analyzed_seconds": 62.36266666666667,
+        "measurements": {
+          "loudness": -16.038721133999225,
+          "bass": 54.47575552929591,
+          "treble": 0.7481434095326802,
+          "sharpness": 0.001283359554382154,
+          "flatness": 0.000111335379187949
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 72.60158333333334,
+          "recovered_frame_percentage": 99.670920859164,
+          "discarded_duration_seconds": 0.23891666666666667,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 72.363-second prefix (99.671% of declared frames); approximately 0.239 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": -2,
+          "treble": 6
+        }
+      },
+      {
+        "recording_id": "pop-13",
+        "genre": "pop",
+        "file": "Pop13.mp3",
+        "sha256": "1636db988de5df11f6cf7e123c1fb23b61bdf9720e3a5ea806a13e02d108896e",
+        "skip_seconds": 10,
+        "analyzed_seconds": 56.90133333333333,
+        "measurements": {
+          "loudness": -12.492791059059002,
+          "bass": 94.52568391513138,
+          "treble": 0.009054591884289875,
+          "sharpness": 0.0001418569762502344,
+          "flatness": 6.513440439448459e-06
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 67.2868125,
+          "recovered_frame_percentage": 99.42711037669281,
+          "discarded_duration_seconds": 0.38547916666666665,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 66.901-second prefix (99.427% of declared frames); approximately 0.385 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 6,
+          "treble": 2
+        }
+      },
+      {
+        "recording_id": "pop-14",
+        "genre": "pop",
+        "file": "Pop14.mp3",
+        "sha256": "44995e5f2ea27063bf6daee05efdcd2f2fa87e212efb24542a0a10f857f56b5f",
+        "skip_seconds": 10,
+        "analyzed_seconds": 60.99733333333333,
+        "measurements": {
+          "loudness": -14.989962338154253,
+          "bass": 91.8399711937781,
+          "treble": 0.07316852722414385,
+          "sharpness": 0.0007880445836995608,
+          "flatness": 6.647226109635085e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 72.36327083333333,
+          "recovered_frame_percentage": 98.11238839224664,
+          "discarded_duration_seconds": 1.3659375,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 70.997-second prefix (98.112% of declared frames); approximately 1.366 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 4,
+          "treble": 0
+        }
+      },
+      {
+        "recording_id": "pop-15",
+        "genre": "pop",
+        "file": "Pop15.mp3",
+        "sha256": "accf496328e9114272f039d215ead6f32b71743959abb7fd13d0cf6c41207f73",
+        "skip_seconds": 10,
+        "analyzed_seconds": 48.70933333333333,
+        "measurements": {
+          "loudness": -17.462408489404922,
+          "bass": 95.61257959049303,
+          "treble": 0.6117459335188326,
+          "sharpness": 0.00807795659767702,
+          "flatness": 0.00033581911702640355
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 60.022083333333335,
+          "recovered_frame_percentage": 97.81288831194074,
+          "discarded_duration_seconds": 1.31275,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 58.709-second prefix (97.813% of declared frames); approximately 1.313 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 2,
+          "treble": 2
+        }
+      },
+      {
+        "recording_id": "pop-02",
+        "genre": "pop",
+        "file": "pop2.mp3",
+        "sha256": "34c1554f4479cc6bc5ed3b5506d34c7272d8146994f82bd696b8a718ead64554",
+        "skip_seconds": 10,
+        "analyzed_seconds": 54.17066666666667,
+        "measurements": {
+          "loudness": -16.13450920906737,
+          "bass": 83.63795764958081,
+          "treble": 0.1398216136117794,
+          "sharpness": 0.0008664664931715279,
+          "flatness": 7.224859291454777e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 64.877,
+          "recovered_frame_percentage": 98.91127312709692,
+          "discarded_duration_seconds": 0.7063333333333334,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 64.171-second prefix (98.911% of declared frames); approximately 0.706 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": -4,
+          "treble": 4
+        }
+      },
+      {
+        "recording_id": "pop-03",
+        "genre": "pop",
+        "file": "Pop3.mp3",
+        "sha256": "437a858f9c8f34d633acc6778f1dc450cd989b0b463cf40580f1ea819a68b6ec",
+        "skip_seconds": 10,
+        "analyzed_seconds": 52.80533333333333,
+        "measurements": {
+          "loudness": -16.238044974557383,
+          "bass": 80.08633014309943,
+          "treble": 0.06003111973238242,
+          "sharpness": 0.0013112536366331731,
+          "flatness": 0.00012673399760387838
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 63.689375,
+          "recovered_frame_percentage": 98.61194796358629,
+          "discarded_duration_seconds": 0.8840416666666666,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 62.805-second prefix (98.612% of declared frames); approximately 0.884 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": -4,
+          "treble": 4
+        }
+      },
+      {
+        "recording_id": "pop-04",
+        "genre": "pop",
+        "file": "Pop4.mp3",
+        "sha256": "33f6ad4001e95315e730c441745f1c435694bf2b4274b58a68a57363cdd68091",
+        "skip_seconds": 10,
+        "analyzed_seconds": 54.17066666666667,
+        "measurements": {
+          "loudness": -15.436783572665036,
+          "bass": 79.49311514285777,
+          "treble": 0.3542885648506717,
+          "sharpness": 0.0012634826977845238,
+          "flatness": 0.00011339387128828093
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 65.26770833333333,
+          "recovered_frame_percentage": 98.31916625436902,
+          "discarded_duration_seconds": 1.0970416666666667,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 64.171-second prefix (98.319% of declared frames); approximately 1.097 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 2,
+          "treble": 6
+        }
+      },
+      {
+        "recording_id": "pop-05",
+        "genre": "pop",
+        "file": "Pop5.mp3",
+        "sha256": "b46545429acfc73f58cae5bb79bbc8418c1ef10cb3ee765734bf0a7f4c5051bc",
+        "skip_seconds": 10,
+        "analyzed_seconds": 50.074666666666666,
+        "measurements": {
+          "loudness": -15.677337251213675,
+          "bass": 82.86487053835982,
+          "treble": 0.7633498859161497,
+          "sharpness": 0.004717166530570435,
+          "flatness": 0.00022963770607020706
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 61.0261875,
+          "recovered_frame_percentage": 98.44079915145718,
+          "discarded_duration_seconds": 0.9515208333333334,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 60.075-second prefix (98.441% of declared frames); approximately 0.952 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 4,
+          "treble": 6
+        }
+      },
+      {
+        "recording_id": "pop-06",
+        "genre": "pop",
+        "file": "Pop6.mp3",
+        "sha256": "68836fe7aa68d94b421eede352d81dd1540cd92026018b0aea84c83ec9c10819",
+        "skip_seconds": 10,
+        "analyzed_seconds": 62.36266666666667,
+        "measurements": {
+          "loudness": -15.295306601245652,
+          "bass": 87.92183757605136,
+          "treble": 0.1012494037035903,
+          "sharpness": 0.0012967499252850398,
+          "flatness": 5.556274845730513e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 73.1980625,
+          "recovered_frame_percentage": 98.85871865347073,
+          "discarded_duration_seconds": 0.8353958333333333,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 72.363-second prefix (98.859% of declared frames); approximately 0.835 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 4,
+          "treble": 4.5
+        }
+      },
+      {
+        "recording_id": "pop-07",
+        "genre": "pop",
+        "file": "Pop7.mp3",
+        "sha256": "526ffe7e585217ea815cc1f53ca80b9deb10e6d874ba675a6dd1b2162c5dc812",
+        "skip_seconds": 10,
+        "analyzed_seconds": 55.536,
+        "measurements": {
+          "loudness": -15.477993278862003,
+          "bass": 93.86163840280781,
+          "treble": 0.5689021103349768,
+          "sharpness": 0.003887857825114864,
+          "flatness": 0.0003984016948379576
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 65.71877083333334,
+          "recovered_frame_percentage": 99.72188945256318,
+          "discarded_duration_seconds": 0.18277083333333333,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 65.536-second prefix (99.722% of declared frames); approximately 0.183 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 6,
+          "treble": 4
+        }
+      },
+      {
+        "recording_id": "pop-08",
+        "genre": "pop",
+        "file": "Pop8.mp3",
+        "sha256": "f3b17e42d27f99caff01b56e85b4ff99ddde30d0821089ab80cf0c836e792e41",
+        "skip_seconds": 10,
+        "analyzed_seconds": 63.728,
+        "measurements": {
+          "loudness": -15.148306891059354,
+          "bass": 92.58028059250157,
+          "treble": 0.5266775000259439,
+          "sharpness": 0.0015379344654973235,
+          "flatness": 0.00020933490304742008
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 74.734375,
+          "recovered_frame_percentage": 98.6533974492996,
+          "discarded_duration_seconds": 1.006375,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 73.728-second prefix (98.653% of declared frames); approximately 1.006 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 0,
+          "treble": 4
+        }
+      },
+      {
+        "recording_id": "pop-09",
+        "genre": "pop",
+        "file": "Pop9.mp3",
+        "sha256": "8966a054f1012c2d8c877b79a01e693eb2ca76679c20cb5f5c74af347e5d131f",
+        "skip_seconds": 10,
+        "analyzed_seconds": 71.92,
+        "measurements": {
+          "loudness": -16.104918301939342,
+          "bass": 74.76764847918025,
+          "treble": 1.2053011784694971,
+          "sharpness": 0.011748311922670032,
+          "flatness": 0.00027987841167487204
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 82.310375,
+          "recovered_frame_percentage": 99.52572807498447,
+          "discarded_duration_seconds": 0.390375,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 81.920-second prefix (99.526% of declared frames); approximately 0.390 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 2,
+          "treble": 4.5
+        }
+      },
+      {
+        "recording_id": "r&b-01",
+        "genre": "r&b",
+        "file": "rnb1.mp3",
+        "sha256": "776007271fb76a3f46daa5dbb47e66a28e93e69edc91c1588381572e4915bd7f",
+        "skip_seconds": 10,
+        "analyzed_seconds": 52.80533333333333,
+        "measurements": {
+          "loudness": -15.692957813506002,
+          "bass": 77.25944643075545,
+          "treble": 0.3491666288650628,
+          "sharpness": 0.0013713244013292814,
+          "flatness": 8.370367140742019e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 64.22608333333334,
+          "recovered_frame_percentage": 97.78789250992263,
+          "discarded_duration_seconds": 1.42075,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 62.805-second prefix (97.788% of declared frames); approximately 1.421 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": -8,
+          "treble": 4
+        }
+      },
+      {
+        "recording_id": "r&b-10",
+        "genre": "r&b",
+        "file": "rnb10.mp3",
+        "sha256": "c25b91c4a5b64dc958b1eab234aff6f87ecefe2e118023f5edce36a0c1a34706",
+        "skip_seconds": 10,
+        "analyzed_seconds": 58.266666666666666,
+        "measurements": {
+          "loudness": -18.28550617206181,
+          "bass": 83.0883593906772,
+          "treble": 0.02345734799198459,
+          "sharpness": 0.0006717594435784508,
+          "flatness": 2.5496387024759315e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 68.864875,
+          "recovered_frame_percentage": 99.13133025605094,
+          "discarded_duration_seconds": 0.5982083333333333,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 68.267-second prefix (99.131% of declared frames); approximately 0.598 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": -4,
+          "treble": -4
+        }
+      },
+      {
+        "recording_id": "r&b-11",
+        "genre": "r&b",
+        "file": "rnb11.mp3",
+        "sha256": "f3988192d35a000142b6a28a005eb15db9b15212886f7cc66c0b8a3bdb9de260",
+        "skip_seconds": 10,
+        "analyzed_seconds": 52.80533333333333,
+        "measurements": {
+          "loudness": -18.56343263514456,
+          "bass": 76.66814621777422,
+          "treble": 1.3712488106599572,
+          "sharpness": 0.011194926179243295,
+          "flatness": 0.0002969555789604783
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 63.739333333333335,
+          "recovered_frame_percentage": 98.5346567791735,
+          "discarded_duration_seconds": 0.934,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 62.805-second prefix (98.535% of declared frames); approximately 0.934 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 2,
+          "treble": 4
+        }
+      },
+      {
+        "recording_id": "r&b-12",
+        "genre": "r&b",
+        "file": "rnb12.mp3",
+        "sha256": "39581afc994882516a5fdbe77e4d9368004169abbf398103cd18e3d4dbabbc45",
+        "skip_seconds": 10,
+        "analyzed_seconds": 52.80533333333333,
+        "measurements": {
+          "loudness": -14.223245509010486,
+          "bass": 92.5362228362652,
+          "treble": 0.2054656157300314,
+          "sharpness": 0.0015953274047144526,
+          "flatness": 0.00011389711289666593
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 63.8111875,
+          "recovered_frame_percentage": 98.42370247902585,
+          "discarded_duration_seconds": 1.0058541666666667,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 62.805-second prefix (98.424% of declared frames); approximately 1.006 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 3,
+          "treble": null
+        }
+      },
+      {
+        "recording_id": "r&b-13",
+        "genre": "r&b",
+        "file": "rnb13.mp3",
+        "sha256": "10eeedea182dee1d689c39b4aa93d99d3db4d9abe6246d59ac3dd4158244919a",
+        "skip_seconds": 10,
+        "analyzed_seconds": 55.536,
+        "measurements": {
+          "loudness": -14.550806587011603,
+          "bass": 95.9106795054532,
+          "treble": 0.18386378866865158,
+          "sharpness": 0.0013600548962327352,
+          "flatness": 8.055842044996098e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 66.43420833333333,
+          "recovered_frame_percentage": 98.64797315138223,
+          "discarded_duration_seconds": 0.8982083333333334,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 65.536-second prefix (98.648% of declared frames); approximately 0.898 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 2,
+          "treble": 4
+        }
+      },
+      {
+        "recording_id": "r&b-14",
+        "genre": "r&b",
+        "file": "rnb14.mp3",
+        "sha256": "1213ac3cab3adbe36b5d4b957c9fb3c0522f9da03be52d0bb5b2e2e597f87e4a",
+        "skip_seconds": 10,
+        "analyzed_seconds": 65.09333333333333,
+        "measurements": {
+          "loudness": -18.198557266610212,
+          "bass": 75.82407785104205,
+          "treble": 0.15524483641940348,
+          "sharpness": 0.0009870205656420353,
+          "flatness": 5.4046366130933166e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 75.282625,
+          "recovered_frame_percentage": 99.74855862602205,
+          "discarded_duration_seconds": 0.18929166666666666,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 75.093-second prefix (99.749% of declared frames); approximately 0.189 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": -6,
+          "treble": -2
+        }
+      },
+      {
+        "recording_id": "r&b-15",
+        "genre": "r&b",
+        "file": "rnb15.mp3",
+        "sha256": "b26dda97b261b66189b9bfdb0e9420ed874e7cf05a633588d987367bd505c1b7",
+        "skip_seconds": 10,
+        "analyzed_seconds": 55.536,
+        "measurements": {
+          "loudness": -16.284479216845206,
+          "bass": 97.18696844083338,
+          "treble": 0.01297360276259785,
+          "sharpness": 0.0004035118410513102,
+          "flatness": 3.004717655130662e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 65.73666666666666,
+          "recovered_frame_percentage": 99.69474164596116,
+          "discarded_duration_seconds": 0.20066666666666666,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 65.536-second prefix (99.695% of declared frames); approximately 0.201 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": null,
+          "treble": 4
+        }
+      },
+      {
+        "recording_id": "r&b-02",
+        "genre": "r&b",
+        "file": "rnb2.mp3",
+        "sha256": "39d8330b5eb9cf2e715e4daa8b81681169d82c763f007c28fa503a61a9d7dd72",
+        "skip_seconds": 10,
+        "analyzed_seconds": 51.44,
+        "measurements": {
+          "loudness": -18.6219035440275,
+          "bass": 64.52875842077266,
+          "treble": 0.03915909746476456,
+          "sharpness": 0.0004020503656368534,
+          "flatness": 6.328584277071059e-06
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 62.90714583333333,
+          "recovered_frame_percentage": 97.66775965767005,
+          "discarded_duration_seconds": 1.4671458333333334,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 61.440-second prefix (97.668% of declared frames); approximately 1.467 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": -6,
+          "treble": -4
+        }
+      },
+      {
+        "recording_id": "r&b-03",
+        "genre": "r&b",
+        "file": "rnb3.mp3",
+        "sha256": "a435b3d828658377a2d2cba4bffcf9b07989ebaa7bc433033a74066c2a3848d4",
+        "skip_seconds": 10,
+        "analyzed_seconds": 58.266666666666666,
+        "measurements": {
+          "loudness": -13.729953008300791,
+          "bass": 83.08078940239184,
+          "treble": 0.029124544402828478,
+          "sharpness": 0.00027610200842461,
+          "flatness": 1.383356902806554e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 69.44964583333334,
+          "recovered_frame_percentage": 98.29663758184512,
+          "discarded_duration_seconds": 1.1829791666666667,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 68.267-second prefix (98.297% of declared frames); approximately 1.183 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": -4,
+          "treble": null
+        }
+      },
+      {
+        "recording_id": "r&b-04",
+        "genre": "r&b",
+        "file": "rnb4.mp3",
+        "sha256": "0d3e088e5534fa4387140039dc8adae4233363f999ad6ec29b4670321daee503",
+        "skip_seconds": 10,
+        "analyzed_seconds": 56.90133333333333,
+        "measurements": {
+          "loudness": -17.231133540761217,
+          "bass": 68.80548953929137,
+          "treble": 0.10878001395096742,
+          "sharpness": 0.0011260490085119935,
+          "flatness": 7.565865234937519e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 67.99877083333334,
+          "recovered_frame_percentage": 98.38609215056277,
+          "discarded_duration_seconds": 1.0974375,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 66.901-second prefix (98.386% of declared frames); approximately 1.097 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 1,
+          "treble": 8
+        }
+      },
+      {
+        "recording_id": "r&b-05",
+        "genre": "r&b",
+        "file": "rnb5.mp3",
+        "sha256": "2b0b7b5ebc7b100d1907033d1df96a684fec04f80cd58606df2375d9530106ac",
+        "skip_seconds": 10,
+        "analyzed_seconds": 63.728,
+        "measurements": {
+          "loudness": -21.73807686283284,
+          "bass": 54.76531987579717,
+          "treble": 0.17422298150686943,
+          "sharpness": 0.0008613517302398034,
+          "flatness": 6.260909867705777e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 74.199375,
+          "recovered_frame_percentage": 99.36471836858465,
+          "discarded_duration_seconds": 0.471375,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 73.728-second prefix (99.365% of declared frames); approximately 0.471 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": -4,
+          "treble": 6
+        }
+      },
+      {
+        "recording_id": "r&b-06",
+        "genre": "r&b",
+        "file": "rnb6.mp3",
+        "sha256": "f84831a1added474f05bcf7b3d82cd397c2b2439d0cda3960292138f46889bbd",
+        "skip_seconds": 10,
+        "analyzed_seconds": 55.536,
+        "measurements": {
+          "loudness": -17.98835603260675,
+          "bass": 62.65941009173207,
+          "treble": 0.40269635996804715,
+          "sharpness": 0.001682790183143096,
+          "flatness": 8.89234579517506e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 66.58116666666666,
+          "recovered_frame_percentage": 98.43023677866864,
+          "discarded_duration_seconds": 1.0451666666666666,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 65.536-second prefix (98.430% of declared frames); approximately 1.045 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": -6,
+          "treble": 0
+        }
+      },
+      {
+        "recording_id": "r&b-07",
+        "genre": "r&b",
+        "file": "rnb7.mp3",
+        "sha256": "eb2f9d6f2d58053e692a734a9792557267f77216b574ccd83ecb4391530246f9",
+        "skip_seconds": 10,
+        "analyzed_seconds": 55.536,
+        "measurements": {
+          "loudness": -20.67183743235488,
+          "bass": 61.6372471225468,
+          "treble": 1.5307047040294695,
+          "sharpness": 0.004491870134925008,
+          "flatness": 0.0001864500663941726
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 66.69489583333333,
+          "recovered_frame_percentage": 98.26239201837971,
+          "discarded_duration_seconds": 1.1588958333333332,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 65.536-second prefix (98.262% of declared frames); approximately 1.159 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": -2,
+          "treble": 2
+        }
+      },
+      {
+        "recording_id": "r&b-08",
+        "genre": "r&b",
+        "file": "rnb8.mp3",
+        "sha256": "1f871091b442d069d576bdeb647f4a3f1dbd145d8f842e586c8102227783b337",
+        "skip_seconds": 10,
+        "analyzed_seconds": 54.17066666666667,
+        "measurements": {
+          "loudness": -14.028464931975499,
+          "bass": 90.56910942884464,
+          "treble": 0.7028874779123511,
+          "sharpness": 0.007297402303251533,
+          "flatness": 0.0001700541324680671
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 64.94270833333333,
+          "recovered_frame_percentage": 98.81119576549844,
+          "discarded_duration_seconds": 0.7720416666666666,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 64.171-second prefix (98.811% of declared frames); approximately 0.772 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": -8,
+          "treble": -4
+        }
+      },
+      {
+        "recording_id": "r&b-09",
+        "genre": "r&b",
+        "file": "rnb9.mp3",
+        "sha256": "30aa5cf34c25331cce3d4d9478a2635c92334728f385225653335db2af47e112",
+        "skip_seconds": 10,
+        "analyzed_seconds": 70.55466666666666,
+        "measurements": {
+          "loudness": -19.10353644730062,
+          "bass": 84.13316800319609,
+          "treble": 2.1673303778075548,
+          "sharpness": 0.011837217095785384,
+          "flatness": 0.0002425202401354909
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 81.94254166666667,
+          "recovered_frame_percentage": 98.30628270520857,
+          "discarded_duration_seconds": 1.387875,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 80.555-second prefix (98.306% of declared frames); approximately 1.388 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 0,
+          "treble": -2
+        }
+      },
+      {
+        "recording_id": "rock-03",
+        "genre": "rock",
+        "file": "rock 3.mp3",
+        "sha256": "6900eb6b224559149cac92940e4c3b0862e2f91149dca02d5490be1480e734c3",
+        "skip_seconds": 10,
+        "analyzed_seconds": 81.47733333333333,
+        "measurements": {
+          "loudness": -15.126513461626837,
+          "bass": 95.71209775504414,
+          "treble": 0.0027122530719703194,
+          "sharpness": 0.0001597905069905176,
+          "flatness": 8.51544609759003e-06
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 91.83302083333334,
+          "recovered_frame_percentage": 99.61268017019114,
+          "discarded_duration_seconds": 0.3556875,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 91.477-second prefix (99.613% of declared frames); approximately 0.356 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 6,
+          "treble": 8
+        }
+      },
+      {
+        "recording_id": "rock-07",
+        "genre": "rock",
+        "file": "Rock 7.mp3",
+        "sha256": "3749127774caee09555a142de0cdfce5ba0ca5f931073963e6cb0809b59141e3",
+        "skip_seconds": 10,
+        "analyzed_seconds": 65.09333333333333,
+        "measurements": {
+          "loudness": -15.795750020838751,
+          "bass": 91.17959435033197,
+          "treble": 0.5053913477773794,
+          "sharpness": 0.0023820220379156343,
+          "flatness": 0.00010207157174590975
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 75.7743125,
+          "recovered_frame_percentage": 99.10130604396224,
+          "discarded_duration_seconds": 0.6809791666666667,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 75.093-second prefix (99.101% of declared frames); approximately 0.681 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 6,
+          "treble": null
+        }
+      },
+      {
+        "recording_id": "rock-08",
+        "genre": "rock",
+        "file": "Rock 8.mp3",
+        "sha256": "34751cdb03917f08767fa33147f1e36bfeb183e34c00f0718a558ca1b232eb1a",
+        "skip_seconds": 10,
+        "analyzed_seconds": 55.536,
+        "measurements": {
+          "loudness": -18.52666349764268,
+          "bass": 19.410995948526004,
+          "treble": 0.1359698021086238,
+          "sharpness": 0.0013309937397289126,
+          "flatness": 2.6457961212145165e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 66.0741875,
+          "recovered_frame_percentage": 99.18547995766123,
+          "discarded_duration_seconds": 0.5381875,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 65.536-second prefix (99.185% of declared frames); approximately 0.538 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 6,
+          "treble": 4
+        }
+      },
+      {
+        "recording_id": "rock-01",
+        "genre": "rock",
+        "file": "rock1.mp3",
+        "sha256": "73d3761b4aabf7d0efbabc8075d633fcbd431e63758a338a9ec5f353759a48d8",
+        "skip_seconds": 10,
+        "analyzed_seconds": 100.592,
+        "measurements": {
+          "loudness": -15.810696449291084,
+          "bass": 89.28281362960594,
+          "treble": 2.7822237336736446,
+          "sharpness": 0.009312456202393219,
+          "flatness": 0.0002518035180401057
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 111.91645833333334,
+          "recovered_frame_percentage": 98.8165651834795,
+          "discarded_duration_seconds": 1.3244583333333333,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 110.592-second prefix (98.817% of declared frames); approximately 1.324 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 5,
+          "treble": 6
+        }
+      },
+      {
+        "recording_id": "rock-10",
+        "genre": "rock",
+        "file": "rock10.mp3",
+        "sha256": "2c90944e4f57eecc7813a04884c0fa23c28dc979be008e2d92d2bce4daae9bf5",
+        "skip_seconds": 10,
+        "analyzed_seconds": 63.728,
+        "measurements": {
+          "loudness": -18.07883572970223,
+          "bass": 94.66916345076183,
+          "treble": 0.49634765699752714,
+          "sharpness": 0.0036564805039273132,
+          "flatness": 0.00014589476631954312
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 74.007375,
+          "recovered_frame_percentage": 99.6225038382999,
+          "discarded_duration_seconds": 0.279375,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 73.728-second prefix (99.623% of declared frames); approximately 0.279 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 10,
+          "treble": 6
+        }
+      },
+      {
+        "recording_id": "rock-11",
+        "genre": "rock",
+        "file": "rock11.mp3",
+        "sha256": "f3502e3b154051ee089e3e5dc1a188d72cd0b7a69981027f41ccd3837695f9ee",
+        "skip_seconds": 10,
+        "analyzed_seconds": 51.44,
+        "measurements": {
+          "loudness": -16.27583854669005,
+          "bass": 96.27686163540199,
+          "treble": 0.26019711752013275,
+          "sharpness": 0.001649975859927467,
+          "flatness": 8.931400952860713e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 62.709375,
+          "recovered_frame_percentage": 97.97578113320377,
+          "discarded_duration_seconds": 1.269375,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 61.440-second prefix (97.976% of declared frames); approximately 1.269 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 8,
+          "treble": 10
+        }
+      },
+      {
+        "recording_id": "rock-12",
+        "genre": "rock",
+        "file": "rock12.mp3",
+        "sha256": "b6f5053b1e048c32c1ba51c594c04088354826fe19b0189ba5948ecd8ca7caa4",
+        "skip_seconds": 10,
+        "analyzed_seconds": 59.632,
+        "measurements": {
+          "loudness": -15.006490015365157,
+          "bass": 94.20057044600371,
+          "treble": 0.34447572423982903,
+          "sharpness": 0.002064011494515164,
+          "flatness": 9.007695916807279e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 69.8309375,
+          "recovered_frame_percentage": 99.71511552454812,
+          "discarded_duration_seconds": 0.1989375,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 69.632-second prefix (99.715% of declared frames); approximately 0.199 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 10,
+          "treble": 2
+        }
+      },
+      {
+        "recording_id": "rock-13",
+        "genre": "rock",
+        "file": "rock13.mp3",
+        "sha256": "1846f863f22ce0fe9fdd7b1d34ad496b58cf0e96b5036f6977e0fa060cb74387",
+        "skip_seconds": 10,
+        "analyzed_seconds": 71.92,
+        "measurements": {
+          "loudness": -13.273034738422925,
+          "bass": 96.4878656469557,
+          "treble": 0.35961803647231894,
+          "sharpness": 0.0017992902765389864,
+          "flatness": 5.598100688075647e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 83.10677083333333,
+          "recovered_frame_percentage": 98.57199260489456,
+          "discarded_duration_seconds": 1.1867708333333333,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 81.920-second prefix (98.572% of declared frames); approximately 1.187 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 8,
+          "treble": 4
+        }
+      },
+      {
+        "recording_id": "rock-14",
+        "genre": "rock",
+        "file": "Rock14.mp3",
+        "sha256": "513c884ccd58f4a26c7efb3da7b48c867e0cb964947fc4796f875c40fb62ba5c",
+        "skip_seconds": 10,
+        "analyzed_seconds": 51.44,
+        "measurements": {
+          "loudness": -11.96509869591854,
+          "bass": 88.2248493150539,
+          "treble": 0.07749701208653165,
+          "sharpness": 0.0003061862565698862,
+          "flatness": 1.5072900168888737e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 62.116166666666665,
+          "recovered_frame_percentage": 98.91144817371752,
+          "discarded_duration_seconds": 0.6761666666666667,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 61.440-second prefix (98.911% of declared frames); approximately 0.676 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": -2,
+          "treble": -4
+        }
+      },
+      {
+        "recording_id": "rock-15",
+        "genre": "rock",
+        "file": "rock15.mp3",
+        "sha256": "128e6c962d58a96d5723dd3c3d78bc02f1ea44ca1bb76ac712b618409a512298",
+        "skip_seconds": 10,
+        "analyzed_seconds": 52.80533333333333,
+        "measurements": {
+          "loudness": -12.212595276904151,
+          "bass": 88.00667782831545,
+          "treble": 0.0558043535584149,
+          "sharpness": 0.0004221690738440966,
+          "flatness": 3.0930244975024834e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 63.796875,
+          "recovered_frame_percentage": 98.44578332925137,
+          "discarded_duration_seconds": 0.9915416666666667,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 62.805-second prefix (98.446% of declared frames); approximately 0.992 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 4,
+          "treble": 2
+        }
+      },
+      {
+        "recording_id": "rock-02",
+        "genre": "rock",
+        "file": "rock2.mp3",
+        "sha256": "3b2f2ebf450b214a532386907883625f3446fd9b665ee7747528708cb53ab71a",
+        "skip_seconds": 10,
+        "analyzed_seconds": 73.28533333333333,
+        "measurements": {
+          "loudness": -21.972950616736814,
+          "bass": 92.10538478797157,
+          "treble": 0.27016603508273535,
+          "sharpness": 0.0012692166194863339,
+          "flatness": 7.058356277411804e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 84.65191666666666,
+          "recovered_frame_percentage": 98.38564395568913,
+          "discarded_duration_seconds": 1.3665833333333333,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 83.285-second prefix (98.386% of declared frames); approximately 1.367 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 6.5,
+          "treble": 8
+        }
+      },
+      {
+        "recording_id": "rock-04",
+        "genre": "rock",
+        "file": "Rock4.mp3",
+        "sha256": "61c2cd934cc353f35800f1f3122e3063744cf6e8ed4372eb41f0bd27ccc5c3ce",
+        "skip_seconds": 10,
+        "analyzed_seconds": 63.728,
+        "measurements": {
+          "loudness": -13.550537958524586,
+          "bass": 82.35501041097677,
+          "treble": 0.8305558445445091,
+          "sharpness": 0.0031782367270046206,
+          "flatness": 0.00014689474483020604
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 74.860375,
+          "recovered_frame_percentage": 98.48735061773334,
+          "discarded_duration_seconds": 1.132375,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 73.728-second prefix (98.487% of declared frames); approximately 1.132 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 10,
+          "treble": 4
+        }
+      },
+      {
+        "recording_id": "rock-05",
+        "genre": "rock",
+        "file": "Rock5.mp3",
+        "sha256": "97328a092dcbd4463836ec85d1760ac017edd446aad425f7cb9f28fc904b1858",
+        "skip_seconds": 10,
+        "analyzed_seconds": 62.36266666666667,
+        "measurements": {
+          "loudness": -17.66996119235496,
+          "bass": 94.88236748356587,
+          "treble": 0.04983979590255009,
+          "sharpness": 0.0010313993898088496,
+          "flatness": 7.768287468934432e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 72.6448125,
+          "recovered_frame_percentage": 99.61160911065284,
+          "discarded_duration_seconds": 0.2821458333333333,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 72.363-second prefix (99.612% of declared frames); approximately 0.282 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 7,
+          "treble": -2
+        }
+      },
+      {
+        "recording_id": "rock-06",
+        "genre": "rock",
+        "file": "Rock6.mp3",
+        "sha256": "ccc77ae69183fbbd8b48d55c14cfcd83168c8bbec40f659c527f7d6f7f74027c",
+        "skip_seconds": 10,
+        "analyzed_seconds": 58.266666666666666,
+        "measurements": {
+          "loudness": -13.965520285735092,
+          "bass": 90.96400144111253,
+          "treble": 0.45024623878154973,
+          "sharpness": 0.0034179964488526616,
+          "flatness": 9.856509859673679e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 68.7976875,
+          "recovered_frame_percentage": 99.22814144976408,
+          "discarded_duration_seconds": 0.5310208333333334,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 68.267-second prefix (99.228% of declared frames); approximately 0.531 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 4,
+          "treble": 3
+        }
+      },
+      {
+        "recording_id": "rock-09",
+        "genre": "rock",
+        "file": "Rock9.mp3",
+        "sha256": "4ecc5450c88354cc52a36504a95b8ff38f0e1370b055045d2772460d7598280b",
+        "skip_seconds": 10,
+        "analyzed_seconds": 56.90133333333333,
+        "measurements": {
+          "loudness": -15.421785395071632,
+          "bass": 69.43381630895463,
+          "treble": 0.053649734849909654,
+          "sharpness": 0.0004473835821423543,
+          "flatness": 2.123367266904097e-05
+        },
+        "decoding": {
+          "container_format": "MP3",
+          "container_subtype": "MPEG_LAYER_III",
+          "source_channels": 2,
+          "decode_status": "recovered_partial",
+          "declared_duration_seconds": 67.6674375,
+          "recovered_frame_percentage": 98.86783925183119,
+          "discarded_duration_seconds": 0.7661041666666667,
+          "recovery_warning": "Input corruption was detected. Analysis uses the readable 66.901-second prefix (98.868% of declared frames); approximately 0.766 seconds at the damaged tail were discarded."
+        },
+        "knob_positions": {
+          "bass": 4,
+          "treble": -6
+        }
+      }
+    ]
+  },
   "genres": {
-    "hip-hop": {
-      "corpus_status": "unverified",
-      "metrics": {
-        "bass": {
-          "lower": 46.79280479264193,
-          "preferred": 66.33088004809743,
-          "robust_scale": 31.52612874128792,
-          "unit": "percent",
-          "upper": 78.31893353392985
-        },
-        "flatness": {
-          "lower": 0.0005821558879688382,
-          "preferred": 0.0009054166730493307,
-          "robust_scale": 0.0008545535383746028,
-          "unit": "ratio",
-          "upper": 0.001436709426343441
-        },
-        "loudness": {
-          "lower": -19.800129836132584,
-          "preferred": -16.724406775148275,
-          "robust_scale": 4.310068735263064,
-          "unit": "LUFS",
-          "upper": -15.49006110086952
-        },
-        "sharpness": {
-          "lower": 0.007717178831216268,
-          "preferred": 0.008140305158715787,
-          "robust_scale": 0.0015562853648255163,
-          "unit": "normalized_score",
-          "upper": 0.009273464196041784
-        },
-        "treble": {
-          "lower": 2.0648587330140655,
-          "preferred": 3.419924512059012,
-          "robust_scale": 2.9847824941794663,
-          "unit": "percent",
-          "upper": 5.049641227193532
-        }
-      },
-      "sample_count": 5
-    },
     "pop": {
+      "sample_count": 15,
       "corpus_status": "unverified",
       "metrics": {
-        "bass": {
-          "lower": 46.460287482802485,
-          "preferred": 85.7336141911991,
-          "robust_scale": 41.29737095716901,
-          "unit": "percent",
-          "upper": 87.7576584399715
-        },
-        "flatness": {
-          "lower": 5.905466605327092e-05,
-          "preferred": 0.000249164120759815,
-          "robust_scale": 0.0007108325698936824,
-          "unit": "ratio",
-          "upper": 0.0007698872359469533
-        },
         "loudness": {
-          "lower": -23.46070680218081,
-          "preferred": -16.547750479271734,
-          "robust_scale": 8.93561513049913,
-          "unit": "LUFS",
-          "upper": -14.525091671681679
+          "lower": -16.18627709181238,
+          "preferred": -15.677337251213675,
+          "upper": -15.221806746152502,
+          "robust_scale": 0.9644703456598762,
+          "unit": "LUFS"
         },
-        "sharpness": {
-          "lower": 0.0016377587422618854,
-          "preferred": 0.0025366941964055905,
-          "robust_scale": 0.00267640184934273,
-          "unit": "normalized_score",
-          "upper": 0.004314160591604615
+        "bass": {
+          "lower": 79.7897226429786,
+          "preferred": 87.48013758114202,
+          "upper": 93.22095949765469,
+          "robust_scale": 13.431236854676087,
+          "unit": "percent"
         },
         "treble": {
-          "lower": 0.30515004163734216,
-          "preferred": 0.7183480160297048,
-          "robust_scale": 0.6690706486332927,
-          "unit": "percent",
-          "upper": 0.9742206902706348
+          "lower": 0.08720896546386708,
+          "preferred": 0.44103898180892903,
+          "upper": 0.6799446715257564,
+          "robust_scale": 0.5927357060618894,
+          "unit": "percent"
+        },
+        "sharpness": {
+          "lower": 0.0010649745954780258,
+          "preferred": 0.0013112536366331731,
+          "upper": 0.004302512177842649,
+          "robust_scale": 0.003237537582364623,
+          "unit": "normalized_score"
+        },
+        "flatness": {
+          "lower": 6.936042700544931e-05,
+          "preferred": 0.00012673399760387838,
+          "upper": 0.00025475805887253955,
+          "robust_scale": 0.00018539763186709024,
+          "unit": "ratio"
         }
       },
-      "sample_count": 5
+      "knob_preferences": {
+        "bass": {
+          "lower": -1.0,
+          "preferred": 2.0,
+          "upper": 4.0,
+          "robust_scale": 5.0,
+          "unit": "knob_position"
+        },
+        "treble": {
+          "lower": 4.0,
+          "preferred": 4.0,
+          "upper": 4.5,
+          "robust_scale": 0.5,
+          "unit": "knob_position"
+        }
+      }
+    },
+    "r&b": {
+      "sample_count": 15,
+      "corpus_status": "unverified",
+      "metrics": {
+        "loudness": {
+          "lower": -18.59266808958603,
+          "preferred": -17.98835603260675,
+          "upper": -15.121882200258803,
+          "robust_scale": 3.470785889327228,
+          "unit": "LUFS"
+        },
+        "bass": {
+          "lower": 66.66712398003202,
+          "preferred": 77.25944643075545,
+          "upper": 87.35113871602036,
+          "robust_scale": 20.68401473598834,
+          "unit": "percent"
+        },
+        "treble": {
+          "lower": 0.073969555707866,
+          "preferred": 0.18386378866865158,
+          "upper": 0.5527919189401991,
+          "robust_scale": 0.47882236323233307,
+          "unit": "percent"
+        },
+        "sharpness": {
+          "lower": 0.0007665555869091271,
+          "preferred": 0.0013600548962327352,
+          "upper": 0.003087330159034052,
+          "robust_scale": 0.002320774572124925,
+          "unit": "normalized_score"
+        },
+        "flatness": {
+          "lower": 4.204677134111989e-05,
+          "preferred": 8.055842044996098e-05,
+          "upper": 0.00014197562268236652,
+          "robust_scale": 9.992885134124663e-05,
+          "unit": "ratio"
+        }
+      },
+      "knob_preferences": {
+        "bass": {
+          "lower": -6.0,
+          "preferred": -4.0,
+          "upper": 0.75,
+          "robust_scale": 6.75,
+          "unit": "knob_position"
+        },
+        "treble": {
+          "lower": -2.0,
+          "preferred": 2.0,
+          "upper": 4.0,
+          "robust_scale": 6.0,
+          "unit": "knob_position"
+        }
+      }
     },
     "rock": {
+      "sample_count": 15,
       "corpus_status": "unverified",
       "metrics": {
-        "bass": {
-          "lower": 51.19678641799934,
-          "preferred": 59.84529984320525,
-          "robust_scale": 12.649779031204247,
-          "unit": "percent",
-          "upper": 63.84656544920359
-        },
-        "flatness": {
-          "lower": 0.0007429551333189011,
-          "preferred": 0.0008430358138866723,
-          "robust_scale": 0.00027030601631850004,
-          "unit": "ratio",
-          "upper": 0.001013261149637401
-        },
         "loudness": {
-          "lower": -23.003370042041308,
-          "preferred": -20.503566941716983,
-          "robust_scale": 4.126243120122545,
-          "unit": "LUFS",
-          "upper": -18.877126921918762
+          "lower": -16.972899869522507,
+          "preferred": -15.421785395071632,
+          "upper": -13.75802912212984,
+          "robust_scale": 3.214870747392668,
+          "unit": "LUFS"
         },
-        "sharpness": {
-          "lower": 0.004248705787209505,
-          "preferred": 0.005395643651748831,
-          "robust_scale": 0.002140540722512254,
-          "unit": "normalized_score",
-          "upper": 0.006389246509721759
+        "bass": {
+          "lower": 88.11576357168468,
+          "preferred": 91.17959435033197,
+          "upper": 94.77576546716385,
+          "robust_scale": 6.660001895479169,
+          "unit": "percent"
         },
         "treble": {
-          "lower": 1.9887074750599878,
-          "preferred": 2.4007683540428153,
-          "robust_scale": 1.2670877555753421,
-          "unit": "percent",
-          "upper": 3.25579523063533
+          "lower": 0.06665068282247327,
+          "preferred": 0.27016603508273535,
+          "upper": 0.47329694788953847,
+          "robust_scale": 0.4066462650670652,
+          "unit": "percent"
+        },
+        "sharpness": {
+          "lower": 0.0007393914859756019,
+          "preferred": 0.001649975859927467,
+          "upper": 0.0027801293824601275,
+          "robust_scale": 0.0020407378964845254,
+          "unit": "normalized_score"
+        },
+        "flatness": {
+          "lower": 2.8694103093585e-05,
+          "preferred": 7.768287468934432e-05,
+          "upper": 0.00010031833517132327,
+          "robust_scale": 7.162423207773827e-05,
+          "unit": "ratio"
         }
       },
-      "sample_count": 5
+      "knob_preferences": {
+        "bass": {
+          "lower": 4.5,
+          "preferred": 6.0,
+          "upper": 8.0,
+          "robust_scale": 3.5,
+          "unit": "knob_position"
+        },
+        "treble": {
+          "lower": 2.0,
+          "preferred": 4.0,
+          "upper": 6.0,
+          "robust_scale": 4.0,
+          "unit": "knob_position"
+        }
+      }
     }
   },
-  "profile_version": "2026.09.1",
-  "schema_version": 1,
-  "sources": [
-    {
-      "calculation_method": "NumPy linear p25/median/p75; robust_scale=max(p75-p25, abs(median)*0.05, 1e-9)",
-      "citation_url": "https://github.com/mdeff/fma",
-      "compatible_feature_notes": "All five values were re-extracted from source audio by KaraOK's analyzer; no external precomputed features were mixed into the profiles.",
-      "license": "Attribution",
-      "recordings": [
-        {
-          "genre": "rock",
-          "instrumental_status": "unverified",
-          "recording_id": "fma:3833"
-        },
-        {
-          "genre": "rock",
-          "instrumental_status": "unverified",
-          "recording_id": "fma:3950"
-        },
-        {
-          "genre": "rock",
-          "instrumental_status": "unverified",
-          "recording_id": "fma:6776"
-        }
-      ],
-      "release": "2017-05-09; fma_small SHA1 ade154f733639d52e35e32f5593efe5be76c6d70",
-      "selection_filters": {
-        "individual_license": "Attribution",
-        "measurement_source": "KaraOK audio_engine.analyze_audio"
-      },
-      "source": "Free Music Archive (FMA) small"
-    },
-    {
-      "calculation_method": "NumPy linear p25/median/p75; robust_scale=max(p75-p25, abs(median)*0.05, 1e-9)",
-      "citation_url": "https://github.com/mdeff/fma",
-      "compatible_feature_notes": "All five values were re-extracted from source audio by KaraOK's analyzer; no external precomputed features were mixed into the profiles.",
-      "license": "Attribution 2.0 UK: England",
-      "recordings": [
-        {
-          "genre": "rock",
-          "instrumental_status": "unverified",
-          "recording_id": "fma:11933"
-        }
-      ],
-      "release": "2017-05-09; fma_small SHA1 ade154f733639d52e35e32f5593efe5be76c6d70",
-      "selection_filters": {
-        "individual_license": "Attribution 2.0 UK: England",
-        "measurement_source": "KaraOK audio_engine.analyze_audio"
-      },
-      "source": "Free Music Archive (FMA) small"
-    },
-    {
-      "calculation_method": "NumPy linear p25/median/p75; robust_scale=max(p75-p25, abs(median)*0.05, 1e-9)",
-      "citation_url": "https://github.com/mdeff/fma",
-      "compatible_feature_notes": "All five values were re-extracted from source audio by KaraOK's analyzer; no external precomputed features were mixed into the profiles.",
-      "license": "Attribution 2.5 Canada",
-      "recordings": [
-        {
-          "genre": "hip-hop",
-          "instrumental_status": "unverified",
-          "recording_id": "fma:11204"
-        }
-      ],
-      "release": "2017-05-09; fma_small SHA1 ade154f733639d52e35e32f5593efe5be76c6d70",
-      "selection_filters": {
-        "individual_license": "Attribution 2.5 Canada",
-        "measurement_source": "KaraOK audio_engine.analyze_audio"
-      },
-      "source": "Free Music Archive (FMA) small"
-    },
-    {
-      "calculation_method": "NumPy linear p25/median/p75; robust_scale=max(p75-p25, abs(median)*0.05, 1e-9)",
-      "citation_url": "https://github.com/mdeff/fma",
-      "compatible_feature_notes": "All five values were re-extracted from source audio by KaraOK's analyzer; no external precomputed features were mixed into the profiles.",
-      "license": "Attribution 3.0 International",
-      "recordings": [
-        {
-          "genre": "hip-hop",
-          "instrumental_status": "unverified",
-          "recording_id": "fma:11916"
-        }
-      ],
-      "release": "2017-05-09; fma_small SHA1 ade154f733639d52e35e32f5593efe5be76c6d70",
-      "selection_filters": {
-        "individual_license": "Attribution 3.0 International",
-        "measurement_source": "KaraOK audio_engine.analyze_audio"
-      },
-      "source": "Free Music Archive (FMA) small"
-    },
-    {
-      "calculation_method": "NumPy linear p25/median/p75; robust_scale=max(p75-p25, abs(median)*0.05, 1e-9)",
-      "citation_url": "https://github.com/mdeff/fma",
-      "compatible_feature_notes": "All five values were re-extracted from source audio by KaraOK's analyzer; no external precomputed features were mixed into the profiles.",
-      "license": "Attribution 3.0 United States",
-      "recordings": [
-        {
-          "genre": "hip-hop",
-          "instrumental_status": "unverified",
-          "recording_id": "fma:7481"
-        },
-        {
-          "genre": "pop",
-          "instrumental_status": "unverified",
-          "recording_id": "fma:22472"
-        }
-      ],
-      "release": "2017-05-09; fma_small SHA1 ade154f733639d52e35e32f5593efe5be76c6d70",
-      "selection_filters": {
-        "individual_license": "Attribution 3.0 United States",
-        "measurement_source": "KaraOK audio_engine.analyze_audio"
-      },
-      "source": "Free Music Archive (FMA) small"
-    },
-    {
-      "calculation_method": "NumPy linear p25/median/p75; robust_scale=max(p75-p25, abs(median)*0.05, 1e-9)",
-      "citation_url": "https://github.com/mdeff/fma",
-      "compatible_feature_notes": "All five values were re-extracted from source audio by KaraOK's analyzer; no external precomputed features were mixed into the profiles.",
-      "license": "Attribution-Share Alike 3.0 Germany",
-      "recordings": [
-        {
-          "genre": "hip-hop",
-          "instrumental_status": "unverified",
-          "recording_id": "fma:12173"
-        }
-      ],
-      "release": "2017-05-09; fma_small SHA1 ade154f733639d52e35e32f5593efe5be76c6d70",
-      "selection_filters": {
-        "individual_license": "Attribution-Share Alike 3.0 Germany",
-        "measurement_source": "KaraOK audio_engine.analyze_audio"
-      },
-      "source": "Free Music Archive (FMA) small"
-    },
-    {
-      "calculation_method": "NumPy linear p25/median/p75; robust_scale=max(p75-p25, abs(median)*0.05, 1e-9)",
-      "citation_url": "https://github.com/mdeff/fma",
-      "compatible_feature_notes": "All five values were re-extracted from source audio by KaraOK's analyzer; no external precomputed features were mixed into the profiles.",
-      "license": "Attribution-ShareAlike 3.0 International",
-      "recordings": [
-        {
-          "genre": "pop",
-          "instrumental_status": "unverified",
-          "recording_id": "fma:12179"
-        },
-        {
-          "genre": "pop",
-          "instrumental_status": "unverified",
-          "recording_id": "fma:62436"
-        },
-        {
-          "genre": "pop",
-          "instrumental_status": "unverified",
-          "recording_id": "fma:74945"
-        },
-        {
-          "genre": "rock",
-          "instrumental_status": "unverified",
-          "recording_id": "fma:13556"
-        }
-      ],
-      "release": "2017-05-09; fma_small SHA1 ade154f733639d52e35e32f5593efe5be76c6d70",
-      "selection_filters": {
-        "individual_license": "Attribution-ShareAlike 3.0 International",
-        "measurement_source": "KaraOK audio_engine.analyze_audio"
-      },
-      "source": "Free Music Archive (FMA) small"
-    },
-    {
-      "calculation_method": "NumPy linear p25/median/p75; robust_scale=max(p75-p25, abs(median)*0.05, 1e-9)",
-      "citation_url": "https://github.com/mdeff/fma",
-      "compatible_feature_notes": "All five values were re-extracted from source audio by KaraOK's analyzer; no external precomputed features were mixed into the profiles.",
-      "license": "Creative Commons Attribution",
-      "recordings": [
-        {
-          "genre": "hip-hop",
-          "instrumental_status": "unverified",
-          "recording_id": "fma:10693"
-        }
-      ],
-      "release": "2017-05-09; fma_small SHA1 ade154f733639d52e35e32f5593efe5be76c6d70",
-      "selection_filters": {
-        "individual_license": "Creative Commons Attribution",
-        "measurement_source": "KaraOK audio_engine.analyze_audio"
-      },
-      "source": "Free Music Archive (FMA) small"
-    },
-    {
-      "calculation_method": "NumPy linear p25/median/p75; robust_scale=max(p75-p25, abs(median)*0.05, 1e-9)",
-      "citation_url": "https://github.com/mdeff/fma",
-      "compatible_feature_notes": "All five values were re-extracted from source audio by KaraOK's analyzer; no external precomputed features were mixed into the profiles.",
-      "license": "Public Domain",
-      "recordings": [
-        {
-          "genre": "pop",
-          "instrumental_status": "unverified",
-          "recording_id": "fma:21995"
-        }
-      ],
-      "release": "2017-05-09; fma_small SHA1 ade154f733639d52e35e32f5593efe5be76c6d70",
-      "selection_filters": {
-        "individual_license": "Public Domain",
-        "measurement_source": "KaraOK audio_engine.analyze_audio"
-      },
-      "source": "Free Music Archive (FMA) small"
-    }
-  ]
+  "artifact_checksum": "acefe9949cd6eb8f8a713bcd4d0b5080820bcdd7de81f25e81676388d0c9f03d"
 }

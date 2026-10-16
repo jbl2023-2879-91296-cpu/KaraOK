@@ -45,12 +45,13 @@ extension AudioAnalysisPurposeDetails on AudioAnalysisPurpose {
     AudioAnalysisPurpose.qualityEvaluation =>
       'Record audio or select an audio file to evaluate its sound quality.',
     AudioAnalysisPurpose.settingsSuggestion =>
-      'Record the karaoke machine\'s rendered instrumental playback or select a rendered audio file to generate five amplifier settings.',
+      'Record playback at your entered knob positions. Evaluate its genre balance, then view Bass and Treble suggestions from the same recording.',
   };
 
   String get submitLabel => switch (this) {
     AudioAnalysisPurpose.qualityEvaluation => 'Evaluate Audio Quality',
-    AudioAnalysisPurpose.settingsSuggestion => 'Generate Settings Suggestion',
+    AudioAnalysisPurpose.settingsSuggestion =>
+      'Evaluate Audio and Suggest Settings',
   };
 
   String get requestValue => switch (this) {
@@ -71,10 +72,12 @@ Widget audioResultDestination({
   required Map<dynamic, dynamic> record,
   required AudioAnalysisPurpose purpose,
   required bool isGuest,
+  bool showEvaluationFirst = false,
   ValueChanged<SettingsSuggestionInput>? onVerify,
 }) {
   final rawRecommendation = record['settings_recommendation'];
   if (purpose == AudioAnalysisPurpose.settingsSuggestion &&
+      !showEvaluationFirst &&
       rawRecommendation is Map) {
     final rawSafetySignals = record['safety_signals'];
     return SettingsRecommendationScreen(
@@ -545,10 +548,15 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
         ..['test_name'] = item.fileName
         ..['status'] = response['result_status']
         ..['analysis_purpose'] = widget.purpose.requestValue;
+      final isInitialSettingsEvaluation =
+          widget.purpose == AudioAnalysisPurpose.settingsSuggestion &&
+          widget.settingsSuggestion?.verificationOf == null &&
+          widget.settingsSuggestion?.verificationToken == null;
       final destination = completed
           ? audioResultDestination(
               record: result,
               purpose: widget.purpose,
+              showEvaluationFirst: isInitialSettingsEvaluation,
               isGuest: isGuest,
               onVerify: _openVerification,
             )

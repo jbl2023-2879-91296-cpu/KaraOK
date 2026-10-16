@@ -22,6 +22,7 @@ from .summary import _analysis_safety_signals
 from .summary import _empirical_feature_values
 from .summary import _score_analyzer_output
 from .summary import summarize_audio_analysis
+from .summary import apply_genre_evaluation
 from .uploads import AudioDurationError
 from .uploads import MIDI_RENDERED_AUDIO_MESSAGE
 from .uploads import audio_duration_seconds
@@ -148,6 +149,7 @@ def create_guest_audio_analysis():
                 original_name=original_name,
                 analysis_purpose=analysis_purpose,
             )
+            apply_genre_evaluation(analysis_dump, suggestion_context.genre if suggestion_context else request.form.get("genre"))
             analysis_summary = summarize_audio_analysis(analysis_dump)
             settings_payload = None
             if suggestion_context is not None:
@@ -322,6 +324,7 @@ def create_audio_upload():
             original_name=original_name,
             analysis_purpose=analysis_purpose,
         )
+        apply_genre_evaluation(analysis_dump, genre)
         recommendation = None
         if suggestion_context is not None:
             recommendation = settings_recommendation_service.build_recommendation(

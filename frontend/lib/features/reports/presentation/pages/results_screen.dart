@@ -286,7 +286,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         OutlinedButton.icon(
                           onPressed: _openGeneratedSettings,
                           icon: const Icon(Icons.tune),
-                          label: const Text('View Generated Settings'),
+                          label: const Text('Generate Audio Settings'),
                         ),
                         const SizedBox(height: 20),
                       ],

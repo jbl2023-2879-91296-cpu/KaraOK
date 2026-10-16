@@ -113,7 +113,7 @@ class SettingsTrialValidationTests(unittest.TestCase):
                 writer = csv.DictWriter(stream, fieldnames=FIELDS)
                 writer.writeheader()
                 writer.writerow(trial("trial-2", 75, 76, genre="pop"))
-                writer.writerow(trial("trial-1", 60, 68, genre="hip-hop"))
+                writer.writerow(trial("trial-1", 60, 68, genre="r&b"))
 
             self.assertEqual(main([str(source), "--output", str(first)]), 0)
             self.assertEqual(main([str(source), "--output", str(second)]), 0)

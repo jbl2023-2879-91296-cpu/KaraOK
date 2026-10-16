@@ -410,8 +410,8 @@ def get_profile_metadata() -> dict[str, Any]:
     return {
         "profile_version": genre.profile_version,
         "profile_checksum": genre.artifact_checksum,
-        "quality_profile_version": quality["quality_profile_version"],
-        "quality_profile_checksum": quality["artifact_checksum"],
+        "quality_profile_version": genre.profile_version if genre.schema_version == 2 else quality["quality_profile_version"],
+        "quality_profile_checksum": genre.artifact_checksum if genre.schema_version == 2 else quality["artifact_checksum"],
         "enabled_genres": sorted(genre.genres),
         "control_priors": priors.to_metadata(),
     }

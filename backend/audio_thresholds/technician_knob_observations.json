@@ -1,0 +1,28 @@
+{
+  "scale": {"minimum": -10, "maximum": 10},
+  "source_images": ["87b54242-4c87-4a58-877c-3b3c9d074517.jpe", "8d1ecbb6-a824-45ee-a692-baf372c1d2b2.jpe", "8d9b0e9c-530e-4ffa-b60e-9ba7532ec8c8.jpe"],
+  "notes": "Rows follow song numbers 1 through 15. Null values are ambiguous handwriting excluded from knob statistics: Rock 7 treble, R&B 3 treble, R&B 12 treble, R&B 15 bass. Confirm against technician notes before filling them. Positions are absolute, not adjustment deltas. The source equipment model is not recorded.",
+  "genres": {
+    "pop": [
+      {"bass": -4, "treble": 4}, {"bass": -4, "treble": 4}, {"bass": -4, "treble": 4},
+      {"bass": 2, "treble": 6}, {"bass": 4, "treble": 6}, {"bass": 4, "treble": 4.5},
+      {"bass": 6, "treble": 4}, {"bass": 0, "treble": 4}, {"bass": 2, "treble": 4.5},
+      {"bass": 4, "treble": 4}, {"bass": 4, "treble": 4}, {"bass": -2, "treble": 6},
+      {"bass": 6, "treble": 2}, {"bass": 4, "treble": 0}, {"bass": 2, "treble": 2}
+    ],
+    "rock": [
+      {"bass": 5, "treble": 6}, {"bass": 6.5, "treble": 8}, {"bass": 6, "treble": 8},
+      {"bass": 10, "treble": 4}, {"bass": 7, "treble": -2}, {"bass": 4, "treble": 3},
+      {"bass": 6, "treble": null}, {"bass": 6, "treble": 4}, {"bass": 4, "treble": -6},
+      {"bass": 10, "treble": 6}, {"bass": 8, "treble": 10}, {"bass": 10, "treble": 2},
+      {"bass": 8, "treble": 4}, {"bass": -2, "treble": -4}, {"bass": 4, "treble": 2}
+    ],
+    "r&b": [
+      {"bass": -8, "treble": 4}, {"bass": -6, "treble": -4}, {"bass": -4, "treble": null},
+      {"bass": 1, "treble": 8}, {"bass": -4, "treble": 6}, {"bass": -6, "treble": 0},
+      {"bass": -2, "treble": 2}, {"bass": -8, "treble": -4}, {"bass": 0, "treble": -2},
+      {"bass": -4, "treble": -4}, {"bass": 2, "treble": 4}, {"bass": 3, "treble": null},
+      {"bass": 2, "treble": 4}, {"bass": -6, "treble": -2}, {"bass": null, "treble": 4}
+    ]
+  }
+}
