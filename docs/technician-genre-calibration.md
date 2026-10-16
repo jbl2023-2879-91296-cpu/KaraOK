@@ -18,9 +18,24 @@ Use the same passage, volume and recording placement for the comparison.
 The existing `SETTINGS_RECOMMENDATIONS_ENABLED=true` deployment setting is still
 required. **Evaluate only, without knob suggestions** remains available when
 settings generation is disabled. Existing amplifier profiles and the five-field
-API are retained; Volume, Sharpness and Flatness remain unchanged by technician
-recommendations. Select **-10 to +10 (technician reference)** for the documented
+API are retained. Volume follows the selected genre's loudness interval.
+Sharpness and Flatness default to zero; nonzero optional positions receive a
+deterministic neutral reset to zero, not a claimed acoustic improvement.
+Unchanged optional controls have no recommendation card or message.
+Select **-10 to +10 (technician reference)** for the documented
 tone-control scale. Existing 0–10, 0–100 and custom scales remain supported.
+
+Enable **Volume uses infinity, 100 … 10** for attenuation-marked amplifiers.
+Volume then has its own discrete scale, independent of tone controls. Below-target
+loudness suggests one detent toward 10; above-target loudness suggests one detent
+toward 100. An in-range measurement stays unchanged, and clipping/distortion
+blocks increases. Mute must be changed physically before recording.
+The JSON position snapshot carries optional `volume_attenuation: true` through
+profiles, recommendations and verification. `110` serializes the infinity/mute
+detent and is never displayed as a physical number or treated as a dB value.
+Older snapshots without the flag keep their existing increasing Volume scale.
+No database migration is needed because position snapshots use JSON columns.
+Algorithm version `1.2.0` invalidates older verification sessions.
 
 ## Derivation
 

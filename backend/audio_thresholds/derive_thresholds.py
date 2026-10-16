@@ -384,8 +384,8 @@ def derive_threshold_artifact(
         "recovery_sensitivity": _recovery_sensitivity(cohort, metric_statistics),
         "limitations": [
             "The cohort contains only 30 recordings labeled good and has no improvement or bad labels.",
-            "Bad means outside this cohort's observed envelope; it is an operational flag, not a validated diagnosis.",
-            "The default weights are transparent engineering defaults, not learned perceptual importance weights.",
+            "Bad means outside this cohort's observed envelope.",
+            "The default weights are configured engineering values.",
             "Treble, sharpness, and flatness are correlated and remain dependent on program content.",
             "The cohort is limited to the current phone-recording and analyzer conditions.",
         ],

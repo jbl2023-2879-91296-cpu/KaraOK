@@ -80,6 +80,7 @@ class _SettingsRecommendationScreenState
     final values = _recommendation.recommended;
     if (values.values.any((value) => value == null)) return null;
     return KnobSettings(
+      volumeAttenuation: _recommendation.current.volumeAttenuation,
       volume: values['volume']!,
       bass: values['bass']!,
       treble: values['treble']!,
@@ -234,12 +235,22 @@ class _SettingsRecommendationScreenState
                   ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
                 ),
                 const SizedBox(height: 18),
-                for (final name in amplifierKnobNames) ...[
+                for (final name in amplifierKnobNames.where(
+                  (name) =>
+                      (name != 'sharpness' && name != 'flatness') ||
+                      _recommendation.adjustments[name]!.delta != 0,
+                )) ...[
                   _AdjustmentCard(
                     knob: name,
                     label: _knobLabels[name]!,
                     adjustment: _recommendation.adjustments[name]!,
-                    scale: _recommendation.scale,
+                    scale: _recommendation.current.controlScale(
+                      name,
+                      _recommendation.scale,
+                    ),
+                    attenuation:
+                        name == 'volume' &&
+                        _recommendation.current.volumeAttenuation,
                   ),
                   const SizedBox(height: 10),
                 ],
@@ -358,16 +369,18 @@ class _AdjustmentCard extends StatelessWidget {
     required this.label,
     required this.adjustment,
     required this.scale,
+    this.attenuation = false,
   });
 
   final String knob;
   final String label;
   final KnobAdjustment adjustment;
   final AmplifierScale scale;
+  final bool attenuation;
 
   @override
   Widget build(BuildContext context) {
-    final delta = adjustment.delta ?? 0;
+    final delta = (adjustment.delta ?? 0) * (attenuation ? -1 : 1);
     final direction = delta > 0
         ? 'increase'
         : delta < 0
@@ -413,7 +426,7 @@ class _AdjustmentCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  '${_physical(adjustment.current, scale)} → ${recommended == null ? '—' : _physical(recommended, scale)}',
+                  '${_position(adjustment.current)} → ${recommended == null ? '—' : _position(recommended)}',
                   style: const TextStyle(
                     color: AppColors.ink,
                     fontSize: 22,
@@ -424,6 +437,12 @@ class _AdjustmentCard extends StatelessWidget {
               Text(
                 adjustment.delta == null
                     ? '—'
+                    : attenuation
+                    ? (delta > 0
+                          ? 'Louder'
+                          : delta < 0
+                          ? 'Quieter'
+                          : 'Unchanged')
                     : _signed(adjustment.delta!, _decimalPlaces(scale.step)),
                 style: const TextStyle(
                   color: AppColors.orangeInk,
@@ -446,6 +465,10 @@ class _AdjustmentCard extends StatelessWidget {
       ),
     );
   }
+
+  String _position(double value) => attenuation
+      ? (value == 110 ? '∞ (mute)' : _physical(110 - value, scale))
+      : _physical(value, scale);
 }
 
 class _Notice extends StatelessWidget {
@@ -533,8 +556,10 @@ String _blockerMessage(SettingsRecommendation recommendation) {
 String _reasonMessage(String reasonCode) => switch (reasonCode) {
   'tone_increase_blocked_by_distortion' =>
     'Keep unchanged: clipping or excessive distortion was detected. Resolve it before boosting tone controls.',
-  'no_tone_calibration' =>
-    'Keep unchanged. The technician references calibrate Bass and Treble only.',
+  'optional_neutral_reset' => 'Reset this optional control to neutral (0).',
+  'optional_control_unchanged' => '',
+  'volume_muted' =>
+    'Volume is muted. Select an audible level before recording playback.',
   'below_genre_range' => 'This measurement is below the genre target range.',
   'above_genre_range' => 'This measurement is above the genre target range.',
   'within_genre_range' => 'This measurement is already in the target range.',

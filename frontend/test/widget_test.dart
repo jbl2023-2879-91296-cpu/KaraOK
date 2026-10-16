@@ -100,7 +100,7 @@ void main() {
     expect(find.text('View all'), findsOneWidget);
   });
 
-  testWidgets('each user action opens its own record or upload page', (
+  testWidgets('quality evaluation opens directly while suggestions use setup', (
     tester,
   ) async {
     UserSession.instance.setGuest('user');
@@ -111,6 +111,7 @@ void main() {
 
     await tester.tap(find.text('Evaluate Audio Quality'));
     await tester.pumpAndSettle();
+    expect(find.text('Set Up Your Amplifier'), findsNothing);
     expect(find.text('Evaluate Audio Quality'), findsOneWidget);
     expect(find.text('Record Audio'), findsOneWidget);
     expect(find.text('Select Audio File'), findsOneWidget);
@@ -253,25 +254,27 @@ void main() {
     expect(find.text('Problematic'), findsOneWidget);
   });
 
-  testWidgets('account creation collects the user profile without a type', (
-    tester,
-  ) async {
-    await tester.pumpWidget(const MaterialApp(home: SignUpScreen()));
+  testWidgets(
+    'account creation defers personal details and collects three credentials',
+    (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: SignUpScreen()));
 
-    expect(find.text('Account type'), findsNothing);
-    expect(find.text('First name'), findsWidgets);
-    expect(find.text('Last name'), findsWidgets);
-    expect(find.text('Username'), findsOneWidget);
-    expect(find.text('Street address'), findsOneWidget);
-    expect(find.text('City / Municipality'), findsOneWidget);
-    expect(find.text('Province / State'), findsOneWidget);
-    expect(find.text('Postal code'), findsOneWidget);
-    expect(find.text('Country'), findsOneWidget);
-    expect(find.text('Country code'), findsNothing);
-    expect(find.text('Phone number'), findsOneWidget);
-    expect(find.text('Birthday'), findsOneWidget);
-    expect(find.textContaining('Profile image'), findsOneWidget);
-  });
+      expect(find.byType(TextFormField), findsNWidgets(3));
+      expect(find.text('Account type'), findsNothing);
+      expect(find.text('First name'), findsNothing);
+      expect(find.text('Last name'), findsNothing);
+      expect(find.text('Username'), findsOneWidget);
+      expect(find.text('Street address'), findsNothing);
+      expect(find.text('City / Municipality'), findsNothing);
+      expect(find.text('Province / State'), findsNothing);
+      expect(find.text('Postal code'), findsNothing);
+      expect(find.text('Country'), findsNothing);
+      expect(find.text('Country code'), findsNothing);
+      expect(find.text('Phone number'), findsNothing);
+      expect(find.text('Birthday'), findsNothing);
+      expect(find.textContaining('Profile image'), findsNothing);
+    },
+  );
 
   testWidgets(
     'account creation accepts passwords longer than eight characters',
@@ -282,7 +285,7 @@ void main() {
       final passwordFields = find.byWidgetPredicate(
         (widget) => widget is EditableText && widget.obscureText,
       );
-      expect(passwordFields, findsNWidgets(2));
+      expect(passwordFields, findsOneWidget);
 
       await tester.enterText(passwordFields.first, 'Good#A1bc');
 

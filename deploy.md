@@ -304,7 +304,7 @@ its canonical content checksum:
 cd /opt/karaok/app/backend
 
 sudo -u karaok ./.venv/bin/python -c \
-  "from audio_thresholds import load_genre_profiles; p=load_genre_profiles(); assert p.artifact_checksum == '8b87b9f1106bab8dab4978e4590e84c9bb294400a0d60ce5263e196f44701b61'; print(p.artifact_checksum)"
+  "from audio_thresholds import load_genre_profiles; p=load_genre_profiles(); assert p.artifact_checksum == 'acefe9949cd6eb8f8a713bcd4d0b5080820bcdd7de81f25e81676388d0c9f03d'; print(p.artifact_checksum)"
 ```
 
 Review `docs/settings-profile-sources.md` for source attribution, licenses,

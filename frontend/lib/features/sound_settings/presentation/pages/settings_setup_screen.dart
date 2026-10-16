@@ -11,7 +11,7 @@ import 'package:karaok_app/features/sound_settings/domain/amplifier_profile.dart
 import 'package:karaok_app/features/sound_settings/domain/settings_profile_metadata.dart';
 import 'package:karaok_app/features/sound_settings/domain/settings_recommendation.dart';
 
-enum _ScalePreset { signedTone, zeroToTen, zeroToHundred, custom }
+enum _ScalePreset { zeroToTen, zeroToHundred, custom }
 
 enum _ScaleChangeChoice { keepValues, rescaleValues }
 
@@ -43,24 +43,17 @@ class SettingsSetupScreen extends StatefulWidget {
     required this.onContinue,
     this.settingsApi,
     this.guestStore,
-    this.onEvaluateOnly,
   });
 
   final ValueChanged<SettingsSuggestionInput> onContinue;
   final SettingsApi? settingsApi;
   final GuestAmplifierStore? guestStore;
-  final VoidCallback? onEvaluateOnly;
 
   @override
   State<SettingsSetupScreen> createState() => _SettingsSetupScreenState();
 }
 
 class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
-  static const _signedTone = AmplifierScale(
-    minimum: -10,
-    maximum: 10,
-    step: 0.5,
-  );
   static const _zeroToTen = AmplifierScale(minimum: 0, maximum: 10, step: 0.5);
   static const _zeroToHundred = AmplifierScale(
     minimum: 0,
@@ -71,7 +64,10 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
   late final SettingsApi _settingsApi;
   late final GuestAmplifierStore _guestStore;
   final _positionControllers = <String, TextEditingController>{
-    for (final name in amplifierKnobNames) name: TextEditingController(),
+    for (final name in amplifierKnobNames)
+      name: TextEditingController(
+        text: name == 'sharpness' || name == 'flatness' ? '0' : '',
+      ),
   };
   final _minimumController = TextEditingController(text: '0');
   final _maximumController = TextEditingController(text: '10');
@@ -80,9 +76,8 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
 
   bool _loading = true;
   bool _submitting = false;
+  final bool _volumeAttenuation = true;
   bool _featureDisabled = false;
-  bool _usingResearchedStartingPoint = false;
-  bool _startingPointAcknowledged = false;
   String? _loadError;
   String? _profilesLoadError;
   String? _genreError;
@@ -179,7 +174,6 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
   void _useProfile(AmplifierProfile profile) {
     _nameController.text = profile.name;
     _nameError = null;
-    _clearStartingPoint();
     _scale = profile.scale;
     _preset = _presetFor(profile.scale);
     _minimumController.text = _formatNumber(profile.scale.minimum);
@@ -188,19 +182,24 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     final positions = profile.lastPositions?.toJson();
     if (positions != null) {
       for (final entry in positions.entries) {
-        _positionControllers[entry.key]!.text = _formatNumber(entry.value);
+        if (entry.key == 'volume_attenuation') continue;
+        _positionControllers[entry.key]!.text =
+            entry.key == 'volume' && !profile.lastPositions!.volumeAttenuation
+            ? ''
+            : _formatNumber(entry.value);
       }
     } else {
-      // A saved profile without positions must not inherit values (or an
-      // acknowledgement) from the previously selected profile.
-      for (final controller in _positionControllers.values) {
-        controller.clear();
+      // A saved profile without positions must not inherit values from
+      // the previously selected profile.
+      for (final entry in _positionControllers.entries) {
+        entry.value.text = entry.key == 'sharpness' || entry.key == 'flatness'
+            ? '0'
+            : '';
       }
     }
   }
 
   _ScalePreset _presetFor(AmplifierScale scale) {
-    if (scale == _signedTone) return _ScalePreset.signedTone;
     if (scale == _zeroToTen) return _ScalePreset.zeroToTen;
     if (scale == _zeroToHundred) return _ScalePreset.zeroToHundred;
     return _ScalePreset.custom;
@@ -213,14 +212,15 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
         _selectedProfile = null;
         _nameController.text = _nextProfileName();
         _nameError = null;
-        _clearStartingPoint();
         _scale = _zeroToTen;
         _preset = _ScalePreset.zeroToTen;
         _minimumController.text = '0';
         _maximumController.text = '10';
         _stepController.text = '0.5';
-        for (final controller in _positionControllers.values) {
-          controller.clear();
+        for (final entry in _positionControllers.entries) {
+          entry.value.text = entry.key == 'sharpness' || entry.key == 'flatness'
+              ? '0'
+              : '';
         }
         _clearPositionErrors();
       });
@@ -251,15 +251,18 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     if (next == _preset) return;
     final oldScale = _effectiveScaleOrNull() ?? _scale;
     final newScale = switch (next) {
-      _ScalePreset.signedTone => _signedTone,
       _ScalePreset.zeroToTen => _zeroToTen,
       _ScalePreset.zeroToHundred => _zeroToHundred,
       _ScalePreset.custom => oldScale,
     };
     var choice = _ScaleChangeChoice.keepValues;
     if (next != _ScalePreset.custom &&
-        _positionControllers.values.any(
-          (controller) => controller.text.trim().isNotEmpty,
+        _positionControllers.entries.any(
+          (entry) =>
+              entry.key != 'sharpness' &&
+              entry.key != 'flatness' &&
+              !(entry.key == 'volume' && _volumeAttenuation) &&
+              entry.value.text.trim().isNotEmpty,
         )) {
       final selected = await showDialog<_ScaleChangeChoice>(
         context: context,
@@ -291,14 +294,19 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     }
 
     setState(() {
-      _clearStartingPoint();
       _preset = next;
       _scale = newScale;
       _minimumController.text = _formatNumber(newScale.minimum);
       _maximumController.text = _formatNumber(newScale.maximum);
       _stepController.text = _formatNumber(newScale.step);
       if (choice == _ScaleChangeChoice.rescaleValues) {
-        for (final controller in _positionControllers.values) {
+        for (final entry in _positionControllers.entries) {
+          if (entry.key == 'sharpness' ||
+              entry.key == 'flatness' ||
+              (entry.key == 'volume' && _volumeAttenuation)) {
+            continue;
+          }
+          final controller = entry.value;
           final value = double.tryParse(controller.text.trim());
           if (value == null ||
               value < oldScale.minimum ||
@@ -338,26 +346,6 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     _scaleError = null;
   }
 
-  void _clearStartingPoint() {
-    _usingResearchedStartingPoint = false;
-    _startingPointAcknowledged = false;
-  }
-
-  void _applyResearchedStartingPoint() {
-    final scale = _effectiveScaleOrNull();
-    final metadata = _metadata;
-    if (scale == null || metadata == null) return;
-    final positions = metadata.controlPriors.toScale(scale).toJson();
-    setState(() {
-      for (final entry in positions.entries) {
-        _positionControllers[entry.key]!.text = _formatNumber(entry.value);
-      }
-      _usingResearchedStartingPoint = true;
-      _startingPointAcknowledged = false;
-      _positionError = null;
-    });
-  }
-
   KnobSettings? _readPositions(AmplifierScale scale) {
     final values = <String, double>{};
     if (_positionControllers.values.any(
@@ -367,16 +355,17 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
       return null;
     }
     for (final entry in _positionControllers.entries) {
+      final controlScale = _controlScale(entry.key, scale);
       final value = double.tryParse(entry.value.text.trim());
       if (value == null ||
           !value.isFinite ||
-          value < scale.minimum ||
-          value > scale.maximum) {
+          value < controlScale.minimum ||
+          value > controlScale.maximum) {
         _positionError =
             'Use positions between ${_formatNumber(scale.minimum)} and ${_formatNumber(scale.maximum)}.';
         return null;
       }
-      final steps = (value - scale.minimum) / scale.step;
+      final steps = (value - controlScale.minimum) / controlScale.step;
       if ((steps - steps.round()).abs() > 1e-7) {
         _positionError =
             'Use increments of ${_formatNumber(scale.step)} for every position.';
@@ -384,7 +373,13 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
       }
       values[entry.key] = value;
     }
+    if (_volumeAttenuation && values['volume'] == 110) {
+      _positionError =
+          'Volume is muted. Set an audible physical position and enter it before recording.';
+      return null;
+    }
     return KnobSettings(
+      volumeAttenuation: _volumeAttenuation,
       volume: values['volume']!,
       bass: values['bass']!,
       treble: values['treble']!,
@@ -411,12 +406,6 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     _scaleError = scale == null ? 'Enter a valid amplifier scale.' : null;
     _positionError = null;
     final positions = scale == null ? null : _readPositions(scale);
-    if (positions != null &&
-        _usingResearchedStartingPoint &&
-        !_startingPointAcknowledged) {
-      _positionError =
-          'Confirm that the five physical controls match these positions.';
-    }
     setState(() {});
     if (_nameError != null ||
         _genreError != null ||
@@ -505,13 +494,6 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (widget.onEvaluateOnly != null)
-                      TextButton(
-                        onPressed: widget.onEvaluateOnly,
-                        child: const Text(
-                          'Evaluate only, without knob suggestions',
-                        ),
-                      ),
                     if (_featureDisabled)
                       const _Notice(
                         icon: Icons.block,
@@ -540,6 +522,8 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                     ),
                     const SizedBox(height: 20),
                     _sectionTitle('1. Amplifier'),
+                    const Text("Enter your amplifier's knob ranges"),
+                    const SizedBox(height: 12),
                     if (!_isGuest && _profiles.isNotEmpty)
                       DropdownButtonFormField<int>(
                         key: const Key('amplifier-profile-dropdown'),
@@ -590,10 +574,6 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                       style: const TextStyle(color: AppColors.ink),
                       decoration: _decoration('Control scale'),
                       items: const [
-                        DropdownMenuItem(
-                          value: _ScalePreset.signedTone,
-                          child: Text('-10 to +10 (technician reference)'),
-                        ),
                         DropdownMenuItem(
                           value: _ScalePreset.zeroToTen,
                           child: Text('0–10'),
@@ -671,42 +651,20 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                     const SizedBox(height: 24),
                     _sectionTitle('3. Current knob positions'),
                     Text(
-                      'Enter every current position before recording karaoke instrumental playback.',
+                      'Enter every current position of knobs before recording',
                       style: Theme.of(
                         context,
                       ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
                     ),
                     const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      key: const Key('use-researched-starting-point'),
-                      onPressed: canContinue
-                          ? _applyResearchedStartingPoint
-                          : null,
-                      icon: const Icon(Icons.auto_awesome),
-                      label: const Text('Use researched starting point'),
-                    ),
-                    const SizedBox(height: 12),
                     for (final name in amplifierKnobNames) _knobControl(name),
-                    if (_usingResearchedStartingPoint)
-                      CheckboxListTile(
-                        key: const Key('starting-point-acknowledgement'),
-                        value: _startingPointAcknowledged,
-                        contentPadding: EdgeInsets.zero,
-                        controlAffinity: ListTileControlAffinity.leading,
-                        title: const Text(
-                          'I set all five physical controls to these positions.',
-                          style: TextStyle(color: AppColors.ink),
-                        ),
-                        onChanged: _submitting
-                            ? null
-                            : (value) => setState(() {
-                                _startingPointAcknowledged = value ?? false;
-                                _positionError = null;
-                              }),
-                      ),
                     if (_positionError case final error?) _errorText(error),
                     const SizedBox(height: 20),
                     _sectionTitle('4. Keep the comparison controlled'),
+                    const _GuidanceItem(
+                      text:
+                          'Use the same source playback level. Change the amplifier Volume only when recommended, then record the same passage again.',
+                    ),
                     const _GuidanceItem(
                       text:
                           'Play the same karaoke instrumental song section for both recordings.',
@@ -715,11 +673,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                       text: 'Play only the instrumental or MIDI accompaniment.',
                     ),
                     const _GuidanceItem(
-                      text:
-                          'Keep the phone in the same position relative to the speakers.',
-                    ),
-                    const _GuidanceItem(
-                      text: 'Keep the room and playback source unchanged.',
+                      text: 'Keep the phone on top of the Karaoke machine.',
                     ),
                     const SizedBox(height: 24),
                     FilledButton.icon(
@@ -749,14 +703,11 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     required Key key,
     required String label,
     required TextEditingController controller,
-  }) => TextFormField(
+  }) => _signedNumberField(
     key: key,
     controller: controller,
-    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-    style: const TextStyle(color: AppColors.ink),
-    decoration: _decoration(label),
+    label: label,
     onChanged: (_) => setState(() {
-      _clearStartingPoint();
       _scaleError = null;
       final scale = _effectiveScaleOrNull();
       if (scale != null) _scale = scale;
@@ -764,8 +715,51 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
   );
 
   Widget _knobControl(String name) {
-    final scale = _effectiveScaleOrNull() ?? _scale;
+    final scale = _controlScale(name, _effectiveScaleOrNull() ?? _scale);
     final controller = _positionControllers[name]!;
+    if (name == 'volume' && _volumeAttenuation) {
+      // Keep the saved attenuation representation compatible with existing
+      // profiles and API recommendations; the UI increases from mute to 100.
+      final stored = double.tryParse(controller.text);
+      final level = stored == null
+          ? 0.0
+          : (110 - stored).clamp(0, 100).toDouble();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              stored == null
+                  ? 'Volume: select a level'
+                  : 'Volume: ${level == 0 ? '∞ (mute)' : _formatNumber(level)}',
+              key: const Key('volume-level-label'),
+            ),
+            Slider(
+              key: const Key('knob-volume-slider'),
+              value: level,
+              min: 0,
+              max: 100,
+              divisions: 10,
+              label: level == 0 ? '∞ (mute)' : _formatNumber(level),
+              semanticFormatterCallback: (value) =>
+                  value == 0 ? 'Muted' : 'Volume ${value.round()} of 100',
+              onChanged: _submitting
+                  ? null
+                  : (value) => setState(() {
+                      controller.text = _formatNumber(110 - value);
+                      _positionError = null;
+                    }),
+            ),
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [Text('∞ (mute)'), Text('100')],
+            ),
+          ],
+        ),
+      );
+    }
+
     final parsed = double.tryParse(controller.text.trim());
     final sliderValue = (parsed ?? scale.minimum)
         .clamp(scale.minimum, scale.maximum)
@@ -796,7 +790,6 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                   onChanged: _submitting
                       ? null
                       : (value) => setState(() {
-                          _clearStartingPoint();
                           controller.text = _formatNumber(value);
                           _positionError = null;
                         }),
@@ -804,17 +797,11 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
               ),
               SizedBox(
                 width: 92,
-                child: TextFormField(
+                child: _signedNumberField(
                   key: Key('knob-$name'),
                   controller: controller,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                    signed: true,
-                  ),
-                  style: const TextStyle(color: AppColors.ink),
-                  decoration: _decoration('Position'),
+                  label: 'Position',
                   onChanged: (_) => setState(() {
-                    _clearStartingPoint();
                     _positionError = null;
                   }),
                 ),
@@ -825,6 +812,23 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
       ),
     );
   }
+
+  Widget _signedNumberField({
+    required Key key,
+    required TextEditingController controller,
+    required String label,
+    required ValueChanged<String> onChanged,
+  }) => TextFormField(
+    key: key,
+    controller: controller,
+    enabled: !_submitting,
+    keyboardType: TextInputType.text,
+    autocorrect: false,
+    enableSuggestions: false,
+    style: const TextStyle(color: AppColors.ink),
+    decoration: _decoration(label),
+    onChanged: onChanged,
+  );
 
   Widget _sectionTitle(String text) => Padding(
     padding: const EdgeInsets.only(bottom: 10),
@@ -872,6 +876,16 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
         .replaceFirst(RegExp(r'0+$'), '')
         .replaceFirst(RegExp(r'\.$'), '');
   }
+
+  AmplifierScale _controlScale(String name, AmplifierScale scale) =>
+      KnobSettings(
+        volume: 0,
+        bass: 0,
+        treble: 0,
+        sharpness: 0,
+        flatness: 0,
+        volumeAttenuation: _volumeAttenuation,
+      ).controlScale(name, scale);
 }
 
 class _Notice extends StatelessWidget {

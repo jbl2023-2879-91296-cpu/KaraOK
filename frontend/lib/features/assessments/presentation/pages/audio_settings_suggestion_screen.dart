@@ -93,9 +93,5 @@ class _AudioSettingsSuggestionScreenState
     settingsApi: widget.settingsApi,
     guestStore: widget.guestStore,
     onContinue: _continueToRecording,
-    onEvaluateOnly: () => Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const AudioTestScreen()),
-    ),
   );
 }

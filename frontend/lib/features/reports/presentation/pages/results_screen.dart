@@ -139,7 +139,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
       'good_but_needs_improvement' =>
         'The saved weighted score is at least 50 and below 80 against its good-audio reference.',
       'bad' =>
-        'The saved weighted score is below 50 against its good-audio reference. This comparison is not a validated perceptual diagnosis.',
+        'The saved weighted score is below 50 against its good-audio reference.',
       _ =>
         'This is a saved score. Detailed reference information is unavailable for this assessment.',
     };

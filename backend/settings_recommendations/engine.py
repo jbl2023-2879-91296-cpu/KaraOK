@@ -245,6 +245,27 @@ def _adjustment(
     request: RecommendationRequest,
     profile: GenreProfile,
 ) -> KnobAdjustment:
+    current = getattr(request.current, knob)
+    if knob in ("sharpness", "flatness") and profile.knob_preferences is not None:
+        optional_scale = request.current.control_scale(knob, request.scale)
+        return KnobAdjustment(current=current, recommended=0.0, delta=-current,
+                              delta_normalized=optional_scale.normalize(0)-optional_scale.normalize(current),
+                              reason_code="optional_neutral_reset" if current else "optional_control_unchanged",
+                              confidence="low")
+    if knob == "volume" and request.current.volume_attenuation:
+        distance, reason = _distance_to_interval(float(request.measurements["loudness"]), profile.metrics["loudness"])
+        recommended = current
+        if current == 110:
+            reason = "volume_muted"
+        elif distance > 0 and (request.safety.clipping or request.safety.excessive_distortion):
+            reason = "volume_increase_blocked_by_distortion"
+        elif distance > 0:
+            recommended = max(10, current - 10)
+        elif distance < 0:
+            recommended = min(100, current + 10)
+        return KnobAdjustment(current=current, recommended=recommended,
+                              delta=recommended-current, delta_normalized=current-recommended,
+                              reason_code=reason, confidence="low")
     metric = KNOB_TO_METRIC[knob]
     target = profile.metrics[metric]
     measurement = float(request.measurements[metric])
@@ -253,16 +274,12 @@ def _adjustment(
     cap = VERIFICATION_DELTA_CAP if request.verification else INITIAL_DELTA_CAP
     raw_delta = MONOTONIC_DIRECTION[knob] * SENSITIVITY_NORMALIZED * normalized_error
     if profile.knob_preferences is not None:
-        # Technician evidence covers tone controls only. Other controls stay put.
         cap = 5.0 if request.verification else 10.0
-        if knob not in ("bass", "treble"):
-            raw_delta = 0.0
-            reason_code = "no_tone_calibration"
-        elif distance != 0:
+        if distance != 0:
             raw_delta = math.copysign(min(abs(normalized_error) * 10.0, cap), distance)
             # Absolute technician positions only transfer to the documented scale.
             # The measured error always determines direction, even outside the prior.
-            if request.scale.minimum == -10 and request.scale.maximum == 10:
+            if knob in ("bass", "treble") and request.scale.minimum == -10 and request.scale.maximum == 10:
                 prior = profile.knob_preferences[knob]
                 prior_delta = (prior.preferred - getattr(request.current, knob)) * 5.0
                 if prior_delta * raw_delta > 0:

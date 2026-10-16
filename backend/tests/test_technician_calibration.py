@@ -27,7 +27,8 @@ class TechnicianCalibrationTests(unittest.TestCase):
         result = self.recommend(80)
         self.assertEqual(result.adjustments['bass'].recommended, 2)
         self.assertEqual(result.adjustments['bass'].reason_code, 'above_genre_range')
-        for knob in ('volume', 'treble', 'sharpness', 'flatness'):
+        self.assertGreater(result.adjustments['volume'].delta, 0)
+        for knob in ('treble', 'sharpness', 'flatness'):
             self.assertEqual(result.adjustments[knob].delta, 0)
 
     def test_low_bass_increases_even_when_technician_median_is_lower(self):
@@ -81,6 +82,57 @@ class TechnicianCalibrationTests(unittest.TestCase):
         dump = {'empirical_quality': {'overall_score': 65}}
         apply_genre_evaluation(dump, None)
         self.assertEqual(dump['empirical_quality']['overall_score'], 65)
+
+    def test_attenuation_volume_moves_one_detent_in_loudness_direction(self):
+        for loudness, expected in [(0, 50), (40, 60), (80, 70)]:
+            with self.subTest(loudness=loudness):
+                result = generate_recommendation(request(
+                    scale=AmplifierScale(-10, 10, .5),
+                    current=KnobSettings(60, 0, 0, 0, 0, volume_attenuation=True),
+                    measurements=dict(loudness=loudness, bass=40, treble=40, sharpness=40, flatness=40)), self.profile)
+                self.assertEqual(result.adjustments['volume'].recommended, expected)
+                self.assertTrue(result.to_dict()['recommended']['volume_attenuation'])
+
+    def test_attenuation_boost_blocked_by_clipping_and_mute_not_unmuted(self):
+        for current, safety in [(60, SafetySignals(clipping=True)), (110, SafetySignals())]:
+            result = generate_recommendation(request(
+                current=KnobSettings(current, 0, 0, 0, 0, volume_attenuation=True),
+                measurements=dict(loudness=0, bass=40, treble=40, sharpness=40, flatness=40),
+                safety=safety), self.profile)
+            self.assertEqual(result.adjustments['volume'].recommended, current)
+
+    def test_optional_controls_reset_deterministically_to_zero(self):
+        r = request(current=KnobSettings(5, 5, 5, 7, 0))
+        first = generate_recommendation(r, self.profile)
+        self.assertEqual(first, generate_recommendation(r, self.profile))
+        self.assertEqual(first.adjustments['sharpness'].recommended, 0)
+        self.assertEqual(first.adjustments['sharpness'].delta, -7)
+        self.assertEqual(first.adjustments['flatness'].reason_code, 'optional_control_unchanged')
+
+    def test_volume_scale_round_trips_through_guest_verification_and_profiles(self):
+        import os
+        os.environ.setdefault('JWT_SECRET', 'test-only-secret-that-is-at-least-32-characters')
+        from karaok.audio_pipeline.recommendations import issue_guest_verification_token, parse_guest_verification_token
+        from karaok.core.recommendation_contracts import _knob_settings, _same_positions
+        from karaok.results.profiles import _positions
+        artifact = load_genre_profiles()
+        p = artifact.profile_for('pop')
+        scale = AmplifierScale(-10, 10, .5)
+        current = KnobSettings(60, 0, 0, 0, 0, volume_attenuation=True)
+        stored = _positions(current.to_dict(), minimum=-10, maximum=10)
+        self.assertTrue(_same_positions(current, _knob_settings(stored, scale, 'stored'), scale))
+        r = replace(request(scale=scale, current=current,
+            measurements={name: metric.preferred for name, metric in p.metrics.items()}),
+            profile_version=artifact.profile_version, profile_checksum=artifact.artifact_checksum)
+        result = generate_recommendation(r, p)
+        token = issue_guest_verification_token(result, scale, before_score=80)
+        context = parse_guest_verification_token(token)
+        self.assertTrue(context.recommended_positions.volume_attenuation)
+        self.assertEqual(context.recommended_positions.volume, 60)
+        with self.assertRaises(ValueError):
+            _knob_settings({**stored, 'volume': 65}, scale, 'invalid')
+        with self.assertRaises(ValueError):
+            _knob_settings({**stored, 'volume_attenuation': 'true'}, scale, 'invalid')
 
     def test_evaluation_summary_uses_genre_score_before_persistence(self):
         p = load_genre_profiles().profile_for('rnb')

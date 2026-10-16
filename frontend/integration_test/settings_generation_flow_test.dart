@@ -44,18 +44,8 @@ void main() {
       final email = 'settings-e2e-$uniquePart@example.test';
       final registration = await authApi.startRegistration(
         username: 'e2e_$uniquePart',
-        firstName: 'Settings',
-        lastName: 'Integration',
         email: email,
         password: 'Aa1!bcde',
-        address: '1 Integration Lane',
-        city: 'Manila',
-        stateProvince: 'Metro Manila',
-        areaCode: '1000',
-        country: 'Philippines',
-        countryCode: 'PH',
-        phoneNumber: '+639$uniquePart',
-        birthday: '1995-01-15',
       );
       final developmentCode = registration['development_code'];
       expect(

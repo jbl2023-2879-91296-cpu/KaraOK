@@ -1,3 +1,4 @@
+import 'package:karaok_app/features/account/presentation/pages/change_password_screen.dart';
 import 'package:karaok_app/core/security/guest_assessment_service.dart';
 import 'package:karaok_app/core/storage/guest_assessment_store.dart';
 import 'package:karaok_app/features/reports/domain/sample_assessments.dart';
@@ -7,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/assessments/data/assessment_api.dart';
 import 'package:karaok_app/features/assessments/presentation/pages/audio_settings_suggestion_screen.dart';
+import 'package:karaok_app/features/assessments/presentation/pages/audio_test_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/user_previous_results_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/results_screen.dart';
 import 'package:karaok_app/shared/widgets/guest_banner.dart';
@@ -26,6 +28,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   List<dynamic> _recentAnalysis = [];
   bool _loading = true;
   String? _loadError;
+  bool _profilePromptDismissed = false;
 
   @override
   void initState() {
@@ -127,18 +130,57 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (!_profilePromptDismissed &&
+                        UserSession.instance.needsProfileCompletion)
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Complete your profile'),
+                              const Text(
+                                'Add your personal details in Account. You can do this later.',
+                              ),
+                              Wrap(
+                                children: [
+                                  TextButton(
+                                    onPressed: () async {
+                                      await Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              const ChangePasswordScreen(
+                                                editProfile: true,
+                                              ),
+                                        ),
+                                      );
+                                      if (mounted) setState(() {});
+                                    },
+                                    child: const Text('Complete profile'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => setState(
+                                      () => _profilePromptDismissed = true,
+                                    ),
+                                    child: const Text('Not now'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     _ActionCard(
                       icon: Icons.graphic_eq,
                       title: 'Evaluate Audio Quality',
-                      subtitle:
-                          'Evaluate playback and get Bass/Treble suggestions',
+                      subtitle: 'Evaluate playback sound quality',
                       color: AppColors.mint,
                       onTap: () async {
                         await Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) =>
-                                const AudioSettingsSuggestionScreen(),
+                            builder: (_) => const AudioTestScreen(),
                           ),
                         );
                         if (mounted) _loadAnalysis();

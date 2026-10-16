@@ -262,6 +262,7 @@ class SecurityValidationTests(unittest.TestCase):
 
         self.assertEqual(status, 200)
         self.assertEqual(response.get_json()["user"]["birthday"], "1999-05-06")
+        self.assertTrue(response.get_json()["user"]["profile_complete"])
         update_call = next(
             call
             for call in cursor.execute.call_args_list
@@ -288,15 +289,15 @@ class SecurityValidationTests(unittest.TestCase):
         self.assertIn("user_id INT NOT NULL", otp_table)
         self.assertIn("FOREIGN KEY (user_id) REFERENCES user(user_id)", otp_table)
         self.assertIn("email_verified_at DATETIME NULL", schema)
-        self.assertIn("first_name VARCHAR(80) NOT NULL", schema)
-        self.assertIn("last_name VARCHAR(80) NOT NULL", schema)
-        self.assertIn("address VARCHAR(255) NOT NULL", schema)
-        self.assertIn("city VARCHAR(100) NOT NULL", schema)
-        self.assertIn("state_province VARCHAR(100) NOT NULL", schema)
-        self.assertIn("area_code VARCHAR(20) NOT NULL", schema)
-        self.assertIn("country_code CHAR(2) NOT NULL", schema)
-        self.assertIn("phone_number VARCHAR(20) NOT NULL UNIQUE", schema)
-        self.assertIn("birthday DATE NOT NULL", schema)
+        self.assertIn("first_name VARCHAR(80) NULL", schema)
+        self.assertIn("last_name VARCHAR(80) NULL", schema)
+        self.assertIn("address VARCHAR(255) NULL", schema)
+        self.assertIn("city VARCHAR(100) NULL", schema)
+        self.assertIn("state_province VARCHAR(100) NULL", schema)
+        self.assertIn("area_code VARCHAR(20) NULL", schema)
+        self.assertIn("country_code CHAR(2) NULL", schema)
+        self.assertIn("phone_number VARCHAR(20) NULL UNIQUE", schema)
+        self.assertIn("birthday DATE NULL", schema)
         self.assertIn("profile_image MEDIUMBLOB NULL", schema)
         self.assertIn("username VARCHAR(50) NOT NULL UNIQUE", schema)
 

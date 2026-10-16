@@ -1,11 +1,10 @@
 """Standalone audio feature extraction and quality analysis CLI.
 
-Technical disclaimer
+Measurement overview
 --------------------
 * Bass and treble are frequency-band energy measurements.
 * RMS-based dBFS and ITU-R BS.1770-5-aligned mono loudness are reported.
-* Sharpness is an approximate normalized spectral measurement, not a certified
-  psychoacoustic sharpness measurement in acum.
+* Sharpness is an approximate normalized spectral measurement.
 * Ordinary analysis estimates noise without a separate noise recording.
 * Phone-recording mode accepts separate noise and test-tone recordings for
   measured end-to-end SNR, THD, and THD+N. These results include the playback
@@ -957,7 +956,7 @@ def estimate_sharpness(context: AnalysisContext) -> dict[str, Any]:
     normalized_frequency = np.clip(context.frequencies / nyquist, 0.0, 1.0)
     active_power = context.power[:, context.active_frames]
     # The second normalized spectral moment emphasizes high-frequency energy.
-    # It is bounded to [0, 1], unlike certified psychoacoustic sharpness in acum.
+    # It is bounded to [0, 1], using a normalized spectral scale.
     numerator = np.sum(active_power * np.square(normalized_frequency)[:, np.newaxis], axis=0)
     denominator = np.sum(active_power, axis=0)
     frame_scores = numerator / np.maximum(denominator, EPSILON)
@@ -1409,8 +1408,8 @@ def measure_phone_recording(
                 + 20.0 * math.log10(max(program_rms, EPSILON) / max(tone_rms, EPSILON))
             ),
             "note": (
-                "Single-point field calibration; phone microphone response and processing "
-                "prevent certification."
+                "Single-point field calibration includes phone microphone response "
+                "and processing."
             ),
         }
 
@@ -1464,8 +1463,8 @@ def measure_phone_recording(
             "din_45692_acum": None,
             "status": "not_measured",
             "reason": (
-                "DIN 45692 sharpness requires a validated psychoacoustic implementation and "
-                "calibrated pressure/frequency response; the normalized spectral score remains separate."
+                "This analysis reports normalized spectral sharpness. "
+                "DIN 45692 sharpness in acum is not measured."
             ),
         },
         "protocol": {

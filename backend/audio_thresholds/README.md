@@ -3,8 +3,8 @@
 ## Active assessment profile: median-centered (2026.09.2-median)
 
 New backend assessments use `median_centered_thresholds.json` by default, based
-on the approved **KaraOK Median.pdf**. This is a user-selected theoretical
-profile, not a newly validated dataset. No server deployment is performed by
+on the approved **KaraOK Median.pdf**. This is a user-selected assessment
+profile. No server deployment is performed by
 changing this checkout, and stored historical assessments keep their saved scores
 and profile provenance.
 
@@ -138,6 +138,6 @@ listening studies. They must remain positive and sum to 1.0.
 
 The source cohort contains 30 recordings labeled good, but no labeled bad or
 needs-improvement recordings. Therefore, `bad` currently means outside the
-observed good-cohort envelope; it is not yet a validated perceptual diagnosis.
+observed good-cohort envelope.
 The thresholds and weights should be recalibrated when more devices, recording
 conditions, negative examples, and listener ratings are available.

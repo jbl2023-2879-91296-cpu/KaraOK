@@ -10,36 +10,12 @@ class AuthApi {
 
   Future<Map<String, dynamic>> startRegistration({
     required String username,
-    required String firstName,
-    required String lastName,
     required String email,
     required String password,
-    required String address,
-    required String city,
-    required String stateProvince,
-    required String areaCode,
-    required String country,
-    required String countryCode,
-    required String phoneNumber,
-    required String birthday,
-    String? profileImageBase64,
-    String? profileImageMime,
   }) => _client.startRegistration(
     username: username,
-    firstName: firstName,
-    lastName: lastName,
     email: email,
     password: password,
-    address: address,
-    city: city,
-    stateProvince: stateProvince,
-    areaCode: areaCode,
-    country: country,
-    countryCode: countryCode,
-    phoneNumber: phoneNumber,
-    birthday: birthday,
-    profileImageBase64: profileImageBase64,
-    profileImageMime: profileImageMime,
   );
 
   Future<Map<String, dynamic>> verifyRegistration({

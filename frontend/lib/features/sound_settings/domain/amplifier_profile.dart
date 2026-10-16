@@ -128,24 +128,33 @@ class KnobSettings {
     required this.treble,
     required this.sharpness,
     required this.flatness,
+    this.volumeAttenuation = false,
   });
 
   factory KnobSettings.fromJson(
     Map<String, dynamic> json, {
     AmplifierScale? scale,
   }) {
-    if (!_hasExactKeys(json.keys, amplifierKnobNames)) {
+    if (!_hasExactKeys(
+      json.keys.where((key) => key != 'volume_attenuation'),
+      amplifierKnobNames,
+    )) {
       throw const FormatException(
         'Knob settings must contain exactly all five controls.',
       );
     }
     final settings = KnobSettings(
+      volumeAttenuation: json['volume_attenuation'] == true,
       volume: _finiteNumber(json['volume'], 'volume'),
       bass: _finiteNumber(json['bass'], 'bass'),
       treble: _finiteNumber(json['treble'], 'treble'),
       sharpness: _finiteNumber(json['sharpness'], 'sharpness'),
       flatness: _finiteNumber(json['flatness'], 'flatness'),
     );
+    if (json.containsKey('volume_attenuation') &&
+        json['volume_attenuation'] is! bool) {
+      throw const FormatException('volume_attenuation must be boolean.');
+    }
     settings.validate(scale: scale);
     return settings;
   }
@@ -155,21 +164,43 @@ class KnobSettings {
   final double treble;
   final double sharpness;
   final double flatness;
+  final bool volumeAttenuation;
 
-  Map<String, double> toJson() => {
+  AmplifierScale controlScale(String name, AmplifierScale scale) {
+    if (name == 'volume' && volumeAttenuation) {
+      return const AmplifierScale(minimum: 10, maximum: 110, step: 10);
+    }
+    if (name == 'sharpness' || name == 'flatness') {
+      return AmplifierScale(
+        minimum: scale.minimum < 0 ? scale.minimum : 0,
+        maximum: scale.maximum > 10 ? scale.maximum : 10,
+        step: scale.step,
+      );
+    }
+    return scale;
+  }
+
+  Map<String, dynamic> toJson() => {
     'volume': volume,
     'bass': bass,
     'treble': treble,
     'sharpness': sharpness,
     'flatness': flatness,
+    if (volumeAttenuation) 'volume_attenuation': true,
   };
 
   void validate({AmplifierScale? scale}) {
     for (final entry in toJson().entries) {
+      if (entry.key == 'volume_attenuation') continue;
       if (!entry.value.isFinite) {
         throw FormatException('${entry.key} must be a finite number.');
       }
-      scale?.validatePosition(entry.value, entry.key);
+      if (scale != null) {
+        controlScale(entry.key, scale).validatePosition(entry.value, entry.key);
+      }
+      if (entry.key == 'volume' && volumeAttenuation && entry.value % 10 != 0) {
+        throw const FormatException('Choose a marked Volume position.');
+      }
     }
   }
 
@@ -181,10 +212,12 @@ class KnobSettings {
           bass == other.bass &&
           treble == other.treble &&
           sharpness == other.sharpness &&
-          flatness == other.flatness;
+          flatness == other.flatness &&
+          volumeAttenuation == other.volumeAttenuation;
 
   @override
-  int get hashCode => Object.hash(volume, bass, treble, sharpness, flatness);
+  int get hashCode =>
+      Object.hash(volume, bass, treble, sharpness, flatness, volumeAttenuation);
 }
 
 /// A named server-owned or device-local amplifier configuration.

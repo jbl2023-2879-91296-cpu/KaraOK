@@ -137,6 +137,8 @@ def issue_guest_verification_token(
     }
     if any(value is None for value in recommended.values()):
         raise ValueError("Generated recommendation targets are incomplete")
+    if recommendation.current.volume_attenuation:
+        recommended["volume_attenuation"] = True
     score = _strict_number(before_score, "before_score")
     if not 0 <= score <= 100:
         raise ValueError("before_score must be between 0 and 100")

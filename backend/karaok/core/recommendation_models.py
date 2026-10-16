@@ -89,16 +89,27 @@ class KnobSettings:
     treble: float
     sharpness: float
     flatness: float
+    volume_attenuation: bool = False
 
     def __post_init__(self) -> None:
+        if not isinstance(self.volume_attenuation, bool):
+            raise ValueError("volume_attenuation must be boolean")
         for name in KNOB_NAMES:
             object.__setattr__(self, name, _finite_number(getattr(self, name), name))
 
     def items(self) -> tuple[tuple[str, float], ...]:
         return tuple((name, getattr(self, name)) for name in KNOB_NAMES)
 
-    def to_dict(self) -> dict[str, float]:
-        return dict(self.items())
+    def to_dict(self) -> dict[str, Any]:
+        return {**dict(self.items()), **({"volume_attenuation": True} if self.volume_attenuation else {})}
+
+    def control_scale(self, name: str, scale: AmplifierScale) -> AmplifierScale:
+        # 110 is the serialized mute detent, displayed as infinity; never dB.
+        if name == "volume" and self.volume_attenuation:
+            return AmplifierScale(10, 110, 10)
+        if name in ("sharpness", "flatness"):
+            return AmplifierScale(min(0, scale.minimum), max(10, scale.maximum), scale.step)
+        return scale
 
 
 @dataclass(frozen=True)
@@ -161,7 +172,9 @@ class RecommendationRequest:
             raise ValueError("Recommendation measurements must be a mapping")
         for name, value in self.current.items():
             try:
-                self.scale.validate(value)
+                self.current.control_scale(name, self.scale).validate(value)
+                if name == "volume" and self.current.volume_attenuation and value % 10 != 0:
+                    raise ValueError("Attenuation volume must use a marked detent")
             except ValueError as error:
                 raise ValueError(f"Current {name} position is invalid: {error}") from error
         object.__setattr__(self, "profile_version", self.profile_version.strip())
@@ -266,7 +279,9 @@ class SettingsRecommendation:
         }
         if self.message is not None:
             payload["message"] = self.message.strip()
+        if self.current.volume_attenuation:
+            payload["recommended"]["volume_attenuation"] = True
         return payload
 
 
-ALGORITHM_VERSION = "1.1.0"
+ALGORITHM_VERSION = "1.2.0"

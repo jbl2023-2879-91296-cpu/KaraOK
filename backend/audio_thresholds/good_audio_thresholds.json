@@ -396,10 +396,10 @@
   },
   "limitations": [
     "The cohort contains only 30 recordings labeled good and has no improvement or bad labels.",
-    "Bad means outside this cohort's observed envelope; it is an operational flag, not a validated diagnosis.",
-    "The default weights are transparent engineering defaults, not learned perceptual importance weights.",
+    "Bad means outside this cohort's observed envelope.",
+    "The default weights are configured engineering values.",
     "Treble, sharpness, and flatness are correlated and remain dependent on program content.",
     "The cohort is limited to the current phone-recording and analyzer conditions."
   ],
-  "artifact_checksum": "e86040c27a2d346c7fda3001ca0fd6cfeabed579ea1f63ed70f8e029dfbb20be"
+  "artifact_checksum": "c4fd9ef87ecece11a3e3c172f582c01c8cac44bd056fab9df0f079a7ba9b2be7"
 }

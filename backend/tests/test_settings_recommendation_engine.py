@@ -399,7 +399,7 @@ class SettingsRecommendationEngineTests(unittest.TestCase):
                 }
                 recommendation_request = RecommendationRequest(
                     scale=AmplifierScale(0.0, 10.0, 0.5),
-                    current=KnobSettings(5.0, 5.0, 5.0, 5.0, 5.0),
+                    current=KnobSettings(5.0, 5.0, 5.0, 0.0, 0.0),
                     measurements=measurements,
                     profile_version=artifact.profile_version,
                     profile_checksum=artifact.artifact_checksum,

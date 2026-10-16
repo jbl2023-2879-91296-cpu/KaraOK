@@ -207,38 +207,14 @@ class ApiService {
 
   Future<Map<String, dynamic>> startRegistration({
     required String username,
-    required String firstName,
-    required String lastName,
     required String email,
     required String password,
-    required String address,
-    required String city,
-    required String stateProvince,
-    required String areaCode,
-    required String country,
-    required String countryCode,
-    required String phoneNumber,
-    required String birthday,
-    String? profileImageBase64,
-    String? profileImageMime,
   }) async {
     return Map<String, dynamic>.from(
       await _post('/auth/register', {
             'username': username,
-            'first_name': firstName,
-            'last_name': lastName,
             'email': email,
             'password': password,
-            'address': address,
-            'city': city,
-            'state_province': stateProvince,
-            'area_code': areaCode,
-            'country': country,
-            'country_code': countryCode,
-            'phone_number': phoneNumber,
-            'birthday': birthday,
-            'profile_image_base64': ?profileImageBase64,
-            'profile_image_mime': ?profileImageMime,
           }, authenticated: false)
           as Map,
     );

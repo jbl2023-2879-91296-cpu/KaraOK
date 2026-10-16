@@ -64,7 +64,7 @@ void main() {
       });
       expect(find.text('-13.58 dBFS'), findsOneWidget);
       expect(find.text('11.74 / 100'), findsOneWidget);
-      expect(find.textContaining('not a THD measurement'), findsOneWidget);
+      expect(find.textContaining('An estimated distortion risk score from 0 to 100.'), findsOneWidget);
       expect(find.textContaining('quiet section'), findsOneWidget);
       expect(find.byType(LinearProgressIndicator), findsNothing);
     },

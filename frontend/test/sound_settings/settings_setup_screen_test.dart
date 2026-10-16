@@ -26,6 +26,111 @@ void main() {
 
   tearDown(UserSession.instance.clear);
 
+  _tallTestWidgets(
+    'volume slider saves compatible volume and neutral optional controls',
+    (tester) async {
+      SettingsSuggestionInput? submitted;
+      await tester.pumpWidget(
+        _testApp(
+          SettingsSetupScreen(
+            settingsApi: settingsApi,
+            guestStore: guestStore,
+            onContinue: (value) => submitted = value,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _selectScale(tester, 'Custom');
+      await tester.enterText(find.byKey(const Key('scale-minimum')), '-10');
+      await tester.pumpAndSettle();
+      await _selectGenre(tester, 'Rock');
+      await _enterPositions(tester, const {'volume': '60'});
+      await tester.enterText(find.byKey(const Key('knob-bass')), '-4');
+      await tester.enterText(find.byKey(const Key('knob-treble')), '2');
+      expect(_knobText(tester, 'sharpness'), '0');
+      expect(_knobText(tester, 'flatness'), '0');
+      await tester.ensureVisible(find.byKey(const Key('settings-continue')));
+      await tester.tap(find.byKey(const Key('settings-continue')));
+      await tester.pumpAndSettle();
+      expect(submitted?.current.volumeAttenuation, isTrue);
+      expect(submitted?.current.volume, 60);
+      expect(guestStore.saved?.lastPositions?.volumeAttenuation, isTrue);
+    },
+  );
+
+  _tallTestWidgets('custom values use the normal keyboard and accept signs', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _testApp(
+        SettingsSetupScreen(
+          settingsApi: settingsApi,
+          guestStore: guestStore,
+          onContinue: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _selectScale(tester, 'Custom');
+    for (final entry in {
+      'scale-minimum': '-10',
+      'scale-maximum': '+10',
+      'scale-step': '+0.5',
+      'knob-bass': '-4.5',
+      'knob-treble': '+2.5',
+    }.entries) {
+      final field = find.byKey(Key(entry.key));
+      await tester.ensureVisible(field);
+      expect(
+        tester
+            .widget<TextField>(
+              find.descendant(of: field, matching: find.byType(TextField)),
+            )
+            .keyboardType,
+        TextInputType.text,
+      );
+      await tester.enterText(field, entry.value);
+      await tester.pump();
+      expect(tester.widget<TextFormField>(field).controller!.text, entry.value);
+    }
+    expect(find.text('+'), findsNothing);
+    expect(find.text('\u2212'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  _tallTestWidgets(
+    'volume runs from mute to maximum and blocks muted recordings',
+    (tester) async {
+      SettingsSuggestionInput? submitted;
+      await tester.pumpWidget(
+        _testApp(
+          SettingsSetupScreen(
+            settingsApi: settingsApi,
+            guestStore: guestStore,
+            onContinue: (value) => submitted = value,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _fillGenreAndFivePositions(tester);
+      final slider = find.byKey(const Key('knob-volume-slider'));
+      tester.widget<Slider>(slider).onChanged!(0);
+      await tester.pump();
+      expect(find.text('Volume: ∞ (mute)'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('settings-continue')));
+      await tester.tap(find.byKey(const Key('settings-continue')));
+      await tester.pumpAndSettle();
+      expect(submitted, isNull);
+      expect(find.textContaining('Volume is muted.'), findsOneWidget);
+      tester.widget<Slider>(slider).onChanged!(100);
+      await tester.pump();
+      expect(find.text('Volume: 100'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('settings-continue')));
+      await tester.pumpAndSettle();
+      expect(submitted!.current.volume, 10);
+    },
+  );
+
   for (final scale in ['0–10', '0–100', 'Custom']) {
     _tallTestWidgets('creates a second named amplifier on $scale', (
       tester,
@@ -134,6 +239,11 @@ void main() {
 
     expect(find.text('Select a genre.'), findsOneWidget);
     expect(find.text('Enter all five current knob positions.'), findsOneWidget);
+    expect(find.text('Use researched starting point'), findsNothing);
+    expect(
+      find.byKey(const Key('starting-point-acknowledgement')),
+      findsNothing,
+    );
   });
 
   _tallTestWidgets(
@@ -168,31 +278,32 @@ void main() {
     },
   );
 
-  _tallTestWidgets(
-    'signed technician scale accepts negative half-step positions',
-    (tester) async {
-      SettingsSuggestionInput? submitted;
-      await tester.pumpWidget(
-        _testApp(
-          SettingsSetupScreen(
-            settingsApi: settingsApi,
-            guestStore: guestStore,
-            onContinue: (value) => submitted = value,
-          ),
+  _tallTestWidgets('custom scale accepts negative half-step positions', (
+    tester,
+  ) async {
+    SettingsSuggestionInput? submitted;
+    await tester.pumpWidget(
+      _testApp(
+        SettingsSetupScreen(
+          settingsApi: settingsApi,
+          guestStore: guestStore,
+          onContinue: (value) => submitted = value,
         ),
-      );
-      await tester.pumpAndSettle();
-      await _selectScale(tester, '-10 to +10 (technician reference)');
-      await _fillGenreAndFivePositions(tester);
-      await tester.enterText(find.byKey(const Key('knob-bass')), '-4.5');
-      await tester.ensureVisible(find.byKey(const Key('settings-continue')));
-      await tester.tap(find.byKey(const Key('settings-continue')));
-      await tester.pumpAndSettle();
-      expect(submitted?.current.bass, -4.5);
-      expect(submitted?.amplifierScale?.minimum, -10);
-      expect(submitted?.amplifierScale?.maximum, 10);
-    },
-  );
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _selectScale(tester, 'Custom');
+    await tester.enterText(find.byKey(const Key('scale-minimum')), '-10');
+    await tester.pumpAndSettle();
+    await _fillGenreAndFivePositions(tester);
+    await tester.enterText(find.byKey(const Key('knob-bass')), '-4.5');
+    await tester.ensureVisible(find.byKey(const Key('settings-continue')));
+    await tester.tap(find.byKey(const Key('settings-continue')));
+    await tester.pumpAndSettle();
+    expect(submitted?.current.bass, -4.5);
+    expect(submitted?.amplifierScale?.minimum, -10);
+    expect(submitted?.amplifierScale?.maximum, 10);
+  });
 
   _tallTestWidgets('renders only genres enabled by profile metadata', (
     tester,
@@ -209,6 +320,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.byKey(const Key('genre-dropdown')));
     await tester.tap(find.byKey(const Key('genre-dropdown')));
     await tester.pumpAndSettle();
 
@@ -243,6 +355,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(find.byKey(const Key('genre-dropdown')));
       await tester.ensureVisible(find.byKey(const Key('genre-dropdown')));
       await tester.tap(find.byKey(const Key('genre-dropdown')));
       await tester.pumpAndSettle();
@@ -304,6 +417,7 @@ void main() {
     await tester.tap(find.byKey(const Key('settings-load-retry')));
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.byKey(const Key('genre-dropdown')));
     await tester.tap(find.byKey(const Key('genre-dropdown')));
     await tester.pumpAndSettle();
     expect(find.text('Hip-Hop'), findsOneWidget);
@@ -409,14 +523,12 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.text(
-        'Keep the phone in the same position relative to the speakers.',
-      ),
+      find.text('Keep the phone on top of the Karaoke machine.'),
       findsOneWidget,
     );
     expect(
       find.text('Keep the room and playback source unchanged.'),
-      findsOneWidget,
+      findsNothing,
     );
   });
 
@@ -484,7 +596,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('knob-volume')), '5');
+    await tester.enterText(find.byKey(const Key('knob-bass')), '5');
 
     await tester.tap(find.byKey(const Key('scale-preset-dropdown')));
     await tester.pumpAndSettle();
@@ -498,13 +610,13 @@ void main() {
     await tester.tap(find.text('Rescale Values'));
     await tester.pumpAndSettle();
     final volume = tester.widget<TextFormField>(
-      find.byKey(const Key('knob-volume')),
+      find.byKey(const Key('knob-bass')),
     );
     expect(volume.controller?.text, '50');
   });
 
   _tallTestWidgets(
-    '0-100 preset applies its scale to five submitted positions',
+    '0-100 preset keeps volume on its independent printed scale',
     (tester) async {
       SettingsSuggestionInput? submitted;
       await tester.pumpWidget(
@@ -524,7 +636,7 @@ void main() {
       await tester.pumpAndSettle();
       await _selectGenre(tester, 'Rock');
       await _enterPositions(tester, const {
-        'volume': '55',
+        'volume': '60',
         'bass': '40',
         'treble': '60',
         'sharpness': '50',
@@ -535,94 +647,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(submitted?.amplifierScale?.maximum, 100);
-      expect(submitted?.current.volume, 55);
+      expect(submitted?.current.volume, 60);
     },
   );
-
-  for (final scenario
-      in <
-        ({
-          String name,
-          Future<void> Function(WidgetTester) selectScale,
-          Map<String, String> expected,
-        })
-      >[
-        (
-          name: '0-10',
-          selectScale: (_) async {},
-          expected: const {
-            'volume': '4',
-            'bass': '5',
-            'treble': '5',
-            'sharpness': '5',
-            'flatness': '5',
-          },
-        ),
-        (
-          name: '0-100',
-          selectScale: (tester) => _selectScale(tester, '0–100'),
-          expected: const {
-            'volume': '40',
-            'bass': '50',
-            'treble': '50',
-            'sharpness': '50',
-            'flatness': '50',
-          },
-        ),
-        (
-          name: 'custom 2-12',
-          selectScale: (tester) async {
-            await _selectScale(tester, 'Custom');
-            await tester.enterText(find.byKey(const Key('scale-minimum')), '2');
-            await tester.enterText(
-              find.byKey(const Key('scale-maximum')),
-              '12',
-            );
-            await tester.enterText(find.byKey(const Key('scale-step')), '0.5');
-            await tester.pump();
-          },
-          expected: const {
-            'volume': '6',
-            'bass': '7',
-            'treble': '7',
-            'sharpness': '7',
-            'flatness': '7',
-          },
-        ),
-      ]) {
-    _tallTestWidgets(
-      'researched starting point uses the ${scenario.name} scale',
-      (tester) async {
-        await tester.pumpWidget(
-          _testApp(
-            SettingsSetupScreen(
-              settingsApi: settingsApi,
-              guestStore: guestStore,
-              onContinue: (_) {},
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        await scenario.selectScale(tester);
-
-        await tester.ensureVisible(
-          find.byKey(const Key('use-researched-starting-point')),
-        );
-        await tester.tap(
-          find.byKey(const Key('use-researched-starting-point')),
-        );
-        await tester.pump();
-
-        for (final entry in scenario.expected.entries) {
-          expect(_knobText(tester, entry.key), entry.value);
-        }
-        expect(
-          find.byKey(const Key('starting-point-acknowledgement')),
-          findsOneWidget,
-        );
-      },
-    );
-  }
 
   _tallTestWidgets(
     'saved positions load without automatic starting-point replacement',
@@ -650,7 +677,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(_knobText(tester, 'volume'), '8');
+      expect(_knobText(tester, 'volume'), isEmpty);
       expect(_knobText(tester, 'bass'), '3');
       expect(_knobText(tester, 'flatness'), '2');
       expect(
@@ -661,7 +688,7 @@ void main() {
   );
 
   _tallTestWidgets(
-    'switching to a profile without positions clears every inherited knob and acknowledgement',
+    'switching to a profile without positions clears every inherited knob',
     (tester) async {
       UserSession.instance.setUser(
         id: 7,
@@ -700,16 +727,6 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.ensureVisible(
-        find.byKey(const Key('use-researched-starting-point')),
-      );
-      await tester.tap(find.byKey(const Key('use-researched-starting-point')));
-      await tester.pump();
-      await tester.ensureVisible(
-        find.byKey(const Key('starting-point-acknowledgement')),
-      );
-      await tester.tap(find.byKey(const Key('starting-point-acknowledgement')));
-      await tester.pump();
-      await tester.ensureVisible(
         find.byKey(const Key('amplifier-profile-dropdown')),
       );
       await tester.tap(find.byKey(const Key('amplifier-profile-dropdown')));
@@ -724,7 +741,10 @@ void main() {
         'sharpness',
         'flatness',
       ]) {
-        expect(_knobText(tester, name), isEmpty);
+        expect(
+          _knobText(tester, name),
+          name == 'sharpness' || name == 'flatness' ? '0' : isEmpty,
+        );
       }
       expect(
         find.byKey(const Key('starting-point-acknowledgement')),
@@ -732,114 +752,6 @@ void main() {
       );
     },
   );
-
-  _tallTestWidgets(
-    'researched positions require physical acknowledgement before continuing',
-    (tester) async {
-      SettingsSuggestionInput? submitted;
-      await tester.pumpWidget(
-        _testApp(
-          SettingsSetupScreen(
-            settingsApi: settingsApi,
-            guestStore: guestStore,
-            onContinue: (value) => submitted = value,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await _selectGenre(tester, 'Rock');
-      await tester.tap(find.byKey(const Key('use-researched-starting-point')));
-      await tester.pump();
-
-      await tester.ensureVisible(find.byKey(const Key('settings-continue')));
-      await tester.tap(find.byKey(const Key('settings-continue')));
-      await tester.pump();
-
-      expect(submitted, isNull);
-      expect(
-        find.text(
-          'Confirm that the five physical controls match these positions.',
-        ),
-        findsOneWidget,
-      );
-
-      await tester.ensureVisible(
-        find.byKey(const Key('starting-point-acknowledgement')),
-      );
-      await tester.tap(find.byKey(const Key('starting-point-acknowledgement')));
-      await tester.pump();
-      await tester.ensureVisible(find.byKey(const Key('settings-continue')));
-      await tester.tap(find.byKey(const Key('settings-continue')));
-      await tester.pumpAndSettle();
-
-      expect(submitted?.current.volume, 4);
-      expect(guestStore.saved?.lastPositions?.bass, 5);
-    },
-  );
-
-  _tallTestWidgets(
-    'authenticated researched positions continue after acknowledgement',
-    (tester) async {
-      UserSession.instance.setUser(
-        id: 7,
-        name: 'Test User',
-        email: 'test@example.com',
-        userType: 'user',
-      );
-      SettingsSuggestionInput? submitted;
-      await tester.pumpWidget(
-        _testApp(
-          SettingsSetupScreen(
-            settingsApi: settingsApi,
-            guestStore: guestStore,
-            onContinue: (value) => submitted = value,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await _selectGenre(tester, 'Rock');
-      await tester.tap(find.byKey(const Key('use-researched-starting-point')));
-      await tester.pump();
-      await tester.ensureVisible(
-        find.byKey(const Key('starting-point-acknowledgement')),
-      );
-      await tester.tap(find.byKey(const Key('starting-point-acknowledgement')));
-      await tester.pump();
-      await tester.ensureVisible(find.byKey(const Key('settings-continue')));
-      await tester.tap(find.byKey(const Key('settings-continue')));
-      await tester.pumpAndSettle();
-
-      expect(settingsApi.created?.lastPositions?.volume, 4);
-      expect(submitted?.amplifierProfileId, 22);
-    },
-  );
-
-  _tallTestWidgets('editing a researched knob clears acknowledgement', (
-    tester,
-  ) async {
-    await _pumpAndAcknowledgeStartingPoint(tester, settingsApi, guestStore);
-
-    await tester.enterText(find.byKey(const Key('knob-volume')), '4.5');
-    await tester.pump();
-
-    expect(
-      find.byKey(const Key('starting-point-acknowledgement')),
-      findsNothing,
-    );
-  });
-
-  _tallTestWidgets('changing scale after acknowledgement clears it', (
-    tester,
-  ) async {
-    await _pumpAndAcknowledgeStartingPoint(tester, settingsApi, guestStore);
-
-    await _selectScale(tester, 'Custom');
-
-    expect(
-      find.byKey(const Key('starting-point-acknowledgement')),
-      findsNothing,
-    );
-  });
 
   _tallTestWidgets('manual positions do not require acknowledgement', (
     tester,
@@ -887,7 +799,10 @@ void main() {
         .map((widget) => widget.data ?? '')
         .join('\n')
         .toLowerCase();
-    expect(renderedCopy, contains('karaoke instrumental playback'));
+    expect(
+      renderedCopy,
+      contains('enter every current position of knobs before recording'),
+    );
     expect(renderedCopy, isNot(contains('singer')));
     expect(renderedCopy, isNot(contains('microphone direction')));
     expect(
@@ -920,7 +835,7 @@ void _tallTestWidgets(String description, WidgetTesterCallback callback) {
 Future<void> _fillGenreAndFivePositions(WidgetTester tester) async {
   await _selectGenre(tester, 'Rock');
   await _enterPositions(tester, const {
-    'volume': '5',
+    'volume': '60',
     'bass': '4',
     'treble': '6',
     'sharpness': '5',
@@ -941,6 +856,13 @@ Future<void> _enterPositions(
   Map<String, String> values,
 ) async {
   for (final entry in values.entries) {
+    if (entry.key == 'volume') {
+      final volume = find.byKey(const Key('knob-volume-slider'));
+      await tester.ensureVisible(volume);
+      tester.widget<Slider>(volume).onChanged!(110 - double.parse(entry.value));
+      await tester.pumpAndSettle();
+      continue;
+    }
     final field = find.byKey(Key('knob-${entry.key}'));
     await tester.ensureVisible(field);
     await tester.enterText(field, entry.value);
@@ -949,6 +871,16 @@ Future<void> _enterPositions(
 }
 
 String _knobText(WidgetTester tester, String name) {
+  if (name == 'volume') {
+    final label = tester
+        .widget<Text>(find.byKey(const Key('volume-level-label')))
+        .data!;
+    if (label == 'Volume: select a level') return '';
+    final slider = tester.widget<Slider>(
+      find.byKey(const Key('knob-volume-slider')),
+    );
+    return (110 - slider.value).round().toString();
+  }
   final field = tester.widget<TextFormField>(find.byKey(Key('knob-$name')));
   return field.controller!.text;
 }
@@ -959,33 +891,6 @@ Future<void> _selectScale(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
   await tester.tap(find.text(label).last);
   await tester.pumpAndSettle();
-}
-
-Future<void> _pumpAndAcknowledgeStartingPoint(
-  WidgetTester tester,
-  SettingsApi settingsApi,
-  GuestAmplifierStore guestStore,
-) async {
-  await tester.pumpWidget(
-    _testApp(
-      SettingsSetupScreen(
-        settingsApi: settingsApi,
-        guestStore: guestStore,
-        onContinue: (_) {},
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
-  await tester.ensureVisible(
-    find.byKey(const Key('use-researched-starting-point')),
-  );
-  await tester.tap(find.byKey(const Key('use-researched-starting-point')));
-  await tester.pump();
-  await tester.ensureVisible(
-    find.byKey(const Key('starting-point-acknowledgement')),
-  );
-  await tester.tap(find.byKey(const Key('starting-point-acknowledgement')));
-  await tester.pump();
 }
 
 class _FakeSettingsApi extends SettingsApi {

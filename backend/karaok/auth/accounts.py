@@ -72,24 +72,30 @@ def register():
         raise ValueError(
             "username may contain only letters, numbers, dots, dashes, and underscores"
         )
-    first_name = clean_text(data.get("first_name"), "first_name", 1, 80)
-    last_name = clean_text(data.get("last_name"), "last_name", 1, 80)
+    # Older clients may still send profile details. Validate supplied values,
+    # but keep deferred information genuinely absent in storage.
+    def optional_text(field, minimum, maximum):
+        value = data.get(field)
+        return None if value is None else clean_text(value, field, minimum, maximum)
+
+    first_name = optional_text("first_name", 1, 80)
+    last_name = optional_text("last_name", 1, 80)
     email = clean_email(data.get("email"))
     password = validate_password(data.get("password"))
-    address = clean_text(data.get("address"), "address", 5, 255)
-    city = clean_text(data.get("city"), "city", 2, 100)
-    state_province = clean_text(
-        data.get("state_province"), "state_province", 2, 100
+    address = optional_text("address", 5, 255)
+    city = optional_text("city", 2, 100)
+    state_province = optional_text("state_province", 2, 100)
+    area_code = optional_text("area_code", 2, 20)
+    country = optional_text("country", 2, 80)
+    country_code = optional_text("country_code", 2, 2)
+    if country_code is not None:
+        country_code = country_code.upper()
+        if not re.fullmatch(r"[A-Z]{2}", country_code):
+            raise ValueError("country_code must be a two-letter ISO country code")
+    phone_number = (
+        _clean_phone(data["phone_number"]) if data.get("phone_number") is not None else None
     )
-    area_code = clean_text(data.get("area_code"), "area_code", 2, 20)
-    country = clean_text(data.get("country"), "country", 2, 80)
-    country_code = clean_text(
-        data.get("country_code"), "country_code", 2, 2
-    ).upper()
-    if not re.fullmatch(r"[A-Z]{2}", country_code):
-        raise ValueError("country_code must be a two-letter ISO country code")
-    phone_number = _clean_phone(data.get("phone_number"))
-    birthday = _clean_birthday(data.get("birthday"))
+    birthday = _clean_birthday(data["birthday"]) if data.get("birthday") is not None else None
     profile_image, profile_image_mime = _clean_profile_image(data)
     if "user_type" in data and data.get("user_type") != SELF_REGISTER_ROLE:
         raise ValueError("public registration creates user accounts only")

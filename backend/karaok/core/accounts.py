@@ -87,7 +87,7 @@ def _profile_response(user: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": user["user_id"],
         "username": user["username"],
-        "name": " ".join(part for part in (first_name, last_name) if part),
+        "name": " ".join(part for part in (first_name, last_name) if part) or user["username"],
         "first_name": first_name,
         "last_name": last_name,
         "email": user["email"],
@@ -98,7 +98,11 @@ def _profile_response(user: dict[str, Any]) -> dict[str, Any]:
         "country": user.get("country", ""),
         "country_code": user.get("country_code", ""),
         "phone_number": user.get("phone_number", ""),
-        "birthday": str(user.get("birthday") or ""),
+        "birthday": str(user["birthday"]) if user.get("birthday") else None,
+        "profile_complete": all(user.get(field) for field in (
+            "first_name", "last_name", "address", "city", "state_province",
+            "area_code", "country", "country_code", "phone_number", "birthday",
+        )),
         "profile_image_base64": base64.b64encode(bytes(image)).decode("ascii")
         if image
         else None,

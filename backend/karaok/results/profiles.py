@@ -58,17 +58,11 @@ def _positions(
 ) -> dict[str, float] | None:
     if value is None:
         return None
-    if not isinstance(value, Mapping) or set(value) != set(KNOB_NAMES):
+    if not isinstance(value, Mapping) or set(value) - {"volume_attenuation"} != set(KNOB_NAMES):
         raise ValueError("last_positions must contain exactly all five knob values")
-    positions: dict[str, float] = {}
-    for name in KNOB_NAMES:
-        number = _finite_number(value[name], f"last_positions.{name}")
-        if number < minimum or number > maximum:
-            raise ValueError(
-                f"last_positions.{name} must be between {minimum} and {maximum}"
-            )
-        positions[name] = number
-    return positions
+    from karaok.core.recommendation_contracts import _knob_settings
+    from karaok.core.recommendation_models import AmplifierScale
+    return _knob_settings(value, AmplifierScale(minimum, maximum, 1), "last_positions").to_dict()
 
 
 def _profile_response(row: Mapping[str, Any]) -> dict[str, Any]:

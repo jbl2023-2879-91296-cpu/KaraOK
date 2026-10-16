@@ -107,10 +107,9 @@ outer improvement boundaries, with linear interpolation and scores limited to
 0-100. Overall grades use the existing weighted score: Good at 80 or above,
 Needs improvement from 50 to below 80, and Bad below 50.
 
-These symmetric thresholds are provisional engineering choices based on the
-existing 30-recording reference, not independently validated listener ratings.
-Some mathematical bands extend outside physical measurement limits. Additional
-recordings and independent quality labels are needed to validate those boundaries.
+These symmetric thresholds are project settings based on the existing
+30-recording reference. Some mathematical bands extend outside physical
+measurement limits.
 See the [profile documentation](backend/audio_thresholds/README.md) for exact
 values, domain limitations, generation, and legacy-profile support.
 

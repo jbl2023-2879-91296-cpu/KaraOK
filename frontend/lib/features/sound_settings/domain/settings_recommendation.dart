@@ -247,7 +247,13 @@ class SettingsRecommendation {
       _object(json['current'], 'current'),
       scale: scale,
     );
-    final rawRecommended = _object(json['recommended'], 'recommended');
+    final rawRecommended = Map<String, dynamic>.from(
+      _object(json['recommended'], 'recommended'),
+    );
+    final attenuation = rawRecommended.remove('volume_attenuation') ?? false;
+    if (attenuation != current.volumeAttenuation) {
+      throw const FormatException('Volume scales do not match.');
+    }
     final rawAdjustments = _object(json['adjustments'], 'adjustments');
     if (!_hasAllKnobs(rawRecommended.keys) ||
         !_hasAllKnobs(rawAdjustments.keys)) {
@@ -264,11 +270,13 @@ class SettingsRecommendation {
         'recommended.$knob',
       );
       if (recommended[knob] case final value?) {
-        scale.validatePosition(value, 'recommended.$knob');
+        current
+            .controlScale(knob, scale)
+            .validatePosition(value, 'recommended.$knob');
       }
       adjustments[knob] = KnobAdjustment.fromJson(
         _object(rawAdjustments[knob], 'adjustments.$knob'),
-        scale: scale,
+        scale: current.controlScale(knob, scale),
         knob: knob,
       );
       if (adjustments[knob]!.current != currentValues[knob]) {
@@ -414,7 +422,10 @@ class SettingsRecommendation {
     'overall_confidence': overallConfidence,
     'scale': scale.toJson(),
     'current': current.toJson(),
-    'recommended': recommended,
+    'recommended': {
+      ...recommended,
+      if (current.volumeAttenuation) 'volume_attenuation': true,
+    },
     'adjustments': {
       for (final entry in adjustments.entries) entry.key: entry.value.toJson(),
     },

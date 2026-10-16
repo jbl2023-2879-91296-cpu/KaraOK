@@ -17,9 +17,14 @@ import 'package:karaok_app/features/auth/presentation/pages/login_screen.dart';
 import 'package:karaok_app/features/auth/presentation/pages/signup_screen.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
-  const ChangePasswordScreen({super.key, this.forceChange = false});
+  const ChangePasswordScreen({
+    super.key,
+    this.forceChange = false,
+    this.editProfile = false,
+  });
 
   final bool forceChange;
+  final bool editProfile;
 
   @override
   State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
@@ -58,6 +63,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   void initState() {
     super.initState();
     _resetProfileDraft();
+    _editingProfile = widget.editProfile && !widget.forceChange;
   }
 
   @override

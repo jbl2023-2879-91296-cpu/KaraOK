@@ -2,7 +2,7 @@ import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/features/reports/domain/report_values.dart';
 
-/// These are advisory measurements, not calibrated noise or THD grades.
+/// Estimated noise level and distortion risk for the recording.
 class ReportMeasurements extends StatelessWidget {
   const ReportMeasurements({
     super.key,
@@ -25,7 +25,7 @@ class ReportMeasurements extends StatelessWidget {
               ? 'Not measured'
               : '${noise.toStringAsFixed(2)} dBFS',
           explanation:
-              'A quiet-frame estimate, not a calibrated room-noise measurement. '
+              'Estimated from quiet frames in the recording. '
               'It may be unreliable when the recording has no true quiet section.',
         ),
         const SizedBox(height: 10),
@@ -35,7 +35,7 @@ class ReportMeasurements extends StatelessWidget {
               ? 'Not measured'
               : '${distortion.toStringAsFixed(2)} / 100',
           explanation:
-              'A heuristic risk score, not a THD measurement or a distortion percentage. '
+              'An estimated distortion risk score from 0 to 100. '
               'These estimates do not contribute to the five-feature quality score.',
         ),
       ],

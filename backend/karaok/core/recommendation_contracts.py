@@ -95,13 +95,16 @@ def _knob_settings(
     scale: AmplifierScale,
     field: str,
 ) -> KnobSettings:
-    if set(value) != set(KNOB_NAMES):
+    if set(value) - {"volume_attenuation"} != set(KNOB_NAMES):
         raise ValueError(f"{field} must contain exactly all five knob values")
-    positions = {
-        name: scale.validate(_strict_number(value[name], f"{field}.{name}"))
-        for name in KNOB_NAMES
-    }
-    return KnobSettings(**positions)
+    settings = KnobSettings(**{name: _strict_number(value[name], f"{field}.{name}") for name in KNOB_NAMES},
+                            volume_attenuation=value.get("volume_attenuation", False))
+    for name, position in settings.items():
+        control_scale = settings.control_scale(name, scale)
+        control_scale.validate(position)
+        if name == "volume" and settings.volume_attenuation and position % 10 != 0:
+            raise ValueError("Attenuation volume must use a marked detent")
+    return settings
 
 
 def _positive_identifier(value: Any, field: str) -> int:
@@ -136,9 +139,9 @@ def _same_positions(
     right: KnobSettings,
     scale: AmplifierScale,
 ) -> bool:
-    return all(
-        _quantized_step_index(getattr(left, name), scale)
-        == _quantized_step_index(getattr(right, name), scale)
+    return left.volume_attenuation == right.volume_attenuation and all(
+        _quantized_step_index(getattr(left, name), left.control_scale(name, scale))
+        == _quantized_step_index(getattr(right, name), right.control_scale(name, scale))
         for name in KNOB_NAMES
     )
 

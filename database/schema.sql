@@ -20,20 +20,20 @@ CREATE TABLE IF NOT EXISTS user (
     user_id INT AUTO_INCREMENT PRIMARY KEY,
 
     username VARCHAR(50) NOT NULL UNIQUE,
-    first_name VARCHAR(80) NOT NULL,
-    last_name VARCHAR(80) NOT NULL,
+    first_name VARCHAR(80) NULL,
+    last_name VARCHAR(80) NULL,
     email VARCHAR(100) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
     email_verified_at DATETIME NULL,
 
-    address VARCHAR(255) NOT NULL,
-    city VARCHAR(100) NOT NULL,
-    state_province VARCHAR(100) NOT NULL,
-    area_code VARCHAR(20) NOT NULL,
-    country VARCHAR(80) NOT NULL,
-    country_code CHAR(2) NOT NULL,
-    phone_number VARCHAR(20) NOT NULL UNIQUE,
-    birthday DATE NOT NULL,
+    address VARCHAR(255) NULL,
+    city VARCHAR(100) NULL,
+    state_province VARCHAR(100) NULL,
+    area_code VARCHAR(20) NULL,
+    country VARCHAR(80) NULL,
+    country_code CHAR(2) NULL,
+    phone_number VARCHAR(20) NULL UNIQUE,
+    birthday DATE NULL,
 
     -- Optional image bytes are kept with the user so deletion cascades do not
     -- leave profile files behind. Registration accepts JPEG, PNG, and WebP.

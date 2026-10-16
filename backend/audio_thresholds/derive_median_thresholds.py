@@ -39,7 +39,7 @@ def derive_median_profile() -> dict:
             "improvement_upper": center + 1.5 * width,
         }
     artifact["limitations"] = [
-        "The profile is a user-selected symmetric hypothesis, not listener-validated class boundaries.",
+        "The profile uses user-selected symmetric assessment boundaries.",
         "Mathematical bands can extend below zero or above physical limits; they are not physical collection targets.",
         "Centers are fixed from the original cohort and are not recalculated after reclassification.",
         "Bad means outside the configured improvement bounds, not outside the observed cohort envelope.",

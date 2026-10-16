@@ -5,6 +5,33 @@ import 'package:karaok_app/features/sound_settings/domain/amplifier_profile.dart
 import 'package:karaok_app/features/sound_settings/domain/settings_recommendation.dart';
 
 void main() {
+  test('attenuation volume is independent of tone scale and survives JSON', () {
+    const tone = AmplifierScale(minimum: -10, maximum: 10, step: .5);
+    const positions = KnobSettings(
+      volume: 60,
+      bass: -4,
+      treble: 2,
+      sharpness: 0,
+      flatness: 0,
+      volumeAttenuation: true,
+    );
+    positions.validate(scale: tone);
+    expect(KnobSettings.fromJson(positions.toJson(), scale: tone), positions);
+    expect(
+      () => KnobSettings.fromJson({
+        ...positions.toJson(),
+        'volume': 65,
+      }, scale: tone),
+      throwsFormatException,
+    );
+    expect(
+      () => KnobSettings.fromJson({
+        ...positions.toJson(),
+        'volume_attenuation': 'true',
+      }, scale: tone),
+      throwsFormatException,
+    );
+  });
   const scale = AmplifierScale(minimum: 0, maximum: 10, step: 0.5);
   const current = KnobSettings(
     volume: 5,

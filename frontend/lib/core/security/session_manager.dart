@@ -27,6 +27,23 @@ class UserSession {
   bool isGuest = false;
   bool requiresPasswordChange = false;
 
+  bool get needsProfileCompletion =>
+      !isGuest &&
+      id != null &&
+      userType == 'user' &&
+      [
+        firstName,
+        lastName,
+        address,
+        city,
+        stateProvince,
+        areaCode,
+        country,
+        countryCode,
+        phoneNumber,
+        birthday,
+      ].any((value) => value == null || value.trim().isEmpty);
+
   bool get isLoggedIn => id != null || isGuest;
 
   /// Rebuilds the in-memory session from an authentication API response.
@@ -79,7 +96,7 @@ class UserSession {
   }) {
     this.id = id;
     this.username = username;
-    this.name = name;
+    this.name = name.trim().isEmpty ? username : name;
     this.firstName = firstName;
     this.lastName = lastName;
     this.email = email;

@@ -8,6 +8,40 @@ import 'package:karaok_app/features/sound_settings/domain/settings_recommendatio
 import 'package:karaok_app/features/sound_settings/presentation/pages/settings_recommendation_screen.dart';
 
 void main() {
+  _screenTest(
+    'attenuation decrease is shown as louder and survives round trip',
+    (tester) async {
+      final data = _sample().toJson();
+      data['current']['volume'] = 60.0;
+      data['current']['volume_attenuation'] = true;
+      data['recommended']['volume'] = 50.0;
+      data['recommended']['volume_attenuation'] = true;
+      data['adjustments']['volume'] = {
+        'current': 60.0,
+        'recommended': 50.0,
+        'delta': -10.0,
+        'delta_normalized': 10.0,
+        'reason_code': 'below_genre_range',
+        'confidence': 'low',
+      };
+      final recommendation = SettingsRecommendation.fromJson(data);
+      expect(
+        SettingsRecommendation.fromJson(
+          recommendation.toJson(),
+        ).current.volumeAttenuation,
+        isTrue,
+      );
+      await tester.pumpWidget(
+        _testApp(SettingsRecommendationScreen(recommendation: recommendation)),
+      );
+      expect(find.text('50 → 60'), findsOneWidget);
+      expect(find.text('Louder'), findsOneWidget);
+      expect(
+        find.byKey(const Key('direction-volume-increase')),
+        findsOneWidget,
+      );
+    },
+  );
   _screenTest('Done returns to Home and removes every workflow route', (
     tester,
   ) async {
@@ -45,24 +79,19 @@ void main() {
     expect(find.text('Setup route', skipOffstage: false), findsNothing);
     expect(find.text('Recording route', skipOffstage: false), findsNothing);
   });
-  _screenTest('renders all five current to recommended settings', (
+  _screenTest('renders changes and hides unchanged optional controls', (
     tester,
   ) async {
     await tester.pumpWidget(
       _testApp(SettingsRecommendationScreen(recommendation: _sample())),
     );
 
-    for (final label in const [
-      'Volume',
-      'Bass',
-      'Treble',
-      'Sharpness',
-      'Flatness',
-    ]) {
+    for (final label in const ['Volume', 'Bass', 'Treble', 'Flatness']) {
       expect(find.text(label), findsOneWidget);
     }
     expect(find.text('4.0 → 5.5'), findsOneWidget);
     expect(find.text('+1.5'), findsOneWidget);
+    expect(find.text('Sharpness'), findsNothing);
     expect(find.byKey(const Key('direction-bass-increase')), findsOneWidget);
   });
 

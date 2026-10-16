@@ -1,11 +1,7 @@
 import 'package:karaok_app/app/app_theme.dart';
-import 'dart:convert';
 
-import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
-import 'package:karaok_app/core/media/profile_image_picker.dart';
 import 'package:karaok_app/core/security/password_policy.dart';
 import 'package:karaok_app/features/auth/data/auth_api.dart';
 import 'package:karaok_app/features/auth/presentation/pages/login_screen.dart';
@@ -23,95 +19,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   final _formKey = GlobalKey<FormState>();
   final _usernameCtrl = TextEditingController();
-  final _firstNameCtrl = TextEditingController();
-  final _lastNameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
-  final _addressCtrl = TextEditingController();
-  final _cityCtrl = TextEditingController();
-  final _stateProvinceCtrl = TextEditingController();
-  final _areaCodeCtrl = TextEditingController();
-  final _countryCtrl = TextEditingController();
-  final _phoneCtrl = TextEditingController();
-  final _birthdayCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
-  final _confirmCtrl = TextEditingController();
 
   bool _obscurePass = true;
-  bool _obscureConf = true;
   bool _loading = false;
   String? _error;
-  String? _countryCode;
-  Uint8List? _profileImage;
-  String? _profileImageMime;
 
   @override
   void dispose() {
-    for (final controller in [
-      _usernameCtrl,
-      _firstNameCtrl,
-      _lastNameCtrl,
-      _emailCtrl,
-      _addressCtrl,
-      _cityCtrl,
-      _stateProvinceCtrl,
-      _areaCodeCtrl,
-      _countryCtrl,
-      _phoneCtrl,
-      _birthdayCtrl,
-      _passCtrl,
-      _confirmCtrl,
-    ]) {
+    for (final controller in [_usernameCtrl, _emailCtrl, _passCtrl]) {
       controller.dispose();
     }
     super.dispose();
-  }
-
-  Future<void> _pickProfileImage() async {
-    final result = await ProfileImagePicker.pick(context);
-    if (!mounted) return;
-    if (result == null) return;
-    if (!result.isSuccess) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(result.error!)));
-      return;
-    }
-    setState(() {
-      _profileImage = result.bytes;
-      _profileImageMime = result.mimeType;
-    });
-  }
-
-  Future<void> _selectBirthday() async {
-    final now = DateTime.now();
-    final selected = await showDatePicker(
-      context: context,
-      firstDate: DateTime(1900),
-      lastDate: DateTime(
-        now.year,
-        now.month,
-        now.day,
-      ).subtract(const Duration(days: 1)),
-      initialDate: DateTime(now.year - 18, now.month, now.day),
-    );
-    if (selected == null) return;
-    _birthdayCtrl.text =
-        '${selected.year.toString().padLeft(4, '0')}-'
-        '${selected.month.toString().padLeft(2, '0')}-'
-        '${selected.day.toString().padLeft(2, '0')}';
-  }
-
-  void _selectCountry() {
-    showCountryPicker(
-      context: context,
-      showPhoneCode: false,
-      onSelect: (country) {
-        setState(() {
-          _countryCtrl.text = country.name;
-          _countryCode = country.countryCode;
-        });
-      },
-    );
   }
 
   Future<void> _signUp() async {
@@ -123,22 +43,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
     try {
       final response = await AuthApi().startRegistration(
         username: _usernameCtrl.text.trim(),
-        firstName: _firstNameCtrl.text.trim(),
-        lastName: _lastNameCtrl.text.trim(),
         email: _emailCtrl.text.trim(),
         password: _passCtrl.text,
-        address: _addressCtrl.text.trim(),
-        city: _cityCtrl.text.trim(),
-        stateProvince: _stateProvinceCtrl.text.trim(),
-        areaCode: _areaCodeCtrl.text.trim(),
-        country: _countryCtrl.text.trim(),
-        countryCode: _countryCode!,
-        phoneNumber: _phoneCtrl.text.trim(),
-        birthday: _birthdayCtrl.text,
-        profileImageBase64: _profileImage == null
-            ? null
-            : base64Encode(_profileImage!),
-        profileImageMime: _profileImageMime,
       );
       if (!mounted) return;
       final serverEmail = response['email'];
@@ -159,7 +65,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       if (!mounted) return;
       setState(() {
         _error = error.message.contains('already')
-            ? 'An account with this email or phone number already exists.'
+            ? 'An account with this email or username already exists.'
             : error.message;
         _loading = false;
       });
@@ -204,63 +110,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                 ),
                 const Text(
-                  'Create your user profile and save future results',
+                  'Verify your email, then add personal details after login.',
                   style: TextStyle(color: AppColors.muted, fontSize: 14),
                 ),
                 const SizedBox(height: 24),
-                Center(
-                  child: Column(
-                    children: [
-                      InkWell(
-                        onTap: _loading ? null : _pickProfileImage,
-                        customBorder: const CircleBorder(),
-                        child: CircleAvatar(
-                          radius: 46,
-                          backgroundColor: AppColors.surface,
-                          backgroundImage: _profileImage == null
-                              ? null
-                              : MemoryImage(_profileImage!),
-                          child: _profileImage == null
-                              ? const Icon(
-                                  Icons.add_a_photo_outlined,
-                                  color: _accentColor,
-                                  size: 34,
-                                )
-                              : null,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Profile image (optional, max 5 MB)',
-                        style: TextStyle(color: AppColors.muted, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: _LabeledField(
-                        label: 'First name',
-                        controller: _firstNameCtrl,
-                        hint: 'e.g. Mary Jane',
-                        validator: (value) => _required(value, 'first name'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _LabeledField(
-                        label: 'Last name',
-                        controller: _lastNameCtrl,
-                        hint: 'Last name',
-                        validator: (value) => _required(value, 'last name'),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
                 _LabeledField(
                   label: 'Username',
                   controller: _usernameCtrl,
@@ -286,112 +139,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 ),
                 const SizedBox(height: 16),
                 _LabeledField(
-                  label: 'Street address',
-                  controller: _addressCtrl,
-                  hint: 'House/building number and street',
-                  suffixIcon: const Icon(Icons.location_on_outlined),
-                  validator: (value) => _required(value, 'your street address'),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: _LabeledField(
-                        label: 'City / Municipality',
-                        controller: _cityCtrl,
-                        hint: 'City',
-                        validator: (value) => _required(value, 'your city'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _LabeledField(
-                        label: 'Province / State',
-                        controller: _stateProvinceCtrl,
-                        hint: 'Province or state',
-                        validator: (value) =>
-                            _required(value, 'your province or state'),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: _LabeledField(
-                        label: 'Country',
-                        controller: _countryCtrl,
-                        hint: 'Select your country',
-                        readOnly: true,
-                        onTap: _selectCountry,
-                        suffixIcon: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (_countryCode != null)
-                              Text(
-                                _countryCode!,
-                                style: const TextStyle(
-                                  color: AppColors.muted,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            const SizedBox(width: 4),
-                            const Icon(Icons.arrow_drop_down),
-                            const SizedBox(width: 8),
-                          ],
-                        ),
-                        validator: (value) =>
-                            _countryCode == null ? 'Select your country' : null,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 2,
-                      child: _LabeledField(
-                        label: 'Postal code',
-                        controller: _areaCodeCtrl,
-                        hint: 'e.g. 1000',
-                        maxLength: 12,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(
-                            RegExp(r'[A-Za-z0-9 -]'),
-                          ),
-                        ],
-                        validator: (value) =>
-                            _required(value, 'your postal code'),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _LabeledField(
-                  label: 'Phone number',
-                  controller: _phoneCtrl,
-                  hint: '+63 912 345 6789',
-                  keyboardType: TextInputType.phone,
-                  validator: (value) {
-                    final digits = (value ?? '').replaceAll(RegExp(r'\D'), '');
-                    return digits.length >= 7 && digits.length <= 15
-                        ? null
-                        : 'Enter a valid phone number';
-                  },
-                ),
-                const SizedBox(height: 16),
-                _LabeledField(
-                  label: 'Birthday',
-                  controller: _birthdayCtrl,
-                  hint: 'YYYY-MM-DD',
-                  readOnly: true,
-                  onTap: _selectBirthday,
-                  suffixIcon: const Icon(Icons.calendar_month_outlined),
-                  validator: (value) => _required(value, 'your birthday'),
-                ),
-                const SizedBox(height: 16),
-                _LabeledField(
                   label: 'Password',
                   controller: _passCtrl,
                   hint: '8-128 characters with mixed types',
@@ -405,23 +152,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         setState(() => _obscurePass = !_obscurePass),
                   ),
                   validator: PasswordPolicy.validate,
-                ),
-                const SizedBox(height: 16),
-                _LabeledField(
-                  label: 'Confirm password',
-                  controller: _confirmCtrl,
-                  hint: 'Retype your password',
-                  obscure: _obscureConf,
-                  maxLength: PasswordPolicy.maximumLength,
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscureConf ? Icons.visibility_off : Icons.visibility,
-                    ),
-                    onPressed: () =>
-                        setState(() => _obscureConf = !_obscureConf),
-                  ),
-                  validator: (value) =>
-                      value == _passCtrl.text ? null : 'Passwords do not match',
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 16),
@@ -490,10 +220,7 @@ class _LabeledField extends StatelessWidget {
     this.keyboardType,
     this.suffixIcon,
     this.validator,
-    this.onTap,
-    this.readOnly = false,
     this.maxLength,
-    this.inputFormatters,
   });
 
   final String label;
@@ -503,10 +230,7 @@ class _LabeledField extends StatelessWidget {
   final TextInputType? keyboardType;
   final Widget? suffixIcon;
   final String? Function(String?)? validator;
-  final VoidCallback? onTap;
-  final bool readOnly;
   final int? maxLength;
-  final List<TextInputFormatter>? inputFormatters;
 
   @override
   Widget build(BuildContext context) {
@@ -527,10 +251,7 @@ class _LabeledField extends StatelessWidget {
           obscureText: obscure,
           keyboardType: keyboardType,
           validator: validator,
-          onTap: onTap,
-          readOnly: readOnly,
           maxLength: maxLength,
-          inputFormatters: inputFormatters,
           style: const TextStyle(color: AppColors.ink, fontSize: 15),
           decoration: InputDecoration(
             hintText: hint,
