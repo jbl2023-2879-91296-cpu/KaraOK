@@ -609,10 +609,7 @@ String _reasonMessage(String reasonCode, String knob) {
     'bass' => ('lighter in deep bass', 'heavier in deep bass'),
     'treble' => ('less bright', 'brighter'),
     'sharpness' => ('less sharp', 'sharper'),
-    _ => (
-      'less even across low and high sounds',
-      'more even across low and high sounds',
-    ),
+    _ => ('more note-like', 'more noise-like'),
   };
   return switch (reasonCode) {
     'tone_increase_blocked_by_distortion' =>

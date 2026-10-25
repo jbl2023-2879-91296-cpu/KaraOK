@@ -10,6 +10,29 @@ import 'package:karaok_app/features/sound_settings/domain/settings_recommendatio
 import 'package:karaok_app/features/sound_settings/presentation/pages/settings_recommendation_screen.dart';
 
 void main() {
+  for (final entry in const {
+    'below_genre_range': 'more note-like',
+    'above_genre_range': 'more noise-like',
+  }.entries) {
+    _screenTest('flatness explains ${entry.key} as ${entry.value}', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _testApp(
+          SettingsRecommendationScreen(
+            recommendation: _sample(reasonCode: entry.key),
+          ),
+        ),
+      );
+      expect(
+        find.text(
+          'Your recording was ${entry.value} than the songs we compared it with.',
+        ),
+        findsOneWidget,
+      );
+    });
+  }
+
   _screenTest(
     'shows named profile, plain knob reasons and verification near the top',
     (tester) async {
