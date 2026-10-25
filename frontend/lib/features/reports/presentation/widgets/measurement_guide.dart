@@ -1,3 +1,4 @@
+import 'package:karaok_app/features/reports/presentation/pages/glossary_screen.dart';
 import 'package:karaok_app/features/reports/domain/measurement_glossary.dart';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/app/app_theme.dart';
@@ -70,28 +71,31 @@ class MeasurementGuide extends StatelessWidget {
         initialChildSize: .7,
         minChildSize: .35,
         maxChildSize: .95,
-        builder: (context, controller) => ListView(
+        builder: (context, controller) => SingleChildScrollView(
           controller: controller,
           padding: const EdgeInsets.all(24),
-          children: [
-            Text(label, style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 8),
-            Text(entry.definition),
-            const SizedBox(height: 16),
-            Text('Estimated value: $value'),
-            const SizedBox(height: 12),
-            Text(meaning),
-            const SizedBox(height: 12),
-            Text(entry.why),
-            const SizedBox(height: 12),
-            Text("What's good: ${entry.good}"),
-            const SizedBox(height: 12),
-            Text(entry.tip),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(height: 8),
+              Text(entry.definition),
+              const SizedBox(height: 16),
+              Text('Estimated value: $value'),
+              const SizedBox(height: 12),
+              Text(meaning),
+              const SizedBox(height: 12),
+              Text(entry.why),
+              const SizedBox(height: 12),
+              Text("What's good: ${entry.good}"),
+              const SizedBox(height: 12),
+              Text(entry.tip),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -108,26 +112,9 @@ class MeasurementGuide extends StatelessWidget {
     final lower = reportNumber(feature['target_lower']);
     final upper = reportNumber(feature['target_upper']);
     final hasRange = lower != null && upper != null && lower <= upper;
-    final direction = value == null || !hasRange
-        ? null
-        : value < lower
-        ? 'below'
-        : value > upper
-        ? 'above'
-        : 'within';
-    final sound = switch (label) {
-      'Loudness' => ('quieter overall', 'louder overall'),
-      'Bass' => ('less deep bass', 'more deep bass'),
-      'Treble' => ('less high, bright sound', 'more high, bright sound'),
-      'Sharpness' => ('less brightness or edge', 'more brightness or edge'),
-      'Flatness' => ('more note-like sound', 'more noise-like sound'),
-      _ => ('a lower reading', 'a higher reading'),
-    };
+    final direction = measurementDirection(feature);
     final sentence = switch (direction) {
-      'above' =>
-        'High for this reference range: the recording may have ${sound.$2}.',
-      'below' =>
-        'Low for this reference range: the recording may have ${sound.$1}.',
+      'above' || 'below' => '$label: ${measurementMeaning(label, direction!)}',
       'within' =>
         'Within this reference range: this part of the sound is in line with the reference recordings.',
       _ =>
@@ -197,9 +184,6 @@ class MeasurementGuide extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            if (direction == 'above' || direction == 'below')
-              Text('$label: ${measurementMeaning(label, direction!)}'),
-            const SizedBox(height: 12),
             Text("What's good: ${glossaryEntry(label).good}"),
             const SizedBox(height: 12),
             Text(_tip(label, direction)),
@@ -258,6 +242,12 @@ class MeasurementGuide extends StatelessWidget {
               ),
             ),
           ),
+        ListTile(
+          title: const Text('Glossary of terms'),
+          subtitle: const Text('Look up sound terms and what to aim for'),
+          trailing: const Icon(Icons.arrow_forward),
+          onTap: () => GlossaryScreen.open(context),
+        ),
       ],
     ),
   );

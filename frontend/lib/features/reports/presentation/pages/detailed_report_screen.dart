@@ -1,3 +1,4 @@
+import 'package:karaok_app/features/reports/presentation/pages/glossary_screen.dart';
 import 'package:karaok_app/features/reports/domain/measurement_glossary.dart';
 import 'package:karaok_app/features/reports/presentation/widgets/what_this_means_card.dart';
 import 'package:karaok_app/shared/widgets/app_widgets.dart';
@@ -87,6 +88,13 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
             fontWeight: FontWeight.w700,
           ),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Glossary of terms',
+            icon: const Icon(Icons.info_outline),
+            onPressed: () => GlossaryScreen.open(context),
+          ),
+        ],
         centerTitle: true,
       ),
       body: SafeArea(

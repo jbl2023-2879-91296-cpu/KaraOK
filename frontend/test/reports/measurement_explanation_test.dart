@@ -52,7 +52,7 @@ void main() {
       expect(find.text('Target upper: 90.00 %'), findsOneWidget);
       expect(
         find.text(
-          'High for this reference range: the recording may have more deep bass.',
+          'Bass: more deep bass than usual \u2014 the sound may feel boomy.',
         ),
         findsOneWidget,
       );
@@ -68,41 +68,42 @@ void main() {
     },
   );
 
-  testWidgets('low loudness sheet explains direction and offers a concrete tip', (
-    tester,
-  ) async {
-    await pumpMeasurements(tester, {
-      'loudness': {
-        'value': -30,
-        'target_lower': -22,
-        'target_upper': -14,
-        'score': 40,
-        'status': 'bad',
-      },
-    });
-    await openMeasurement(tester, 'Loudness');
-    expect(find.text('Measured value: -30.00 LUFS'), findsOneWidget);
-    expect(find.text('Target lower: -22.00 LUFS'), findsOneWidget);
-    expect(find.text('Target upper: -14.00 LUFS'), findsOneWidget);
-    expect(
-      find.text(
-        'Low for this reference range: the recording may have quieter overall.',
-      ),
-      findsOneWidget,
-    );
-    await tester.scrollUntilVisible(
-      find.textContaining('Check the recording distance first.'),
-      120,
-      scrollable: find.descendant(
-        of: find.byType(BottomSheet),
-        matching: find.byType(Scrollable),
-      ),
-    );
-    expect(
-      find.textContaining('Check the recording distance first.'),
-      findsOneWidget,
-    );
-  });
+  testWidgets(
+    'low loudness sheet explains direction and offers a concrete tip',
+    (tester) async {
+      await pumpMeasurements(tester, {
+        'loudness': {
+          'value': -30,
+          'target_lower': -22,
+          'target_upper': -14,
+          'score': 40,
+          'status': 'bad',
+        },
+      });
+      await openMeasurement(tester, 'Loudness');
+      expect(find.text('Measured value: -30.00 LUFS'), findsOneWidget);
+      expect(find.text('Target lower: -22.00 LUFS'), findsOneWidget);
+      expect(find.text('Target upper: -14.00 LUFS'), findsOneWidget);
+      expect(
+        find.text(
+          'Loudness: quieter than usual \u2014 voices may be hard to hear.',
+        ),
+        findsOneWidget,
+      );
+      await tester.scrollUntilVisible(
+        find.textContaining('Check the recording distance first.'),
+        120,
+        scrollable: find.descendant(
+          of: find.byType(BottomSheet),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      expect(
+        find.textContaining('Check the recording distance first.'),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('legacy assessment without bounds does not invent a comparison', (
     tester,

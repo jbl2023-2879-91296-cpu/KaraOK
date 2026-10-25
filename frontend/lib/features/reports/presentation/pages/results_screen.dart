@@ -1,3 +1,4 @@
+import 'package:karaok_app/features/reports/presentation/pages/glossary_screen.dart';
 import 'package:karaok_app/features/reports/domain/measurement_glossary.dart';
 import 'package:karaok_app/features/reports/presentation/widgets/what_this_means_card.dart';
 import 'package:karaok_app/features/reports/domain/sample_assessments.dart';
@@ -160,6 +161,13 @@ class _ResultsScreenState extends State<ResultsScreen> {
               fontWeight: FontWeight.w700,
             ),
           ),
+          actions: [
+            IconButton(
+              tooltip: 'Glossary of terms',
+              icon: const Icon(Icons.info_outline),
+              onPressed: () => GlossaryScreen.open(context),
+            ),
+          ],
           centerTitle: true,
         ),
         body: SafeArea(
@@ -534,4 +542,4 @@ class _ResultsScreenState extends State<ResultsScreen> {
   }
 }
 
-// â”€â”€ Metric bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Metric bar ────────────────────────────────────────────────────────────────

@@ -65,12 +65,13 @@ void main() {
       expect(find.text('-13.58 dBFS'), findsOneWidget);
       expect(find.text('11.74 / 100'), findsOneWidget);
       expect(
-        find.textContaining(
-          'An estimated distortion risk score from 0 to 100.',
-        ),
+        find.textContaining('An estimate from 0 to 100; lower is better.'),
         findsOneWidget,
       );
-      expect(find.textContaining('quiet section'), findsOneWidget);
+      expect(
+        find.textContaining('More negative numbers mean quieter sound.'),
+        findsOneWidget,
+      );
       expect(find.byType(LinearProgressIndicator), findsNothing);
     },
   );
@@ -153,7 +154,7 @@ void main() {
     );
     expect(find.text('NOT SCORED'), findsWidgets);
     expect(find.textContaining('at least 80'), findsNothing);
-    expect(find.textContaining('No valid score'), findsOneWidget);
+    expect(find.text("We couldn't score this recording."), findsOneWidget);
   });
 
   testWidgets('feature scores retain precision near grade boundaries', (

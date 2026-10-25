@@ -19,6 +19,15 @@ Map<String, dynamic> features({bool high = false}) => {
       'status': 'good',
     },
 };
+const expectedInterpretations = {
+  'good':
+      "Your karaoke sound is in good shape. It's close to the well-tuned systems we compared it with.",
+  'good_but_needs_improvement':
+      'Your sound is okay but could be better. See the items marked below for what to adjust.',
+  'bad': 'Your sound needs adjusting. Start with the items marked below.',
+  'not_evaluated': "We couldn't score this recording.",
+};
+
 void main() {
   setUp(() {
     FlutterSecureStorage.setMockInitialValues({});
@@ -43,10 +52,7 @@ void main() {
             ),
           ),
         );
-        expect(
-          find.text(reportInterpretation(entry.value, entry.key)),
-          findsOneWidget,
-        );
+        expect(find.text(expectedInterpretations[entry.key]!), findsOneWidget);
         expect(find.byType(WhatThisMeansCard), findsOneWidget);
         expect(tester.takeException(), isNull);
       }
@@ -69,11 +75,12 @@ void main() {
         home: Scaffold(body: WhatThisMeansCard(features: features(high: true))),
       ),
     );
-    for (final label in ['Loudness', 'Bass', 'Treble']) {
-      expect(
-        find.text('$label: ${measurementMeaning(label, 'above')}'),
-        findsOneWidget,
-      );
+    for (final line in [
+      'Loudness: louder than usual \u2014 the sound may be tiring.',
+      'Bass: more deep bass than usual \u2014 the sound may feel boomy.',
+      'Treble: more bright sound than usual \u2014 voices may sound hissy.',
+    ]) {
+      expect(find.text(line), findsOneWidget);
     }
     expect(find.textContaining('Sharpness:'), findsNothing);
     expect(find.textContaining('Flatness:'), findsNothing);
@@ -125,7 +132,12 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text(reportInterpretation(85, 'good')), findsOneWidget);
+    expect(
+      find.text(
+        "Your karaoke sound is in good shape. It's close to the well-tuned systems we compared it with.",
+      ),
+      findsOneWidget,
+    );
     expect(find.byType(WhatThisMeansCard), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

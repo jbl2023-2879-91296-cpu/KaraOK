@@ -1,3 +1,4 @@
+import 'package:karaok_app/features/reports/presentation/pages/glossary_screen.dart';
 import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:karaok_app/features/assessments/data/audio_staging_service.dart';
 import 'package:karaok_app/app/app_theme.dart';
@@ -797,6 +798,13 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     );
   }
 
+  Widget _glossaryLink() => ListTile(
+    leading: const Icon(Icons.menu_book_outlined),
+    title: const Text('Glossary of terms'),
+    trailing: const Icon(Icons.chevron_right),
+    onTap: () => GlossaryScreen.open(context),
+  );
+
   Widget _guestSettings() => AppPageScaffold(
     title: 'Settings',
     automaticallyImplyLeading: false,
@@ -807,6 +815,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       icon: Icons.person_outline,
       action: Column(
         children: [
+          _glossaryLink(),
           AppPrimaryButton(
             label: 'Create Account',
             icon: Icons.person_add_alt_1,
@@ -885,6 +894,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   ),
                 ),
               if (!widget.forceChange) ...[
+                _glossaryLink(),
                 _accountDetails(session),
                 const SizedBox(height: 28),
                 const AppSectionHeader(title: 'Change Password'),

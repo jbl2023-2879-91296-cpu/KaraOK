@@ -407,7 +407,12 @@ void main() {
 
     expect(find.textContaining('88.5', findRichText: true), findsWidgets);
     expect(find.text('Your sound measurements'), findsOneWidget);
-    expect(find.byIcon(Icons.info_outline), findsNothing);
+    expect(find.byTooltip('Glossary of terms'), findsOneWidget);
+    expect(find.text('Unavailable'), findsNWidgets(5));
+    expect(
+      find.text('How much of the sound comes from low, deep notes.'),
+      findsOneWidget,
+    );
     expect(find.text('Loudness'), findsOneWidget);
     expect(find.text('Bass'), findsOneWidget);
     expect(find.text('Treble'), findsOneWidget);

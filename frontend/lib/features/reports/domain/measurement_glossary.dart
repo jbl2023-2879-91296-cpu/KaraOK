@@ -27,7 +27,7 @@ const measurementGlossary = [
   GlossaryEntry(
     'Loudness',
     'How loud the recording sounds overall.',
-    'Very quiet sound can hide voices; very loud sound can be tiring.',
+    'Very quiet sound can hide voices; very loud sound can be tiring. This describes the recording level, not the sound pressure in the room.',
     'Within the range shown for your song type. Louder is not always better.',
   ),
   GlossaryEntry(
@@ -57,7 +57,7 @@ const measurementGlossary = [
   GlossaryEntry(
     'Noise level',
     'An estimate of background sound in the recording.',
-    'Hiss, hum and room noise can cover quiet parts. Background noise does not change the quality score.',
+    'Hiss, hum and room noise can cover quiet parts. Quiet music can raise this estimate, so listen for noise before changing your setup. Background noise does not change the quality score.',
     'At or below -60 dBFS: quiet background. Above -60 through -45 dBFS: some background noise. Above -45 dBFS: noisy background; you may hear hiss, hum or room noise.',
   ),
   GlossaryEntry(
