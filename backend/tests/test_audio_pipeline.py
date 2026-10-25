@@ -351,6 +351,7 @@ class AudioPipelineTests(unittest.TestCase):
                 30,
                 "7/11/test_waveform.png",
                 "7/11/test_spectrogram.png",
+                None,
             ),
         )
         statements = "\n".join(call.args[0] for call in cursor.execute.call_args_list)
@@ -1394,6 +1395,7 @@ class AudioPipelineTests(unittest.TestCase):
 
         payload = response.get_json()
         self.assertEqual(payload["analysis_status"], "completed")
+        self.assertIsNone(payload["analysis"]["noise"]["reliable"])
         self.assertEqual(payload["analysis"]["bass"]["energy_percentage"], 40.0)
         self.assertEqual(payload["empirical_quality"]["overall_score"], 91.5)
         self.assertEqual(payload["quality_profile_version"], "2026.09.1")
@@ -1688,6 +1690,17 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertNotIn("settings_recommendation", payload)
         self.assertFalse(any(upload_root.rglob("*.wav")))
         self.assertFalse(any(analysis_root.rglob("*_analysis.json")))
+
+    def test_guest_noise_reliability_contract_cases(self):
+        cases = json.loads((Path(__file__).parent / "fixtures/backend_contract.json").read_text())["noise_reliability_cases"]
+        original_analysis = _analyzer_result()
+        for case in cases:
+            with self.subTest(case=case["name"]):
+                analysis = dict(original_analysis, noise=case["noise"])
+                with patch(__name__ + "._analyzer_result", return_value=analysis):
+                    (response, status), _ = self._post_guest_audio(analysis_purpose="quality_evaluation")
+                self.assertEqual(status, 201)
+                self.assertIs(response.get_json()["noise_reliable"], case["noise_reliable"])
 
     def test_guest_settings_upload_returns_five_non_persisted_targets(self):
         (response, status_code), upload_root = self._post_guest_audio(

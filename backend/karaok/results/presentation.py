@@ -148,6 +148,9 @@ def _stored_empirical_result(row: dict[str, Any]) -> dict[str, Any]:
 
 def _enrich_audio_test_row(row: dict[str, Any]) -> dict[str, Any]:
     """Attach reproducible empirical details and backfill legacy null scores."""
+    row["noise_reliable"] = (
+        bool(row["noise_reliable"]) if row.get("noise_reliable") is not None else None
+    )
     stored_empirical_fields = (
         "empirical_status",
         "worst_feature_status",

@@ -226,6 +226,9 @@ def create_guest_audio_analysis():
         "noise_level": (
             analysis_summary["noise_level"] if analysis_summary else None
         ),
+        "noise_reliable": (
+            analysis_summary.get("noise_reliable") if analysis_summary else None
+        ),
         "distortion_level": (
             analysis_summary["distortion_level"] if analysis_summary else None
         ),
@@ -418,6 +421,9 @@ def create_audio_upload():
         "score": analysis_summary["score"] if analysis_summary else None,
         "noise_level": (
             analysis_summary["noise_level"] if analysis_summary else None
+        ),
+        "noise_reliable": (
+            analysis_summary.get("noise_reliable") if analysis_summary else None
         ),
         "distortion_level": (
             analysis_summary["distortion_level"] if analysis_summary else None

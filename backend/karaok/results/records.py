@@ -186,9 +186,9 @@ def save_audio_analysis(
                 worst_feature_status, worst_features, empirical_details,
                 scoring_algorithm_version, quality_profile_version,
                 quality_profile_checksum, reference_recording_count,
-                waveform_path, spectrogram_path)
+                waveform_path, spectrogram_path, noise_reliable)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                       %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                       %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (
                 assessment_id,
                 quality_score,
@@ -209,6 +209,7 @@ def save_audio_analysis(
                 reference_recording_count,
                 waveform_path,
                 spectrogram_path,
+                summary.get("noise_reliable"),
             ),
         )
         if recommendation is not None:

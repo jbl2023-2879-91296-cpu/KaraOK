@@ -90,6 +90,10 @@ def summarize_audio_analysis(dump: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError("Empirical audio score is unavailable")
     result_status = _empirical_result_status(empirical)
     noise_level = _nested_number(analysis, "noise", "noise_dbfs")
+    noise = analysis.get("noise")
+    noise_reliable = noise.get("reliable") if isinstance(noise, dict) else None
+    if not isinstance(noise_reliable, bool):
+        noise_reliable = None
     distortion_level = _nested_number(analysis, "distortion", "estimated_score")
     bass = _nested_number(analysis, "bass", "energy_percentage")
     treble = _nested_number(analysis, "treble", "energy_percentage")
@@ -102,6 +106,7 @@ def summarize_audio_analysis(dump: dict[str, Any]) -> dict[str, Any]:
         "score": quality_score,
         "status": result_status,
         "noise_level": noise_level,
+        "noise_reliable": noise_reliable,
         "distortion_level": distortion_level,
         "bass": bass,
         "treble": treble,

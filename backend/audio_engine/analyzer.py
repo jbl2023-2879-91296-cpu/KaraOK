@@ -49,6 +49,7 @@ import librosa.display  # noqa: E402
 
 
 EPSILON = 1.0e-12
+NOISE_RELIABILITY_MIN_SEPARATION_DB = 6.0
 SUPPORTED_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg"}
 LOSSLESS_EXTENSIONS = {".wav", ".flac"}
 RECOVERY_BLOCK_FRAMES = 65_536
@@ -984,7 +985,7 @@ def estimate_noise(context: AnalysisContext) -> dict[str, Any]:
     warning = (
         "The recording has little level separation between typical and quiet frames; "
         "it may contain no true quiet section, so this noise estimate is unreliable."
-        if separation_db < 6.0
+        if separation_db < NOISE_RELIABILITY_MIN_SEPARATION_DB
         else "Low-energy frames may contain wanted audio; treat this no-reference noise estimate cautiously."
     )
     return {
@@ -992,6 +993,7 @@ def estimate_noise(context: AnalysisContext) -> dict[str, Any]:
         "noise_dbfs": float(noise_dbfs),
         "estimated_snr_db": float(estimated_snr_db),
         "signal_to_quiet_frame_separation_db": float(separation_db),
+        "reliable": bool(separation_db >= NOISE_RELIABILITY_MIN_SEPARATION_DB),
         "threshold_use": "advisory_only",
         "low_energy_percentile": float(context.config.noise_percentile),
         "quiet_frame_count": int(quiet_frames.size),

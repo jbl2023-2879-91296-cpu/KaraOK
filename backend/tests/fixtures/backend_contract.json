@@ -442,5 +442,30 @@
   "constructors": {
     "AudioAnalyzerExecutionError": "(self, message: 'str', dump: 'dict[str, Any]')",
     "AudioDurationError": "(self, /, *args, **kwargs)"
-  }
+  },
+  "noise_reliability_cases": [
+    {
+      "name": "reliable",
+      "noise": {
+        "noise_dbfs": -42.0,
+        "reliable": true
+      },
+      "noise_reliable": true
+    },
+    {
+      "name": "unreliable",
+      "noise": {
+        "noise_dbfs": -42.0,
+        "reliable": false
+      },
+      "noise_reliable": false
+    },
+    {
+      "name": "legacy_missing",
+      "noise": {
+        "noise_dbfs": -42.0
+      },
+      "noise_reliable": null
+    }
+  ]
 }

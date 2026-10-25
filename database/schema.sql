@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS audio_analysis_result (
     quality_score FLOAT,
 
     noise_level FLOAT,
+    noise_reliable BOOLEAN NULL DEFAULT NULL,
 
     distortion_level FLOAT,
 
