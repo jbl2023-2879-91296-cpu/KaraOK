@@ -382,6 +382,48 @@ try {
         throw 'Could not locate the KaraOK Flutter project (frontend/pubspec.yaml).'
     }
 
+    $ProjectDirectory = (Resolve-Path -LiteralPath $ProjectDirectory).ProviderPath
+    $gitBranch = 'unknown'
+    $gitCommit = 'unknown'
+    $mainFrontendDirectory = $null
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        $branchResult = & git -C $ProjectDirectory symbolic-ref --quiet --short HEAD 2>$null
+        if ($LASTEXITCODE -eq 0) { $gitBranch = "$branchResult".Trim() }
+        $commitResult = & git -C $ProjectDirectory rev-parse --verify HEAD 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            $gitCommit = "$commitResult".Trim()
+            if ($gitBranch -eq 'unknown') { $gitBranch = '(detached HEAD)' }
+        }
+        $worktreeResult = @(& git -C $ProjectDirectory worktree list --porcelain 2>$null)
+        if ($LASTEXITCODE -eq 0) {
+            $mainWorktree = $worktreeResult | Where-Object { $_ -like 'worktree *' } | Select-Object -First 1
+            if ($mainWorktree) {
+                $mainFrontendDirectory = [IO.Path]::GetFullPath((Join-Path $mainWorktree.Substring(9) 'frontend'))
+            }
+        }
+    }
+    Write-Output "Resolved project directory: $ProjectDirectory"
+    Write-Output "Git branch: $gitBranch"
+    Write-Output "Git commit: $gitCommit"
+    if (-not $mainFrontendDirectory) {
+        Write-Warning 'BUILD PROVENANCE: Cannot determine the main repository frontend directory.'
+    }
+    elseif (-not [string]::Equals($ProjectDirectory.TrimEnd('\', '/'), $mainFrontendDirectory.TrimEnd('\', '/'), [StringComparison]::OrdinalIgnoreCase)) {
+        Write-Warning "BUILD PROVENANCE: Building outside the main repository frontend. Expected: $mainFrontendDirectory; resolved: $ProjectDirectory"
+    }
+    if ($gitBranch -eq 'unknown' -or $gitCommit -eq 'unknown') {
+        Write-Warning 'BUILD PROVENANCE: Git branch or commit could not be determined.'
+    }
+    $themePath = Join-Path $ProjectDirectory 'lib/app/app_theme.dart'
+    if (Test-Path -LiteralPath $themePath -PathType Leaf) {
+        if ((Get-Content -Raw -LiteralPath $themePath) -match 'Brightness\.dark') {
+            Write-Warning "THEME CHECK: $themePath contains Brightness.dark. Review theme brightness before distributing. Dark icon settings also use this value; this warning alone does not prove a dark UI."
+        }
+    }
+    else {
+        Write-Warning "THEME CHECK: Theme source was not found: $themePath"
+    }
+
     $pubspecPath = Join-Path $ProjectDirectory 'pubspec.yaml'
     $targetPath = Join-Path $ProjectDirectory $Target
     $androidDirectory = Join-Path $ProjectDirectory 'android'
@@ -596,6 +638,10 @@ try {
     }
 
     [ordered]@{
+        projectDirectory = $ProjectDirectory
+        gitBranch = $gitBranch
+        gitCommit = $gitCommit
+        mainFrontendDirectory = $mainFrontendDirectory
         applicationName = $ApplicationName
         applicationId = $applicationId
         versionName = $VersionName

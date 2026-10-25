@@ -12,6 +12,7 @@ class KaraOKApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.light,
       theme: AppTheme.light,
+      darkTheme: AppTheme.light,
       initialRoute: AppRoutes.root,
       routes: AppRoutes.routes,
     );
