@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:karaok_app/features/account/presentation/pages/change_password_screen.dart';
 import 'package:karaok_app/core/security/guest_assessment_service.dart';
 import 'package:karaok_app/core/storage/guest_assessment_store.dart';
@@ -124,8 +125,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+                  horizontal: AppSpacing.lg,
+                  vertical: AppSpacing.md,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -133,12 +134,15 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                     if (!_profilePromptDismissed &&
                         UserSession.instance.needsProfileCompletion)
                       Card(
+                        margin: const EdgeInsets.only(bottom: AppSpacing.xl),
                         child: Padding(
-                          padding: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.all(AppSpacing.lg),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('Complete your profile'),
+                              const AppSectionHeader(
+                                title: 'Complete your profile',
+                              ),
                               const Text(
                                 'Add your personal details in Account. You can do this later.',
                               ),
@@ -186,7 +190,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                         if (mounted) _loadAnalysis();
                       },
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpacing.md),
                     _ActionCard(
                       icon: Icons.tune,
                       title: 'Generate Audio Settings Suggestion',
@@ -204,46 +208,33 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                       },
                     ),
                     ...[
-                      const SizedBox(height: 24),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              _recentAnalysis.any(
-                                    (item) =>
-                                        item is Map && isSampleAssessment(item),
-                                  )
-                                  ? 'Sample assessments'
-                                  : 'Recent Analysis',
-                              style: TextStyle(
-                                color: AppColors.ink,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
+                      const SizedBox(height: AppSpacing.xl),
+                      AppSectionHeader(
+                        title:
+                            _recentAnalysis.any(
+                              (item) => item is Map && isSampleAssessment(item),
+                            )
+                            ? 'Sample assessments'
+                            : 'Recent Analysis',
+                        action: TextButton(
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(
+                              AppSpacing.touchTarget,
+                              AppSpacing.touchTarget,
                             ),
                           ),
-                          GestureDetector(
-                            onTap:
-                                widget.onOpenRecords ??
-                                () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        const UserPreviousResultsScreen(),
-                                  ),
+                          onPressed:
+                              widget.onOpenRecords ??
+                              () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      const UserPreviousResultsScreen(),
                                 ),
-                            child: const Text(
-                              'View all',
-                              style: TextStyle(
-                                color: AppColors.orangeInk,
-                                fontSize: 13,
                               ),
-                            ),
-                          ),
-                        ],
+                          child: const Text('View all'),
+                        ),
                       ),
-                      const SizedBox(height: 12),
                       if (_recentAnalysis.any(
                         (item) => item is Map && isSampleAssessment(item),
                       ))
@@ -255,33 +246,19 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                           ),
                         ),
                       if (_loading)
-                        const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(24),
-                            child: CircularProgressIndicator(
-                              color: AppColors.orangeInk,
-                            ),
-                          ),
-                        )
+                        const AppLoadingSkeleton()
                       else if (_loadError != null)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 24),
-                          child: Center(
-                            child: Text(
-                              _loadError!,
-                              style: const TextStyle(color: AppColors.error),
-                            ),
-                          ),
+                        AppErrorState(
+                          title: _loadError!,
+                          message: '',
+                          onRetry: _loadAnalysis,
                         )
                       else if (_recentAnalysis.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 24),
-                          child: Center(
-                            child: Text(
+                        const AppEmptyState(
+                          title:
                               'No analyses yet. Evaluate your first audio recording!',
-                              style: TextStyle(color: AppColors.muted),
-                            ),
-                          ),
+                          message: '',
+                          icon: Icons.graphic_eq,
                         )
                       else
                         ..._recentAnalysis.map(
@@ -329,45 +306,38 @@ class _ActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: AppColors.ink, size: 28),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: AppColors.ink,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if (subtitle.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: AppColors.muted,
-                        fontSize: 12,
+    return Card(
+      color: color,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          constraints: const BoxConstraints(minHeight: AppSpacing.touchTarget),
+          child: Row(
+            children: [
+              Icon(icon, color: AppColors.ink, size: 28),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: Theme.of(context).textTheme.titleSmall),
+                    if (subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppColors.muted,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -396,65 +366,59 @@ class _AnalysisListItem extends StatelessWidget {
       button: true,
       label: 'View analysis $name',
       child: Card(
-        margin: const EdgeInsets.only(bottom: 10),
-        color: AppColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.only(bottom: AppSpacing.md),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadii.card),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          color: AppColors.ink,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        date,
-                        style: const TextStyle(
-                          color: AppColors.muted,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                Row(
                   children: [
-                    Text(
-                      status,
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: Theme.of(context).textTheme.titleSmall,
                       ),
                     ),
-                    Text(
-                      score == null ? '--/100' : '${score.round()}/100',
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    const SizedBox(width: AppSpacing.sm),
+                    const Icon(
+                      Icons.chevron_right,
+                      color: AppColors.muted,
+                      size: 20,
                     ),
                   ],
                 ),
-                const SizedBox(width: 8),
-                const Icon(
-                  Icons.chevron_right,
-                  color: AppColors.muted,
-                  size: 20,
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  date,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Wrap(
+                  spacing: AppSpacing.md,
+                  runSpacing: AppSpacing.sm,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    AppStatusChip(
+                      label: status,
+                      status: status == 'Acceptable'
+                          ? AppStatus.success
+                          : status == 'Needs Improvement'
+                          ? AppStatus.warning
+                          : AppStatus.error,
+                    ),
+                    Text(
+                      score == null ? '--/100' : '${score.round()}/100',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.titleSmall?.copyWith(color: color),
+                    ),
+                  ],
                 ),
               ],
             ),

@@ -175,7 +175,16 @@ void main() {
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Records'), findsOneWidget);
     expect(find.text('Settings'), findsWidgets);
-    await tester.drag(find.byType(ListView).last, const Offset(0, -600));
+    await tester.scrollUntilVisible(
+      find.text('Log Out'),
+      400,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView).last,
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     await tester.pump();
     expect(find.text('Log Out'), findsOneWidget);
     expect(find.byType(Drawer), findsNothing);
@@ -255,7 +264,7 @@ void main() {
   });
 
   testWidgets(
-    'account creation defers personal details and collects three credentials',
+    'account creation defers profile and asks for email and matching passwords',
     (tester) async {
       await tester.pumpWidget(const MaterialApp(home: SignUpScreen()));
 
@@ -263,7 +272,8 @@ void main() {
       expect(find.text('Account type'), findsNothing);
       expect(find.text('First name'), findsNothing);
       expect(find.text('Last name'), findsNothing);
-      expect(find.text('Username'), findsOneWidget);
+      expect(find.text('Username'), findsNothing);
+      expect(find.text('Confirm password'), findsOneWidget);
       expect(find.text('Street address'), findsNothing);
       expect(find.text('City / Municipality'), findsNothing);
       expect(find.text('Province / State'), findsNothing);
@@ -285,7 +295,7 @@ void main() {
       final passwordFields = find.byWidgetPredicate(
         (widget) => widget is EditableText && widget.obscureText,
       );
-      expect(passwordFields, findsOneWidget);
+      expect(passwordFields, findsNWidgets(2));
 
       await tester.enterText(passwordFields.first, 'Good#A1bc');
 
@@ -346,7 +356,7 @@ void main() {
     );
 
     expect(find.textContaining('88.5', findRichText: true), findsWidgets);
-    expect(find.text('Empirical five-feature grading'), findsOneWidget);
+    expect(find.text('Your sound measurements'), findsOneWidget);
     expect(find.byIcon(Icons.info_outline), findsNothing);
     expect(find.text('Loudness'), findsOneWidget);
     expect(find.text('Bass'), findsOneWidget);

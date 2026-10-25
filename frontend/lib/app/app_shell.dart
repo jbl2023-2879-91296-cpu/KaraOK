@@ -1,5 +1,6 @@
 import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:karaok_app/core/security/session_manager.dart';
 
 import 'package:karaok_app/features/account/presentation/pages/change_password_screen.dart';
 import 'package:karaok_app/features/home/presentation/pages/user_home_screen.dart';
@@ -47,28 +48,37 @@ class _AppShellState extends State<AppShell> {
           const ChangePasswordScreen(),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: _selectTab,
-        backgroundColor: AppColors.background,
-        indicatorColor: AppColors.mint,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long),
-            label: 'Records',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-        ],
+      bottomNavigationBar: ListenableBuilder(
+        listenable: UserSession.instance,
+        builder: (context, _) => NavigationBar(
+          selectedIndex: _currentIndex,
+          onDestinationSelected: _selectTab,
+          backgroundColor: AppColors.background,
+          indicatorColor: AppColors.mint,
+          destinations: [
+            const NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home),
+              label: 'Home',
+            ),
+            const NavigationDestination(
+              icon: Icon(Icons.receipt_long_outlined),
+              selectedIcon: Icon(Icons.receipt_long),
+              label: 'Records',
+            ),
+            NavigationDestination(
+              icon: Badge(
+                isLabelVisible: UserSession.instance.needsProfileCompletion,
+                child: const Icon(Icons.settings_outlined),
+              ),
+              selectedIcon: Badge(
+                isLabelVisible: UserSession.instance.needsProfileCompletion,
+                child: const Icon(Icons.settings),
+              ),
+              label: 'Settings',
+            ),
+          ],
+        ),
       ),
     );
   }

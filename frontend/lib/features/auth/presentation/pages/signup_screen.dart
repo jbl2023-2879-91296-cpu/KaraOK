@@ -1,4 +1,6 @@
 import 'package:karaok_app/app/app_theme.dart';
+import 'package:karaok_app/shared/widgets/form_feedback.dart';
+import 'package:karaok_app/features/auth/presentation/pages/forgot_password_screen.dart';
 
 import 'package:flutter/material.dart';
 
@@ -8,7 +10,8 @@ import 'package:karaok_app/features/auth/presentation/pages/login_screen.dart';
 import 'package:karaok_app/features/auth/presentation/pages/otp_verification_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
-  const SignUpScreen({super.key});
+  const SignUpScreen({super.key, this.authApi});
+  final AuthApi? authApi;
 
   @override
   State<SignUpScreen> createState() => _SignUpScreenState();
@@ -18,7 +21,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
   static const _accentColor = AppColors.primary;
 
   final _formKey = GlobalKey<FormState>();
-  final _usernameCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
+  final _feedback = FormFeedback();
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
 
@@ -28,21 +32,25 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   void dispose() {
-    for (final controller in [_usernameCtrl, _emailCtrl, _passCtrl]) {
+    for (final controller in [_confirmCtrl, _emailCtrl, _passCtrl]) {
       controller.dispose();
     }
+    _feedback.dispose();
     super.dispose();
   }
 
   Future<void> _signUp() async {
-    if (!_formKey.currentState!.validate()) return;
+    setState(_feedback.clear);
+    if (!_formKey.currentState!.validate()) {
+      _feedback.reveal();
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final response = await AuthApi().startRegistration(
-        username: _usernameCtrl.text.trim(),
+      final response = await (widget.authApi ?? AuthApi()).startRegistration(
         email: _emailCtrl.text.trim(),
         password: _passCtrl.text,
       );
@@ -64,11 +72,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = error.message.contains('already')
-            ? 'An account with this email or username already exists.'
-            : error.message;
+        _feedback.receive(error);
+        if (error.statusCode == 409 && _feedback.errors.isEmpty) {
+          _feedback.errors['email'] = error.message;
+          _feedback.banner = null;
+        }
+        _error = _feedback.banner;
         _loading = false;
       });
+      _feedback.reveal();
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -77,9 +89,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
       });
     }
   }
-
-  String? _required(String? value, String label) =>
-      value == null || value.trim().isEmpty ? 'Enter $label' : null;
 
   @override
   Widget build(BuildContext context) {
@@ -101,6 +110,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (_error != null)
+                  FormErrorBanner(
+                    message: _error!,
+                    onRetry: _loading ? null : _signUp,
+                  ),
                 Text(
                   'Create Account',
                   style: const TextStyle(
@@ -115,30 +129,24 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 ),
                 const SizedBox(height: 24),
                 _LabeledField(
-                  label: 'Username',
-                  controller: _usernameCtrl,
-                  hint: 'Choose a username',
-                  validator: (value) {
-                    final username = value?.trim() ?? '';
-                    return RegExp(r'^[A-Za-z0-9_.-]{3,50}$').hasMatch(username)
-                        ? null
-                        : 'Use 3-50 letters, numbers, dots, dashes, or underscores';
-                  },
-                ),
-                const SizedBox(height: 16),
-                _LabeledField(
+                  fieldKey: _feedback.key('email'),
+                  focusNode: _feedback.focus('email'),
+                  errorText: _feedback.errors['email'],
+                  onChanged: (_) =>
+                      setState(() => _feedback.errors.remove('email')),
                   label: 'Email',
                   controller: _emailCtrl,
                   hint: 'you@example.com',
                   keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    final required = _required(value, 'your email');
-                    if (required != null) return required;
-                    return value!.contains('@') ? null : 'Enter a valid email';
-                  },
+                  validator: validateEmail,
                 ),
                 const SizedBox(height: 16),
                 _LabeledField(
+                  fieldKey: _feedback.key('password'),
+                  focusNode: _feedback.focus('password'),
+                  errorText: _feedback.errors['password'],
+                  onChanged: (_) =>
+                      setState(() => _feedback.errors.remove('password')),
                   label: 'Password',
                   controller: _passCtrl,
                   hint: '8-128 characters with mixed types',
@@ -153,14 +161,50 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                   validator: PasswordPolicy.validate,
                 ),
-                if (_error != null) ...[
-                  const SizedBox(height: 16),
-                  Text(_error!, style: const TextStyle(color: AppColors.error)),
-                ],
+                PasswordChecklist(controller: _passCtrl),
+                _LabeledField(
+                  fieldKey: _feedback.key('confirm_password'),
+                  focusNode: _feedback.focus('confirm_password'),
+                  label: 'Confirm password',
+                  controller: _confirmCtrl,
+                  hint: 'Enter your password again',
+                  obscure: _obscurePass,
+                  textInputAction: TextInputAction.done,
+                  validator: (value) => value == null || value.isEmpty
+                      ? 'Confirm your password.'
+                      : value != _passCtrl.text
+                      ? 'Passwords must match.'
+                      : null,
+                ),
+                if (_feedback.errors.containsKey('email'))
+                  Wrap(
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => LoginScreen(
+                              initialIdentifier: _emailCtrl.text.trim(),
+                            ),
+                          ),
+                        ),
+                        child: const Text('Sign in'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ForgotPasswordScreen(),
+                          ),
+                        ),
+                        child: const Text('Reset password'),
+                      ),
+                    ],
+                  ),
                 const SizedBox(height: 24),
-                SizedBox(
+                Container(
                   width: double.infinity,
-                  height: 52,
+                  constraints: const BoxConstraints(minHeight: 52),
                   child: ElevatedButton(
                     onPressed: _loading ? null : _signUp,
                     style: ElevatedButton.styleFrom(
@@ -186,8 +230,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                Wrap(
+                  alignment: WrapAlignment.center,
                   children: [
                     const Text(
                       'Already have an account? ',
@@ -221,6 +265,11 @@ class _LabeledField extends StatelessWidget {
     this.suffixIcon,
     this.validator,
     this.maxLength,
+    this.fieldKey,
+    this.focusNode,
+    this.errorText,
+    this.onChanged,
+    this.textInputAction = TextInputAction.next,
   });
 
   final String label;
@@ -231,42 +280,28 @@ class _LabeledField extends StatelessWidget {
   final Widget? suffixIcon;
   final String? Function(String?)? validator;
   final int? maxLength;
+  final GlobalKey<FormFieldState<String>>? fieldKey;
+  final FocusNode? focusNode;
+  final String? errorText;
+  final ValueChanged<String>? onChanged;
+  final TextInputAction textInputAction;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: AppColors.muted,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 6),
-        TextFormField(
-          controller: controller,
-          obscureText: obscure,
-          keyboardType: keyboardType,
-          validator: validator,
-          maxLength: maxLength,
-          style: const TextStyle(color: AppColors.ink, fontSize: 15),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: const TextStyle(color: AppColors.muted, fontSize: 15),
-            suffixIcon: suffixIcon,
-            counterText: '',
-            filled: true,
-            fillColor: AppColors.surface,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide.none,
-            ),
-          ),
-        ),
-      ],
+    return AppFormField(
+      fieldKey: fieldKey,
+      focusNode: focusNode,
+      controller: controller,
+      label: label,
+      hint: hint,
+      errorText: errorText,
+      validator: validator,
+      obscure: obscure,
+      suffixIcon: suffixIcon,
+      keyboardType: keyboardType,
+      maxLength: maxLength,
+      onChanged: onChanged,
+      textInputAction: textInputAction,
     );
   }
 }

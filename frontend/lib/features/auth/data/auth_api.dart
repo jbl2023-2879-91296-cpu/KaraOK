@@ -9,7 +9,7 @@ class AuthApi {
   final ApiService _client;
 
   Future<Map<String, dynamic>> startRegistration({
-    required String username,
+    String? username,
     required String email,
     required String password,
   }) => _client.startRegistration(

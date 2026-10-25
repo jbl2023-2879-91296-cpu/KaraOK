@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/form_feedback.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/app/app_shell.dart';
@@ -27,6 +28,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
   bool _hasRememberedIdentifier = false;
   String? _error;
+  final _feedback = FormFeedback();
 
   static const _accentColor = AppColors.primary;
 
@@ -57,11 +59,16 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _identifierCtrl.dispose();
     _passCtrl.dispose();
+    _feedback.dispose();
     super.dispose();
   }
 
   Future<void> _login() async {
-    if (!_formKey.currentState!.validate()) return;
+    setState(_feedback.clear);
+    if (!_formKey.currentState!.validate()) {
+      _feedback.reveal();
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -78,6 +85,7 @@ class _LoginScreenState extends State<LoginScreen> {
       } catch (_) {
         // Remembering the identifier is a convenience and must not block login.
       }
+      if (!mounted) return;
       UserSession.instance.setUserFromMap(res);
       if (UserSession.instance.requiresPasswordChange) {
         if (!mounted) return;
@@ -92,14 +100,15 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       _navigateHome();
     } on ApiException catch (e) {
-      final body = e.message;
+      if (!mounted) return;
       setState(() {
-        _error = body.contains('Invalid')
-            ? 'Invalid username/email or password.'
-            : 'Login failed. Try again.';
+        _feedback.receive(e, aliases: const {'identifier': 'email'});
+        _error = _feedback.banner;
         _loading = false;
       });
+      _feedback.reveal();
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         _error = 'Could not connect to server.';
         _loading = false;
@@ -138,7 +147,9 @@ class _LoginScreenState extends State<LoginScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.chevron_left, color: AppColors.ink),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () async {
+            if (!await Navigator.maybePop(context) && mounted) _navigateHome();
+          },
         ),
       ),
       body: SafeArea(
@@ -149,6 +160,11 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (_error != null)
+                  FormErrorBanner(
+                    message: _error!,
+                    onRetry: _loading ? null : _login,
+                  ),
                 const SizedBox(height: 8),
                 // Header
                 Text(
@@ -164,11 +180,17 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: const TextStyle(color: AppColors.muted, fontSize: 14),
                 ),
                 const SizedBox(height: 36),
-                _FieldLabel('Username or Email'),
+                _FieldLabel('Email'),
                 const SizedBox(height: 6),
                 _AuthField(
+                  fieldKey: _feedback.key('email'),
+                  focusNode: _feedback.focus('email'),
+                  errorText: _feedback.errors['email'],
+                  onChanged: (_) =>
+                      setState(() => _feedback.errors.remove('email')),
+                  keyboardType: TextInputType.emailAddress,
                   controller: _identifierCtrl,
-                  hint: 'Username or email address',
+                  hint: 'you@example.com',
                   suffixIcon: _hasRememberedIdentifier
                       ? IconButton(
                           tooltip: 'Forget saved account',
@@ -182,18 +204,19 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         )
                       : null,
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) {
-                      return 'Enter your username or email address';
-                    }
-                    return null;
-                  },
+                  validator: validateEmail,
                 ),
                 const SizedBox(height: 18),
                 // Password
                 _FieldLabel('Password'),
                 const SizedBox(height: 6),
                 _AuthField(
+                  fieldKey: _feedback.key('password'),
+                  focusNode: _feedback.focus('password'),
+                  errorText: _feedback.errors['password'],
+                  onChanged: (_) =>
+                      setState(() => _feedback.errors.remove('password')),
+                  textInputAction: TextInputAction.done,
                   controller: _passCtrl,
                   hint: '••••••••',
                   obscure: _obscure,
@@ -226,23 +249,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 2),
-                // Error message
-                if (_error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Text(
-                      _error!,
-                      style: const TextStyle(
-                        color: AppColors.error,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
                 const SizedBox(height: 8),
                 // Login button
-                SizedBox(
+                Container(
                   width: double.infinity,
-                  height: 52,
+                  constraints: const BoxConstraints(minHeight: 52),
                   child: ElevatedButton(
                     onPressed: _loading ? null : _login,
                     style: ElevatedButton.styleFrom(
@@ -280,8 +291,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       "Don't have an account? ",
                       style: TextStyle(color: AppColors.muted, fontSize: 14),
                     ),
-                    GestureDetector(
-                      onTap: () {
+                    TextButton(
+                      onPressed: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -317,9 +328,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 24),
                 // Guest button
-                SizedBox(
+                Container(
                   width: double.infinity,
-                  height: 52,
+                  constraints: const BoxConstraints(minHeight: 52),
                   child: OutlinedButton.icon(
                     onPressed: _continueAsGuest,
                     icon: const Icon(
@@ -389,37 +400,40 @@ class _AuthField extends StatelessWidget {
     this.obscure = false,
     this.suffixIcon,
     this.validator,
+    this.fieldKey,
+    this.focusNode,
+    this.errorText,
+    this.onChanged,
+    this.keyboardType,
+    this.textInputAction = TextInputAction.next,
   });
 
   final TextEditingController controller;
   final String hint;
+  final GlobalKey<FormFieldState<String>>? fieldKey;
+  final FocusNode? focusNode;
+  final String? errorText;
+  final ValueChanged<String>? onChanged;
+  final TextInputType? keyboardType;
+  final TextInputAction textInputAction;
   final bool obscure;
   final Widget? suffixIcon;
   final String? Function(String?)? validator;
 
   @override
   Widget build(BuildContext context) {
-    return TextFormField(
+    return AppFormField(
+      fieldKey: fieldKey,
+      focusNode: focusNode,
       controller: controller,
-      obscureText: obscure,
-      style: const TextStyle(color: AppColors.ink, fontSize: 15),
+      hint: hint,
+      errorText: errorText,
       validator: validator,
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(color: AppColors.muted),
-        suffixIcon: suffixIcon,
-        filled: true,
-        fillColor: AppColors.surface,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide.none,
-        ),
-        errorStyle: const TextStyle(color: AppColors.error),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-      ),
+      obscure: obscure,
+      suffixIcon: suffixIcon,
+      keyboardType: keyboardType,
+      onChanged: onChanged,
+      textInputAction: textInputAction,
     );
   }
 }

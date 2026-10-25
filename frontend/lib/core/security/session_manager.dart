@@ -1,9 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
-import 'dart:typed_data';
 
 /// Singleton that holds the currently logged-in user for the app session.
 /// Guest users have id == null and isGuest == true.
-class UserSession {
+class UserSession extends ChangeNotifier {
   UserSession._();
   static final UserSession instance = UserSession._();
 
@@ -115,6 +115,7 @@ class UserSession {
     this.userType = userType;
     this.requiresPasswordChange = requiresPasswordChange;
     isGuest = false;
+    notifyListeners();
   }
 
   void setGuest(String userType) {
@@ -137,6 +138,7 @@ class UserSession {
     this.userType = userType;
     isGuest = true;
     requiresPasswordChange = false;
+    notifyListeners();
   }
 
   void clear() {
@@ -159,5 +161,6 @@ class UserSession {
     userType = null;
     isGuest = false;
     requiresPasswordChange = false;
+    notifyListeners();
   }
 }

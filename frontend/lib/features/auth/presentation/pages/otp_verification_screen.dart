@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/form_feedback.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
 
@@ -26,21 +27,28 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   final _formKey = GlobalKey<FormState>();
   final _otpController = TextEditingController();
   bool _loading = false;
-  String? _error;
+  final _feedback = FormFeedback();
 
   static const _accentColor = AppColors.primary;
 
   @override
   void dispose() {
     _otpController.dispose();
+    _feedback.dispose();
     super.dispose();
   }
 
   Future<void> _verify() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_loading) return;
+    setState(_feedback.clear);
+    if (!_formKey.currentState!.validate()) {
+      _feedback.reveal();
+      return;
+    }
+    FocusScope.of(context).unfocus();
     setState(() {
       _loading = true;
-      _error = null;
+      _feedback.clear();
     });
     try {
       final user = await (widget.authApi ?? AuthApi()).verifyRegistration(
@@ -62,15 +70,14 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = error.message.contains('Invalid')
-            ? 'The verification code is invalid or has expired.'
-            : 'Verification failed. Try again.';
+        _feedback.receive(error, aliases: const {'otp': 'code'});
         _loading = false;
       });
+      _feedback.reveal();
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = 'Could not connect to server.';
+        _feedback.banner = 'Could not connect to server.';
         _loading = false;
       });
     }
@@ -84,6 +91,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         backgroundColor: AppColors.background,
         elevation: 0,
         leading: IconButton(
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
           icon: const Icon(Icons.chevron_left, color: AppColors.ink),
           onPressed: _loading ? null : () => Navigator.pop(context),
         ),
@@ -96,6 +104,11 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (_feedback.banner != null)
+                  FormErrorBanner(
+                    message: _feedback.banner!,
+                    onRetry: _loading ? null : _verify,
+                  ),
                 const SizedBox(height: 8),
                 const Text(
                   'Verify Your Email',
@@ -132,6 +145,13 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 ),
                 const SizedBox(height: 6),
                 TextFormField(
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
+                  key: _feedback.key('code'),
+                  focusNode: _feedback.focus('code'),
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) => _verify(),
+                  onChanged: (_) =>
+                      setState(() => _feedback.errors.remove('code')),
                   controller: _otpController,
                   autofocus: true,
                   keyboardType: TextInputType.number,
@@ -147,6 +167,8 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                       ? 'Enter the 6-digit code from your email'
                       : null,
                   decoration: InputDecoration(
+                    errorText: _feedback.errors['code'],
+                    constraints: const BoxConstraints(minHeight: 48),
                     hintText: '000000',
                     counterText: '',
                     hintStyle: const TextStyle(color: AppColors.muted),
@@ -162,16 +184,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                     ),
                   ),
                 ),
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _error!,
-                    style: const TextStyle(
-                      color: AppColors.error,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
                 const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,

@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:karaok_app/core/config/environment.dart';
 import 'package:karaok_app/core/network/api_exception.dart';
 import 'package:karaok_app/core/security/secure_token_store.dart';
+import 'package:karaok_app/features/assessments/data/audio_staging_service.dart';
 
 export 'package:karaok_app/core/network/api_exception.dart';
 
@@ -22,7 +23,16 @@ class ApiService {
 
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
-  ApiService._internal();
+  ApiService._internal()
+    : _http = http.Client(),
+      requestTimeout = const Duration(seconds: 20);
+
+  ApiService.withClient(
+    http.Client client, {
+    this.requestTimeout = const Duration(seconds: 20),
+  }) : _http = client;
+  final http.Client _http;
+  final Duration requestTimeout;
 
   Uri _uri(String path, [Map<String, String>? params]) {
     final uri = Uri.parse('$baseUrl$path');
@@ -49,29 +59,46 @@ class ApiService {
     final uri = _uri(path, params);
     final headers = await _headers(authenticated: authenticated);
     late http.Response response;
-    switch (method) {
-      case 'GET':
-        response = await http.get(uri, headers: headers);
-        break;
-      case 'POST':
-        response = await http.post(
-          uri,
-          headers: headers,
-          body: jsonEncode(body ?? {}),
-        );
-        break;
-      case 'PATCH':
-        response = await http.patch(
-          uri,
-          headers: headers,
-          body: jsonEncode(body ?? {}),
-        );
-        break;
-      case 'DELETE':
-        response = await http.delete(uri, headers: headers);
-        break;
-      default:
-        throw ArgumentError('Unsupported method: $method');
+    try {
+      switch (method) {
+        case 'GET':
+          response = await _http
+              .get(uri, headers: headers)
+              .timeout(requestTimeout);
+          break;
+        case 'POST':
+          response = await _http
+              .post(uri, headers: headers, body: jsonEncode(body ?? {}))
+              .timeout(requestTimeout);
+          break;
+        case 'PATCH':
+          response = await _http
+              .patch(uri, headers: headers, body: jsonEncode(body ?? {}))
+              .timeout(requestTimeout);
+          break;
+        case 'DELETE':
+          response = await _http
+              .delete(uri, headers: headers)
+              .timeout(requestTimeout);
+          break;
+        default:
+          throw ArgumentError('Unsupported method: $method');
+      }
+    } on TimeoutException {
+      throw const ApiException(
+        0,
+        'The server took too long to respond. Please retry.',
+      );
+    } on http.ClientException {
+      throw const ApiException(
+        0,
+        'No connection. Check your internet and retry.',
+      );
+    } on SocketException {
+      throw const ApiException(
+        0,
+        'No connection. Check your internet and retry.',
+      );
     }
 
     if (response.statusCode == 401 &&
@@ -120,13 +147,34 @@ class ApiService {
           'The server could not complete the request. Please try again.',
         _ => 'Request failed (${response.statusCode}).',
       };
+      final fields = <String, String>{};
+      final retryAfter = int.tryParse(response.headers['retry-after'] ?? '');
       try {
         final decoded = jsonDecode(response.body);
         if (decoded is Map && decoded['error'] is String) {
           message = decoded['error'];
         }
+        if (decoded is Map) {
+          if (decoded['field'] is String) fields[decoded['field']] = message;
+          if (decoded['errors'] is Map) {
+            for (final entry in (decoded['errors'] as Map).entries) {
+              if (entry.value is String) {
+                fields[entry.key.toString()] = entry.value;
+              }
+            }
+          }
+        }
       } catch (_) {}
-      throw ApiException(response.statusCode, message);
+      if (response.statusCode == 429) {
+        message =
+            '$message Wait ${retryAfter ?? (response.request?.url.path == '/api/auth/register' ? 3600 : 60)} seconds before retrying.';
+      }
+      throw ApiException(
+        response.statusCode,
+        message,
+        fieldErrors: fields,
+        retryAfterSeconds: retryAfter,
+      );
     }
   }
 
@@ -141,7 +189,7 @@ class ApiService {
     final refreshToken = await _tokenStore.readRefreshToken();
     if (refreshToken == null) return null;
 
-    final response = await http
+    final response = await _http
         .post(
           _uri('/auth/refresh'),
           headers: const {'Content-Type': 'application/json'},
@@ -197,7 +245,7 @@ class ApiService {
 
   Future<bool> checkHealth() async {
     try {
-      final response = await http.get(_uri('/health'));
+      final response = await _http.get(_uri('/health')).timeout(requestTimeout);
       return response.statusCode == 200 &&
           jsonDecode(response.body)['status'] == 'ok';
     } catch (_) {
@@ -206,13 +254,13 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> startRegistration({
-    required String username,
+    String? username,
     required String email,
     required String password,
   }) async {
     return Map<String, dynamic>.from(
       await _post('/auth/register', {
-            'username': username,
+            if (username != null && username.isNotEmpty) 'username': username,
             'email': email,
             'password': password,
           }, authenticated: false)
@@ -257,7 +305,11 @@ class ApiService {
         await _post('/auth/logout', {'refresh_token': refreshToken});
       }
     } finally {
-      await clearTokens();
+      try {
+        await AudioStagingService().cleanupStaleRecordings();
+      } finally {
+        await clearTokens();
+      }
     }
   }
 
@@ -448,26 +500,35 @@ class ApiService {
     } else if (genre != null && genre.trim().isNotEmpty) {
       request.fields['genre'] = genre.trim();
     }
-    request.files.add(
-      fileBytes == null
-          ? await http.MultipartFile.fromPath('audio', filePath)
-          : http.MultipartFile.fromBytes(
-              'audio',
-              fileBytes,
-              filename: fileName,
-            ),
-    );
     try {
-      final streamed = await request.send().timeout(
-        const Duration(seconds: 360),
+      request.files.add(
+        fileBytes == null
+            ? await http.MultipartFile.fromPath('audio', filePath)
+            : http.MultipartFile.fromBytes(
+                'audio',
+                fileBytes,
+                filename: fileName,
+              ),
       );
-      final response = await http.Response.fromStream(streamed);
+      final streamed = await _http
+          .send(request)
+          .timeout(const Duration(seconds: 360));
+      final response = await http.Response.fromStream(
+        streamed,
+      ).timeout(const Duration(seconds: 360));
       _checkStatus(response);
       final decoded = _decode(response);
       if (decoded is! Map) {
         throw const FormatException('Invalid upload response');
       }
       return Map<String, dynamic>.from(decoded);
+    } on TimeoutException {
+      throw const ApiException(0, 'The upload took too long. Please retry.');
+    } on http.ClientException {
+      throw const ApiException(
+        0,
+        'The upload connection failed. Check your internet and retry.',
+      );
     } on SocketException catch (e) {
       throw ApiException(0, 'The backend server is unreachable: ${e.message}');
     } on HttpException catch (e) {

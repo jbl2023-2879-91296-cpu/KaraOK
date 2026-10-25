@@ -1,4 +1,5 @@
 import 'package:karaok_app/app/app_theme.dart';
+import 'package:karaok_app/shared/widgets/form_feedback.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -21,16 +22,23 @@ class ChangePasswordScreen extends StatefulWidget {
     super.key,
     this.forceChange = false,
     this.editProfile = false,
+    this.authApi,
+    this.accountApi,
   });
 
   final bool forceChange;
   final bool editProfile;
+  final AuthApi? authApi;
+  final AccountApi? accountApi;
 
   @override
   State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
 }
 
 class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
+  final _passwordFeedback = FormFeedback();
+  final _profileFeedback = FormFeedback();
+  final _scrollController = ScrollController();
   final _formKey = GlobalKey<FormState>();
   final _profileFormKey = GlobalKey<FormState>();
   final _currentController = TextEditingController();
@@ -46,6 +54,28 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   final _stateProvinceController = TextEditingController();
   final _areaCodeController = TextEditingController();
   final _countryController = TextEditingController();
+  int _sessionRevision = 0;
+  late (int?, String?, String?, bool) _sessionIdentity;
+
+  (int?, String?, String?, bool) get _currentSessionIdentity {
+    final session = UserSession.instance;
+    return (session.id, session.email, session.userType, session.isGuest);
+  }
+
+  void _sessionChanged() {
+    final identity = _currentSessionIdentity;
+    if (identity != _sessionIdentity) {
+      _sessionIdentity = identity;
+      _sessionRevision++;
+    }
+  }
+
+  bool _isCurrentSession(int revision) =>
+      mounted &&
+      _sessionRevision == revision &&
+      UserSession.instance.id != null &&
+      !UserSession.instance.isGuest;
+
   bool _obscureCurrent = true;
   bool _obscureNew = true;
   bool _obscureConfirm = true;
@@ -62,12 +92,18 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   @override
   void initState() {
     super.initState();
+    _sessionIdentity = _currentSessionIdentity;
+    UserSession.instance.addListener(_sessionChanged);
     _resetProfileDraft();
     _editingProfile = widget.editProfile && !widget.forceChange;
   }
 
   @override
   void dispose() {
+    UserSession.instance.removeListener(_sessionChanged);
+    _passwordFeedback.dispose();
+    _profileFeedback.dispose();
+    _scrollController.dispose();
     _currentController.dispose();
     _newController.dispose();
     _confirmController.dispose();
@@ -103,6 +139,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     _draftProfileImageMime = session.profileImageMime;
     _profileImageChanged = false;
     _profileError = null;
+    _profileFeedback.clear();
   }
 
   String? _required(String? value, String label) =>
@@ -120,6 +157,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       _draftProfileImage = result.bytes;
       _draftProfileImageMime = result.mimeType;
       _profileImageChanged = true;
+      _profileFeedback.errors.remove('profile_image');
       _profileError = null;
     });
   }
@@ -137,7 +175,8 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       ).subtract(const Duration(days: 1)),
       initialDate: current ?? DateTime(now.year - 18, now.month, now.day),
     );
-    if (selected == null) return;
+    if (selected == null || !mounted) return;
+    setState(() => _profileFeedback.errors.remove('birthday'));
     _birthdayController.text =
         '${selected.year.toString().padLeft(4, '0')}-'
         '${selected.month.toString().padLeft(2, '0')}-'
@@ -152,19 +191,26 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         setState(() {
           _countryController.text = country.name;
           _countryCode = country.countryCode;
+          _profileFeedback.errors.remove('country');
         });
       },
     );
   }
 
   Future<void> _saveProfile() async {
-    if (!_profileFormKey.currentState!.validate()) return;
+    if (_savingProfile) return;
+    setState(_profileFeedback.clear);
+    if (!_profileFormKey.currentState!.validate()) {
+      _profileFeedback.reveal();
+      return;
+    }
     setState(() {
       _savingProfile = true;
       _profileError = null;
     });
+    final revision = _sessionRevision;
     try {
-      final user = await AccountApi().updateProfile(
+      final user = await (widget.accountApi ?? AccountApi()).updateProfile(
         username: _usernameController.text.trim(),
         firstName: _firstNameController.text.trim(),
         lastName: _lastNameController.text.trim(),
@@ -182,9 +228,8 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         profileImageMime: _draftProfileImageMime,
         profileImageChanged: _profileImageChanged,
       );
-      final session = UserSession.instance;
-      session.setUserFromMap(user);
-      if (!mounted) return;
+      if (!mounted || !_isCurrentSession(revision)) return;
+      UserSession.instance.setUserFromMap(user);
       setState(() {
         _editingProfile = false;
         _savingProfile = false;
@@ -194,17 +239,30 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         context,
       ).showSnackBar(const SnackBar(content: Text('Account details updated.')));
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_isCurrentSession(revision)) return;
       setState(() {
-        _profileError = error.message;
+        _profileFeedback.receive(
+          error,
+          aliases: {
+            'country_code': 'country',
+            'profile_image_base64': 'profile_image',
+            'profile_image_mime': 'profile_image',
+          },
+        );
+        _profileError = _profileFeedback.banner;
         _savingProfile = false;
       });
+      _profileFeedback.reveal();
+      if (_profileError != null) _revealBanner();
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_isCurrentSession(revision)) return;
       setState(() {
         _profileError = 'Could not update account details.';
         _savingProfile = false;
       });
+      _revealBanner();
+    } finally {
+      if (mounted) setState(() => _savingProfile = false);
     }
   }
 
@@ -219,21 +277,29 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_loading) return;
+    setState(_passwordFeedback.clear);
+    if (!_formKey.currentState!.validate()) {
+      _passwordFeedback.reveal();
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
     });
+    final revision = _sessionRevision;
     try {
-      await AuthApi().changePassword(
+      await (widget.authApi ?? AuthApi()).changePassword(
         currentPassword: widget.forceChange ? null : _currentController.text,
         newPassword: _newController.text,
       );
+      if (!mounted || !_isCurrentSession(revision)) return;
       final email = UserSession.instance.email;
       await AnalysisCache.instance.clearCurrentUser();
-      await AuthApi().clearTokens();
+      if (!mounted || !_isCurrentSession(revision)) return;
+      await (widget.authApi ?? AuthApi()).clearTokens();
+      if (!mounted || !_isCurrentSession(revision)) return;
       UserSession.instance.clear();
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Password changed. Please log in again.')),
       );
@@ -245,20 +311,55 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         (route) => false,
       );
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_isCurrentSession(revision)) return;
       setState(() {
-        _error = error.message.contains('incorrect')
-            ? 'The current password is incorrect.'
-            : error.message;
+        _passwordFeedback.receive(error, aliases: {'password': 'new_password'});
+        _error = _passwordFeedback.banner;
         _loading = false;
       });
+      _passwordFeedback.reveal();
+      if (_error != null) _revealBanner();
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_isCurrentSession(revision)) return;
       setState(() {
         _error = 'Could not connect to the server.';
         _loading = false;
       });
+      _revealBanner();
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
+  }
+
+  void _revealBanner() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _scrollController.hasClients) {
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  String _fieldName(TextEditingController controller) {
+    final fields = <TextEditingController, String>{
+      _currentController: 'current_password',
+      _newController: 'new_password',
+      _confirmController: 'confirm_password',
+      _usernameController: 'username',
+      _firstNameController: 'first_name',
+      _lastNameController: 'last_name',
+      _phoneController: 'phone_number',
+      _birthdayController: 'birthday',
+      _addressController: 'address',
+      _cityController: 'city',
+      _stateProvinceController: 'state_province',
+      _areaCodeController: 'area_code',
+      _countryController: 'country',
+    };
+    return fields[controller]!;
   }
 
   Widget _passwordField({
@@ -269,12 +370,19 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     String? Function(String?)? validator,
     int? maxLength,
   }) {
+    final field = _fieldName(controller);
     return TextFormField(
+      key: _passwordFeedback.key(field),
+      focusNode: _passwordFeedback.focus(field),
+      autovalidateMode: AutovalidateMode.onUserInteraction,
+      onChanged: (_) => setState(() => _passwordFeedback.errors.remove(field)),
       controller: controller,
       obscureText: obscure,
-      validator: validator,
+      validator: (value) =>
+          _passwordFeedback.errors[field] ?? validator?.call(value),
       maxLength: maxLength,
       decoration: InputDecoration(
+        errorText: _passwordFeedback.errors[field],
         labelText: label,
         counterText: maxLength == null ? null : '',
         suffixIcon: IconButton(
@@ -332,6 +440,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                           _draftProfileImage = null;
                           _draftProfileImageMime = null;
                           _profileImageChanged = true;
+                          _profileFeedback.errors.remove('profile_image');
                         }),
                   child: const Text('Remove photo'),
                 ),
@@ -449,6 +558,20 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         ),
         child: Column(
           children: [
+            FormField<String>(
+              key: _profileFeedback.key('profile_image'),
+              forceErrorText: _profileFeedback.errors['profile_image'],
+              builder: (field) => Focus(
+                focusNode: _profileFeedback.focus('profile_image'),
+                child: field.hasError
+                    ? Text(
+                        field.errorText!,
+                        style: const TextStyle(color: AppColors.error),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ),
+
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -569,16 +692,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 ),
               ],
             ),
-            if (_profileError != null) ...[
-              const SizedBox(height: 14),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  _profileError!,
-                  style: const TextStyle(color: AppColors.error),
-                ),
-              ),
-            ],
             const SizedBox(height: 18),
             Row(
               children: [
@@ -623,17 +736,29 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     VoidCallback? onTap,
     Widget? suffixIcon,
   }) {
+    final field = _fieldName(controller);
     return TextFormField(
+      key: _profileFeedback.key(field),
+      focusNode: _profileFeedback.focus(field),
+      autovalidateMode: AutovalidateMode.onUserInteraction,
+      onChanged: (_) => setState(() => _profileFeedback.errors.remove(field)),
       controller: controller,
-      validator: validator,
+      validator: (value) =>
+          _profileFeedback.errors[field] ?? validator?.call(value),
       keyboardType: keyboardType,
       readOnly: readOnly,
       onTap: onTap,
-      decoration: InputDecoration(labelText: label, suffixIcon: suffixIcon),
+      decoration: InputDecoration(
+        errorText: _profileFeedback.errors[field],
+        labelText: label,
+        suffixIcon: suffixIcon,
+      ),
     );
   }
 
   Future<void> _logOut() async {
+    // Discard pending account responses as soon as logout begins.
+    _sessionRevision++;
     final lastIdentifier = UserSession.instance.email;
     if (lastIdentifier != null) {
       try {
@@ -644,7 +769,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     }
     await AnalysisCache.instance.clearCurrentUser();
     try {
-      await AuthApi().logout();
+      await (widget.authApi ?? AuthApi()).logout();
     } catch (_) {
       // Local logout still completes when the server is unavailable.
     } finally {
@@ -750,8 +875,46 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           child: Form(
             key: _formKey,
             child: ListView(
+              controller: _scrollController,
               padding: const EdgeInsets.all(24),
               children: [
+                if (_profileError != null)
+                  FormErrorBanner(
+                    message: _profileError!,
+                    onRetry: _savingProfile ? null : _saveProfile,
+                  ),
+                if (_error != null)
+                  FormErrorBanner(
+                    message: _error!,
+                    onRetry: _loading ? null : _submit,
+                  ),
+                if (!widget.forceChange && session.needsProfileCompletion)
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Finish your profile',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const Text(
+                            'Add your details when you are ready. You can keep using KaraOK.',
+                          ),
+                          TextButton(
+                            onPressed: _editingProfile
+                                ? null
+                                : () => setState(() {
+                                    _resetProfileDraft();
+                                    _editingProfile = true;
+                                  }),
+                            child: const Text('Complete profile'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 if (!widget.forceChange) ...[
                   _accountDetails(session),
                   const SizedBox(height: 28),
@@ -794,6 +957,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   validator: _validateNewPassword,
                 ),
                 const SizedBox(height: 16),
+                PasswordChecklist(controller: _newController),
                 _passwordField(
                   controller: _confirmController,
                   label: 'Retype new password',
@@ -805,10 +969,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                       ? 'The new passwords do not match.'
                       : null,
                 ),
-                if (_error != null) ...[
-                  const SizedBox(height: 16),
-                  Text(_error!, style: const TextStyle(color: AppColors.error)),
-                ],
                 const SizedBox(height: 24),
                 ElevatedButton(
                   key: const ValueKey('change-password-submit'),
