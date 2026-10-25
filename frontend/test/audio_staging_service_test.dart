@@ -3,6 +3,9 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show debugDefaultTargetPlatformOverride, TargetPlatform;
+import 'package:flutter/services.dart';
 import 'package:karaok_app/features/assessments/data/audio_staging_service.dart';
 import 'support/audio_platform_stub.dart';
 
@@ -75,16 +78,135 @@ void main() {
       }
     });
 
-    test('truncated frames and invalid ID3 fail politely', () async {
+    test('ambiguous MP3 headers defer to player duration', () async {
+      AudioPlatformStub().install();
       for (final bytes in [
         mp3(400)..removeLast(),
         [73, 68, 51, 4, 0, 0, 128, 0, 0, 0],
         List<int>.filled(20, 0),
       ]) {
         final file = await fixture('bad.mp3', bytes);
-        await expectLater(stage(file), throwsA(isA<AudioStagingException>()));
+        expect((await stage(file)).duration, const Duration(seconds: 20));
       }
     });
+
+    test(
+      'APEv2 Lyrics3 padding and leading junk do not reject valid MP3',
+      () async {
+        final platform = AudioPlatformStub()..install();
+        for (final tail in [
+          'APETAGEX'.codeUnits + List<int>.filled(40, 0),
+          'LYRICSBEGINwordsLYRICS200'.codeUnits,
+          List<int>.filled(300, 0),
+        ]) {
+          final file = await fixture('tagged.mp3', [...mp3(400), ...tail]);
+          platform.duration = const Duration(seconds: 20);
+          expect((await stage(file)).duration, const Duration(seconds: 20));
+          platform.duration = const Duration(hours: 3);
+          await expectLater(
+            stage(file),
+            throwsA(
+              isA<AudioStagingException>().having(
+                (e) => e.message,
+                'duration violation',
+                contains('five-minute'),
+              ),
+            ),
+          );
+        }
+        final file = await fixture('leading.mp3', [1, 2, 3, 4, ...mp3(400)]);
+        expect((await stage(file)).duration.inMilliseconds, closeTo(10449, 1));
+        final long = await fixture('leading-long.mp3', [
+          1,
+          2,
+          3,
+          ...mp3(12000),
+        ]);
+        await expectLater(
+          stage(long),
+          throwsA(
+            isA<AudioStagingException>().having(
+              (e) => e.message,
+              'duration violation',
+              contains('five-minute'),
+            ),
+          ),
+        );
+      },
+    );
+
+    test(
+      'Android picker returns metadata and cached path without file-selector bytes',
+      () async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.android;
+        addTearDown(() => debugDefaultTargetPlatformOverride = null);
+        final file = await fixture('picked.mp3', mp3(400));
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        var calls = 0;
+        messenger.setMockMethodCallHandler(AudioStagingService.androidPicker, (
+          call,
+        ) async {
+          expect(call.method, 'pickAudio');
+          calls++;
+          return {
+            'path': file.path,
+            'name': 'My recording.mp3',
+            'size': await file.length(),
+          };
+        });
+        addTearDown(
+          () => messenger.setMockMethodCallHandler(
+            AudioStagingService.androidPicker,
+            null,
+          ),
+        );
+        final service = AudioStagingService();
+        final audio = await service.pickAudio();
+        expect(calls, 1);
+        expect(audio!.fileName, 'My recording.mp3');
+        expect(audio.bytes, isNull);
+        expect(audio.temporary, isTrue);
+        await service.discard();
+        expect(await file.exists(), isFalse);
+      },
+    );
+
+    test(
+      'Android picker rejects size metadata before probing and deletes cache',
+      () async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.android;
+        addTearDown(() => debugDefaultTargetPlatformOverride = null);
+        final file = await fixture('too-large.mp3', [1]);
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        messenger.setMockMethodCallHandler(
+          AudioStagingService.androidPicker,
+          (_) async => {
+            'path': file.path,
+            'name': 'too-large.mp3',
+            'size': AudioStagingService.maxBytes + 1,
+          },
+        );
+        addTearDown(
+          () => messenger.setMockMethodCallHandler(
+            AudioStagingService.androidPicker,
+            null,
+          ),
+        );
+        await expectLater(
+          AudioStagingService().pickAudio(),
+          throwsA(
+            isA<AudioStagingException>().having(
+              (e) => e.message,
+              'size violation',
+              contains('25 MB'),
+            ),
+          ),
+        );
+        expect(await file.exists(), isFalse);
+      },
+    );
 
     test(
       'PCM WAV skips data and enforces duration before native loading',

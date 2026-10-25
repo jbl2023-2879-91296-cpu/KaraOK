@@ -79,6 +79,10 @@ class FormFeedback {
 
   void receive(ApiException error, {Map<String, String> aliases = const {}}) {
     clear();
+    if (error.statusCode == 0 || error.statusCode >= 500) {
+      banner = error.message;
+      return;
+    }
     for (final entry in error.fieldErrors.entries) {
       final name = aliases[entry.key] ?? entry.key;
       if (keys.containsKey(name)) errors[name] = entry.value;

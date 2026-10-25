@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -43,6 +44,7 @@ class AudioStagingException implements Exception {
 }
 
 class AudioStagingService {
+  static const androidPicker = MethodChannel('karaok/audio_picker');
   static const maxBytes = 25 * 1024 * 1024;
   static const minDuration = Duration(seconds: 10);
   static const maxDuration = Duration(minutes: 5);
@@ -108,6 +110,39 @@ class AudioStagingService {
   Future<StagedAudio?> pickAudio() => _guard(_pickAudio);
 
   Future<StagedAudio?> _pickAudio() async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      final Map<String, dynamic>? selected;
+      try {
+        selected = await androidPicker.invokeMapMethod<String, dynamic>(
+          'pickAudio',
+        );
+      } on PlatformException catch (error) {
+        throw AudioStagingException(
+          error.message ?? 'Could not select the audio file.',
+        );
+      }
+      if (selected == null) return null;
+      final path = selected['path'] as String;
+      // Only app-owned cache copies are returned by the native bridge.
+      try {
+        final size = selected['size'] as int;
+        if (size > maxBytes) {
+          throw const AudioStagingException(
+            'The audio file exceeds the 25 MB limit.',
+          );
+        }
+        return await _stagePath(
+          path,
+          AudioSourceType.selectedFile,
+          temporary: true,
+          fileName: selected['name'] as String?,
+        );
+      } catch (_) {
+        final cached = File(path);
+        if (await cached.exists()) await cached.delete();
+        rethrow;
+      }
+    }
     final selectedFile = await openFile(
       acceptedTypeGroups: [
         XTypeGroup(label: 'audio', extensions: supportedExtensions.toList()),
@@ -198,6 +233,7 @@ class AudioStagingService {
     String path,
     AudioSourceType source, {
     required bool temporary,
+    String? fileName,
   }) async {
     final file = File(path);
     if (!await file.exists().timeout(operationTimeout)) {
@@ -219,13 +255,25 @@ class AudioStagingService {
     if (!supportedExtensions.contains(extension)) {
       throw const AudioStagingException('This audio format is not supported.');
     }
-    final duration = extension == 'mp3' || extension == 'wav'
-        ? await _headerDuration(file, extension, size)
-        : await _playerDuration(path);
+    Duration? duration;
+    if (extension == 'mp3' || extension == 'wav') {
+      try {
+        duration = await _headerDuration(file, extension, size);
+      } on AudioStagingException catch (error) {
+        // Only a confirmed duration violation rejects an MP3 at this stage.
+        // Tags, junk, and unsupported headers defer to the native duration probe.
+        if (extension != 'mp3' || error.message.contains('five-minute')) {
+          rethrow;
+        }
+      } on TimeoutException {
+        if (extension != 'mp3') rethrow;
+      }
+    }
+    duration ??= await _playerDuration(path);
     validateDuration(duration);
     await discard();
     current = StagedAudio(
-      fileName: p.basename(path),
+      fileName: fileName ?? p.basename(path),
       path: path,
       sizeBytes: size,
       duration: duration!,
@@ -251,7 +299,7 @@ class AudioStagingService {
     }
   });
 
-  Future<Duration> _headerDuration(
+  Future<Duration?> _headerDuration(
     File file,
     String extension,
     int size,
@@ -370,13 +418,20 @@ class AudioStagingService {
       }
       var seconds = 0.0;
       var frames = 0;
-      var hasId3v1 = false;
+      // Search a bounded prefix for a frame sync; real MP3s can have leading
+      // encoder junk. Longer/ambiguous prefixes fall back to the duration probe.
+      final prefixLength = (size - offset).clamp(0, 64 * 1024);
+      if (prefixLength < 4) return null;
+      final prefix = await read(offset, prefixLength);
+      var leading = 0;
+      while (leading + 4 <= prefix.length &&
+          !(prefix[leading] == 255 && (prefix[leading + 1] & 224) == 224)) {
+        leading++;
+      }
+      if (leading + 4 > prefix.length) return null;
+      offset += leading;
       // Only four bytes per frame are read; payload is skipped, never decoded.
       while (offset + 4 <= size && frames < 20000) {
-        if (size - offset == 128 && tag(await read(offset, 3), 0, 'TAG')) {
-          hasId3v1 = true;
-          break;
-        }
         final b = await read(offset, 4);
         final version = (b[1] >> 3) & 3;
         final bitrateIndex = b[2] >> 4;
@@ -388,7 +443,9 @@ class AudioStagingService {
             bitrateIndex == 0 ||
             bitrateIndex == 15 ||
             sampleIndex == 3) {
-          throw invalid;
+          // APEv2, Lyrics3, ID3v1 and padding are not audio frames. A partial
+          // frame count is only a lower bound, never a reason to reject a file.
+          return null;
         }
         final bitrate = (version == 3
             ? const [
@@ -431,7 +488,7 @@ class AudioStagingService {
         final frameSize =
             ((version == 3 ? 144000 : 72000) * bitrate ~/ sampleRate) +
             ((b[2] >> 1) & 1);
-        if (offset + frameSize > size) throw invalid;
+        if (offset + frameSize > size) return null;
         seconds += (version == 3 ? 1152 : 576) / sampleRate;
         frames++;
         offset += frameSize;
@@ -441,7 +498,7 @@ class AudioStagingService {
           );
         }
       }
-      if (frames < 2 || (offset != size && !hasId3v1)) throw invalid;
+      if (frames < 3 || offset != size) return null;
       return Duration(microseconds: (seconds * 1000000).round());
     } finally {
       await handle.close().timeout(operationTimeout);

@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import '../support/settle_with_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -86,6 +87,8 @@ void main() {
       _testApp(SettingsRecommendationScreen(recommendation: _sample())),
     );
 
+    expect(find.byType(AppPageScaffold), findsOneWidget);
+    expect(find.byType(AppSectionHeader), findsOneWidget);
     for (final label in const ['Volume', 'Bass', 'Treble', 'Flatness']) {
       expect(find.text(label), findsOneWidget);
     }
@@ -106,7 +109,10 @@ void main() {
     expect(find.text('Record Again to Verify'), findsOneWidget);
     expect(find.text('Done — Back to Main Page'), findsOneWidget);
     final verify = tester.widget<OutlinedButton>(
-      find.byKey(const Key('verify-settings')),
+      find.descendant(
+        of: find.byKey(const Key('verify-settings')),
+        matching: find.byType(OutlinedButton),
+      ),
     );
     expect(verify.onPressed, isNull);
   });

@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/app/app_shell.dart';
@@ -174,125 +175,109 @@ class _SettingsRecommendationScreenState
         _recommendation.parentRecommendationId != null ||
         _recommendation.verificationScore != null;
     final warnings = _safetyWarnings(_recommendation, widget.safetySignals);
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        foregroundColor: AppColors.ink,
-        title: Text(
-          verificationResult ? 'Verification Result' : 'Generated Settings',
-        ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _ScoreSummary(recommendation: _recommendation),
-              if (widget.assessmentBuilder != null)
-                OutlinedButton.icon(
-                  onPressed: () => Navigator.of(
-                    context,
-                  ).push(MaterialPageRoute(builder: widget.assessmentBuilder!)),
-                  icon: const Icon(Icons.analytics_outlined),
-                  label: const Text('View Audio Assessment'),
-                ),
-              const SizedBox(height: 16),
-              if (_recommendation.rollbackRecommended) ...[
-                const _Notice(
-                  icon: Icons.undo,
-                  color: AppColors.error,
-                  message: 'Return to your previous settings',
-                ),
-                const SizedBox(height: 12),
-              ],
-              for (final warning in warnings) ...[
-                _Notice(
-                  icon: Icons.warning_amber_rounded,
-                  color: AppColors.orangeInk,
-                  message: warning,
-                ),
-                const SizedBox(height: 12),
-              ],
-              if (unavailable) ...[
-                _Notice(
-                  icon: Icons.info_outline,
-                  color: AppColors.orangeInk,
-                  message: _blockerMessage(_recommendation),
-                ),
-                const SizedBox(height: 20),
-                FilledButton.icon(
-                  onPressed: _recordAgain,
-                  icon: const Icon(Icons.mic),
-                  label: const Text('Record Again'),
-                ),
-                const SizedBox(height: 8),
-              ] else ...[
-                Text(
+    return AppPageScaffold(
+      title: verificationResult ? 'Verification Result' : 'Generated Settings',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _ScoreSummary(recommendation: _recommendation),
+          if (widget.assessmentBuilder != null)
+            AppSecondaryButton(
+              onPressed: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: widget.assessmentBuilder!)),
+              icon: Icons.analytics_outlined,
+              label: 'View Audio Assessment',
+            ),
+          const SizedBox(height: 16),
+          if (_recommendation.rollbackRecommended) ...[
+            const _Notice(
+              icon: Icons.undo,
+              color: AppColors.error,
+              message: 'Return to your previous settings',
+            ),
+            const SizedBox(height: 12),
+          ],
+          for (final warning in warnings) ...[
+            _Notice(
+              icon: Icons.warning_amber_rounded,
+              color: AppColors.orangeInk,
+              message: warning,
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (unavailable) ...[
+            AppEmptyState(
+              icon: Icons.info_outline,
+              title: 'Settings unavailable',
+              message: _blockerMessage(_recommendation),
+              action: AppPrimaryButton(
+                onPressed: _recordAgain,
+                icon: Icons.mic,
+                label: 'Record Again',
+              ),
+            ),
+            const SizedBox(height: 8),
+          ] else ...[
+            AppSectionHeader(
+              title: 'Your amplifier settings',
+              subtitle:
                   'These suggestions use your evaluation and genre references. Apply the changes yourself, then record the same passage at the same volume and phone position to check the result.',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+            ),
+            const SizedBox(height: 18),
+            for (final name in amplifierKnobNames.where(
+              (name) =>
+                  (name != 'sharpness' && name != 'flatness') ||
+                  _recommendation.adjustments[name]!.delta != 0,
+            )) ...[
+              _AdjustmentCard(
+                knob: name,
+                label: _knobLabels[name]!,
+                adjustment: _recommendation.adjustments[name]!,
+                scale: _recommendation.current.controlScale(
+                  name,
+                  _recommendation.scale,
                 ),
-                const SizedBox(height: 18),
-                for (final name in amplifierKnobNames.where(
-                  (name) =>
-                      (name != 'sharpness' && name != 'flatness') ||
-                      _recommendation.adjustments[name]!.delta != 0,
-                )) ...[
-                  _AdjustmentCard(
-                    knob: name,
-                    label: _knobLabels[name]!,
-                    adjustment: _recommendation.adjustments[name]!,
-                    scale: _recommendation.current.controlScale(
-                      name,
-                      _recommendation.scale,
-                    ),
-                    attenuation:
-                        name == 'volume' &&
-                        _recommendation.current.volumeAttenuation,
-                  ),
-                  const SizedBox(height: 10),
-                ],
-                if (_applyError case final error?) ...[
-                  const SizedBox(height: 4),
-                  Text(error, style: const TextStyle(color: AppColors.error)),
-                ],
-                const SizedBox(height: 14),
-                FilledButton.icon(
-                  key: const Key('apply-settings'),
-                  onPressed: _applied || _applying ? null : _apply,
-                  icon: _applying
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Icon(_applied ? Icons.check : Icons.tune),
-                  label: Text(
-                    _applied
-                        ? 'Settings Marked as Applied'
-                        : "I've Applied These Settings",
-                  ),
-                ),
-                if (_canOfferVerification) ...[
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    key: const Key('verify-settings'),
-                    onPressed: _applied ? _verify : null,
-                    icon: const Icon(Icons.mic),
-                    label: const Text('Record Again to Verify'),
-                  ),
-                ],
-                const SizedBox(height: 8),
-              ],
-              TextButton(
-                onPressed: _applying ? null : _finish,
-                child: const Text('Done — Back to Main Page'),
+                attenuation:
+                    name == 'volume' &&
+                    _recommendation.current.volumeAttenuation,
+              ),
+              const SizedBox(height: 10),
+            ],
+            if (_applyError case final error?) ...[
+              const SizedBox(height: 4),
+              AppErrorState(
+                message: error,
+                onRetry: _applying ? null : _apply,
+                isRetrying: _applying,
               ),
             ],
+            const SizedBox(height: 14),
+            AppPrimaryButton(
+              key: const Key('apply-settings'),
+              onPressed: _applied || _applying ? null : _apply,
+              isLoading: _applying,
+              icon: _applied ? Icons.check : Icons.tune,
+              label: _applied
+                  ? 'Settings Marked as Applied'
+                  : "I've Applied These Settings",
+            ),
+            if (_canOfferVerification) ...[
+              const SizedBox(height: 10),
+              AppSecondaryButton(
+                key: const Key('verify-settings'),
+                onPressed: _applied ? _verify : null,
+                icon: Icons.mic,
+                label: 'Record Again to Verify',
+              ),
+            ],
+            const SizedBox(height: 8),
+          ],
+          AppSecondaryButton(
+            onPressed: _applying ? null : _finish,
+            label: 'Done — Back to Main Page',
           ),
-        ),
+        ],
       ),
     );
   }

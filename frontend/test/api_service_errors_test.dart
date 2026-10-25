@@ -47,7 +47,7 @@ void main() {
       throwsA(
         isA<ApiException>()
             .having((e) => e.retryAfterSeconds, 'wait', 175)
-            .having((e) => e.message, 'message', contains('175 seconds')),
+            .having((e) => e.message, 'message', contains('3 minutes')),
       ),
     );
   });

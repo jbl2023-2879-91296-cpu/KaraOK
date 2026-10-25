@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:karaok_app/shared/widgets/form_feedback.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
@@ -64,6 +65,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
+    if (_loading) return;
     setState(_feedback.clear);
     if (!_formKey.currentState!.validate()) {
       _feedback.reveal();
@@ -131,6 +133,9 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _navigateHome() {
+    if (!UserSession.instance.isLoggedIn) {
+      UserSession.instance.setGuest('user');
+    }
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const AppShell()),
@@ -140,236 +145,178 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.chevron_left, color: AppColors.ink),
-          onPressed: () async {
-            if (!await Navigator.maybePop(context) && mounted) _navigateHome();
-          },
-        ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_error != null)
-                  FormErrorBanner(
-                    message: _error!,
-                    onRetry: _loading ? null : _login,
-                  ),
-                const SizedBox(height: 8),
-                // Header
-                Text(
-                  'Welcome back',
-                  style: TextStyle(
-                    color: _accentColor,
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                Text(
-                  'Sign in to continue',
-                  style: const TextStyle(color: AppColors.muted, fontSize: 14),
-                ),
-                const SizedBox(height: 36),
-                _FieldLabel('Email'),
-                const SizedBox(height: 6),
-                _AuthField(
-                  fieldKey: _feedback.key('email'),
-                  focusNode: _feedback.focus('email'),
-                  errorText: _feedback.errors['email'],
-                  onChanged: (_) =>
-                      setState(() => _feedback.errors.remove('email')),
-                  keyboardType: TextInputType.emailAddress,
-                  controller: _identifierCtrl,
-                  hint: 'you@example.com',
-                  suffixIcon: _hasRememberedIdentifier
-                      ? IconButton(
-                          tooltip: 'Forget saved account',
-                          onPressed: _loading
-                              ? null
-                              : _forgetRememberedIdentifier,
-                          icon: const Icon(
-                            Icons.close,
-                            color: AppColors.muted,
-                            size: 20,
-                          ),
-                        )
-                      : null,
-                  validator: validateEmail,
-                ),
-                const SizedBox(height: 18),
-                // Password
-                _FieldLabel('Password'),
-                const SizedBox(height: 6),
-                _AuthField(
-                  fieldKey: _feedback.key('password'),
-                  focusNode: _feedback.focus('password'),
-                  errorText: _feedback.errors['password'],
-                  onChanged: (_) =>
-                      setState(() => _feedback.errors.remove('password')),
-                  textInputAction: TextInputAction.done,
-                  controller: _passCtrl,
-                  hint: '••••••••',
-                  obscure: _obscure,
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscure ? Icons.visibility_off : Icons.visibility,
-                      color: AppColors.muted,
-                      size: 20,
-                    ),
-                    onPressed: () => setState(() => _obscure = !_obscure),
-                  ),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Enter your password';
-                    return null;
-                  },
-                ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const ForgotPasswordScreen(),
-                      ),
-                    ),
-                    child: Text(
-                      'Forgot password?',
-                      style: TextStyle(color: _accentColor),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                const SizedBox(height: 8),
-                // Login button
-                Container(
-                  width: double.infinity,
-                  constraints: const BoxConstraints(minHeight: 52),
-                  child: ElevatedButton(
-                    onPressed: _loading ? null : _login,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _accentColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: _loading
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              color: AppColors.onPrimary,
-                              strokeWidth: 2.5,
-                            ),
-                          )
-                        : const Text(
-                            'Log In',
-                            style: TextStyle(
-                              color: AppColors.onPrimary,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Sign up redirect
-                Wrap(
-                  alignment: WrapAlignment.center,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    const Text(
-                      "Don't have an account? ",
-                      style: TextStyle(color: AppColors.muted, fontSize: 14),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const SignUpScreen(),
-                          ),
-                        );
-                      },
-                      child: Text(
-                        'Sign Up',
-                        style: TextStyle(
-                          color: _accentColor,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 32),
-                // Divider
-                Row(
-                  children: [
-                    const Expanded(child: Divider(color: AppColors.outline)),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 12),
-                      child: Text(
-                        'or',
-                        style: TextStyle(color: AppColors.muted, fontSize: 13),
-                      ),
-                    ),
-                    const Expanded(child: Divider(color: AppColors.outline)),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                // Guest button
-                Container(
-                  width: double.infinity,
-                  constraints: const BoxConstraints(minHeight: 52),
-                  child: OutlinedButton.icon(
-                    onPressed: _continueAsGuest,
-                    icon: const Icon(
-                      Icons.person_outline,
-                      color: AppColors.muted,
-                    ),
-                    label: const Text(
-                      'Continue as Guest (3 evaluations)',
-                      style: TextStyle(
+    return AppPageScaffold(
+      title: 'Account',
+      automaticallyImplyLeading: false,
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_error != null)
+              FormErrorBanner(
+                message: _error!,
+                onRetry: _loading ? null : _login,
+              ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: IconButton(
+                tooltip: 'Back',
+                icon: const Icon(Icons.chevron_left),
+                onPressed: () async {
+                  if (!await Navigator.maybePop(context) && mounted) {
+                    _navigateHome();
+                  }
+                },
+              ),
+            ),
+            const AppSectionHeader(
+              title: 'Welcome back',
+              subtitle: 'Sign in to continue',
+            ),
+            const SizedBox(height: 36),
+            _FieldLabel('Email'),
+            const SizedBox(height: 6),
+            _AuthField(
+              fieldKey: _feedback.key('email'),
+              focusNode: _feedback.focus('email'),
+              errorText: _feedback.errors['email'],
+              onChanged: (_) =>
+                  setState(() => _feedback.errors.remove('email')),
+              keyboardType: TextInputType.emailAddress,
+              controller: _identifierCtrl,
+              hint: 'you@example.com',
+              suffixIcon: _hasRememberedIdentifier
+                  ? IconButton(
+                      tooltip: 'Forget saved account',
+                      onPressed: _loading ? null : _forgetRememberedIdentifier,
+                      icon: const Icon(
+                        Icons.close,
                         color: AppColors.muted,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
+                        size: 20,
                       ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(
-                        color: AppColors.outline,
-                        width: 1.5,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
+                    )
+                  : null,
+              validator: validateEmail,
+            ),
+            const SizedBox(height: 18),
+            // Password
+            _FieldLabel('Password'),
+            const SizedBox(height: 6),
+            _AuthField(
+              fieldKey: _feedback.key('password'),
+              focusNode: _feedback.focus('password'),
+              errorText: _feedback.errors['password'],
+              onChanged: (_) =>
+                  setState(() => _feedback.errors.remove('password')),
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _login(),
+              controller: _passCtrl,
+              hint: '••••••••',
+              obscure: _obscure,
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscure ? Icons.visibility_off : Icons.visibility,
+                  color: AppColors.muted,
+                  size: 20,
+                ),
+                onPressed: () => setState(() => _obscure = !_obscure),
+              ),
+              validator: (v) {
+                if (v == null || v.isEmpty) return 'Enter your password';
+                return null;
+              },
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const ForgotPasswordScreen(),
                   ),
                 ),
-                const SizedBox(height: 12),
+                child: Text(
+                  'Forgot password?',
+                  style: TextStyle(color: _accentColor),
+                ),
+              ),
+            ),
+            const SizedBox(height: 2),
+            const SizedBox(height: 8),
+            // Login button
+            SizedBox(
+              width: double.infinity,
+              child: AppPrimaryButton(
+                label: 'Log In',
+                onPressed: _login,
+                isLoading: _loading,
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Sign up redirect
+            Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
                 const Text(
-                  'Guest mode allows three audio evaluations on this device. Guest reports stay on this device and remain separate from account history.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppColors.muted,
-                    fontSize: 11,
-                    height: 1.5,
+                  "Don't have an account? ",
+                  style: TextStyle(color: AppColors.muted, fontSize: 14),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SignUpScreen()),
+                    );
+                  },
+                  child: Text(
+                    'Sign Up',
+                    style: TextStyle(
+                      color: _accentColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 24),
               ],
             ),
-          ),
+            const SizedBox(height: 32),
+            // Divider
+            Row(
+              children: [
+                const Expanded(child: Divider(color: AppColors.outline)),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    'or',
+                    style: TextStyle(color: AppColors.muted, fontSize: 13),
+                  ),
+                ),
+                const Expanded(child: Divider(color: AppColors.outline)),
+              ],
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: AppSecondaryButton(
+                label: 'Continue as Guest (3 evaluations)',
+                icon: Icons.person_outline,
+                onPressed: _loading ? null : _continueAsGuest,
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Guest mode allows three audio evaluations on this device. Guest reports stay on this device and remain separate from account history.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.muted,
+                fontSize: 11,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
         ),
       ),
     );
@@ -405,6 +352,7 @@ class _AuthField extends StatelessWidget {
     this.errorText,
     this.onChanged,
     this.keyboardType,
+    this.onSubmitted,
     this.textInputAction = TextInputAction.next,
   });
 
@@ -415,6 +363,7 @@ class _AuthField extends StatelessWidget {
   final String? errorText;
   final ValueChanged<String>? onChanged;
   final TextInputType? keyboardType;
+  final ValueChanged<String>? onSubmitted;
   final TextInputAction textInputAction;
   final bool obscure;
   final Widget? suffixIcon;
@@ -434,6 +383,7 @@ class _AuthField extends StatelessWidget {
       keyboardType: keyboardType,
       onChanged: onChanged,
       textInputAction: textInputAction,
+      onSubmitted: onSubmitted,
     );
   }
 }

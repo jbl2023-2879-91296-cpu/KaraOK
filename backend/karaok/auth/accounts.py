@@ -257,7 +257,7 @@ def register():
     except (OSError, smtplib.SMTPException, RuntimeError):
         conn.rollback()
         app.logger.exception("Registration OTP delivery failed")
-        return _auth_error("Unable to send verification email", 503, email="Unable to send verification email")
+        return _auth_error("Unable to send verification email", 503)
     finally:
         cursor.close()
         conn.close()
@@ -397,7 +397,7 @@ def login():
             valid = False
     if not valid:
         audit("login", "failure", user_id=user["user_id"] if user else None)
-        return _auth_error("Invalid username/email or password", 401, identifier="Invalid username/email or password", password="Invalid username/email or password")
+        return _auth_error("Invalid email or password", 401, identifier="Invalid email or password", password="Invalid email or password")
     if password_hasher.check_needs_rehash(user["password_hash"]):
         conn = get_db()
         cursor = conn.cursor()

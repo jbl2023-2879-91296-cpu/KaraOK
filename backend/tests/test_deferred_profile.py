@@ -41,6 +41,69 @@ class DeferredProfileTests(unittest.TestCase):
         self.assertEqual(otp[1], api.token_hash(send.call_args.args[1]))
         self.connection.commit.assert_called_once()
 
+    def test_registration_email_delivery_failure_is_a_banner_error(self):
+        import smtplib
+        for failure in (smtplib.SMTPException("delivery failed"), OSError("unavailable")):
+            with self.subTest(failure=type(failure).__name__):
+                self.connection.reset_mock()
+                with ExitStack() as stack:
+                    stack.enter_context(patch.object(api, 'get_db', return_value=self.connection))
+                    stack.enter_context(patch.object(api, 'send_registration_otp', side_effect=failure))
+                    stack.enter_context(patch.object(api.app.logger, 'exception'))
+                    for key in ('SMTP_HOST', 'SMTP_USERNAME', 'SMTP_PASSWORD', 'SMTP_FROM'):
+                        stack.enter_context(patch.object(api, key, 'test-only'))
+                    with api.app.test_request_context('/api/auth/register', method='POST', json={
+                        'email': 'user@example.com', 'username': 'new-user', 'password': 'Good#A1b',
+                    }):
+                        response, status = api.register.__wrapped__()
+                self.assertEqual(status, 503)
+                self.assertEqual(response.get_json(), {'error': 'Unable to send verification email'})
+                self.connection.rollback.assert_called_once()
+                self.connection.commit.assert_not_called()
+                self.cursor.close.assert_called_once()
+                self.connection.close.assert_called_once()
+
+    def test_login_missing_account_and_wrong_password_share_email_error(self):
+        from argon2.exceptions import VerifyMismatchError
+        message = 'Invalid email or password'
+        for user in (None, {'user_id': 31, 'is_active': True,
+                            'email_verified_at': object(), 'password_hash': 'test-hash'}):
+            with self.subTest(existing=user is not None):
+                self.cursor.fetchone.return_value = user
+                with patch.object(api, 'get_db', return_value=self.connection), patch.object(
+                    api, 'audit'
+                ), patch.object(api, 'auth_response') as auth, patch.object(
+                    type(api.password_hasher), 'verify', side_effect=VerifyMismatchError('mismatch')
+                ) as verify, api.app.test_request_context('/api/auth/login', method='POST', json={
+                    'email': 'user@example.com', 'password': 'Wrong#A1b',
+                }):
+                    response, status = api.login.__wrapped__()
+                self.assertEqual(status, 401)
+                self.assertEqual(response.get_json(), {
+                    'error': message, 'errors': {'identifier': message, 'password': message},
+                })
+                auth.assert_not_called()
+                self.assertEqual(verify.call_count, int(user is not None))
+
+    def test_login_unverified_and_inactive_accounts_remain_blocked(self):
+        for active, verified in ((False, object()), (True, None)):
+            with self.subTest(active=active, verified=verified is not None):
+                self.cursor.fetchone.return_value = {
+                    'user_id': 31, 'is_active': active, 'email_verified_at': verified,
+                }
+                with patch.object(api, 'get_db', return_value=self.connection), patch.object(
+                    api, 'audit'
+                ), patch.object(api, 'auth_response') as auth, patch.object(
+                    type(api.password_hasher), 'verify'
+                ) as verify, api.app.test_request_context('/api/auth/login', method='POST', json={
+                    'email': 'user@example.com', 'password': 'Good#A1b',
+                }):
+                    response, status = api.login.__wrapped__()
+                self.assertEqual(status, 401)
+                self.assertIn('error', response.get_json())
+                auth.assert_not_called()
+                verify.assert_not_called()
+
     def pending_user(self):
         return dict.fromkeys(FIELDS) | {
             'user_id': 31, 'username': 'new-user', 'email': 'user@example.com',
@@ -48,6 +111,32 @@ class DeferredProfileTests(unittest.TestCase):
             'profile_image_mime': None, 'registration_id': 9,
             'code_hash': api.token_hash('123456'), 'attempts': 0,
         }
+
+    def test_profile_display_name_uses_email_instead_of_generated_username(self):
+        for username in ('user_' + 'a' * 32, 'legacy-name'):
+            for first, last in ((None, None), ('', ''), ('  ', '  ')):
+                with self.subTest(username=username, first=first, last=last):
+                    user = dict(self.pending_user(), username=username,
+                                first_name=first, last_name=last)
+                    profile = _profile_response(user)
+                    self.assertEqual(profile['name'], 'user@example.com')
+                    self.assertEqual(profile['username'], username)
+                    self.assertFalse(profile['profile_complete'])
+
+    def test_profile_display_name_prefers_trimmed_first_and_last_names(self):
+        for first, last, expected in (
+            ('  New  ', '  User  ', 'New User'),
+            ('  New  ', None, 'New'),
+            (None, '  User  ', 'User'),
+            ('  ', '  User  ', 'User'),
+        ):
+            with self.subTest(first=first, last=last):
+                user = dict(self.pending_user(), username='user_' + 'a' * 32,
+                            first_name=first, last_name=last)
+                profile = _profile_response(user)
+                self.assertEqual(profile['name'], expected)
+                self.assertEqual(profile['first_name'], first)
+                self.assertEqual(profile['last_name'], last)
 
     def test_otp_accepts_null_profile_and_consumes_code(self):
         self.cursor.fetchone.return_value = self.pending_user()
@@ -60,7 +149,7 @@ class DeferredProfileTests(unittest.TestCase):
             user, status = api.verify_registration.__wrapped__()
         self.assertEqual(status, 201)
         self.assertFalse(user['profile_complete'])
-        self.assertEqual(user['name'], 'new-user')
+        self.assertEqual(user['name'], 'user@example.com')
         for field in FIELDS:
             self.assertIsNone(user[field])
         statements = '\n'.join(c.args[0] for c in self.cursor.execute.call_args_list)

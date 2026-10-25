@@ -96,7 +96,17 @@ class UserSession extends ChangeNotifier {
   }) {
     this.id = id;
     this.username = username;
-    this.name = name.trim().isEmpty ? username : name;
+    final personalName = [firstName, lastName]
+        .whereType<String>()
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .join(' ');
+    final generated = RegExp(r'^user_[0-9a-f]{32}$');
+    this.name = personalName.isNotEmpty
+        ? personalName
+        : name.trim().isEmpty || generated.hasMatch(name.trim())
+        ? email
+        : name;
     this.firstName = firstName;
     this.lastName = lastName;
     this.email = email;

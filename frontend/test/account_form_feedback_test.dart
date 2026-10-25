@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
+import 'package:karaok_app/core/storage/analysis_cache.dart';
+import 'package:karaok_app/features/auth/presentation/pages/login_screen.dart';
 import 'package:karaok_app/features/account/data/account_api.dart';
 import 'package:karaok_app/features/account/presentation/pages/change_password_screen.dart';
 import 'package:karaok_app/features/auth/data/auth_api.dart';
-import 'package:karaok_app/shared/widgets/form_feedback.dart';
+import 'package:karaok_app/shared/widgets/app_widgets.dart';
+import 'package:karaok_app/features/assessments/data/audio_staging_service.dart';
 
 const completeUser = <String, dynamic>{
   'id': 31,
@@ -35,11 +38,13 @@ class _Auth extends AuthApi {
   );
   int calls = 0;
   int logoutCalls = 0;
+  Object? logoutFailure;
   int clearTokenCalls = 0;
   Future<void>? pending;
   @override
   Future<void> logout() async {
     logoutCalls++;
+    if (logoutFailure != null) throw logoutFailure!;
   }
 
   @override
@@ -59,6 +64,18 @@ class _Auth extends AuthApi {
     password = newPassword;
     if (pending != null) return pending!;
     throw failure;
+  }
+}
+
+class _AudioCleanup extends AudioStagingService {
+  int calls = 0;
+  Future<void>? pending;
+  Object? failure;
+  @override
+  Future<void> cleanupStaleRecordings() async {
+    calls++;
+    if (pending != null) await pending;
+    if (failure != null) throw failure!;
   }
 }
 
@@ -143,6 +160,126 @@ void main() {
   });
   tearDown(() => UserSession.instance.clear());
 
+  testWidgets(
+    'successful password change clears credentials despite cache failure',
+    (tester) async {
+      final auth = _Auth()..pending = Future<void>.value();
+      var cacheAttempts = 0;
+      final cache = AnalysisCache(
+        supportDirectoryProvider: () async {
+          cacheAttempts++;
+          throw StateError('cache unavailable');
+        },
+      );
+      await show(
+        tester,
+        ChangePasswordScreen(authApi: auth, analysisCache: cache),
+      );
+      await passwordValues(tester);
+      await submit(tester, 'Confirm password change');
+      expect(auth.calls, 1);
+      expect(cacheAttempts, 1);
+      expect(auth.clearTokenCalls, 1);
+      expect(UserSession.instance.id, isNull);
+      expect(find.byType(LoginScreen), findsOneWidget);
+      expect(
+        tester.widget<LoginScreen>(find.byType(LoginScreen)).initialIdentifier,
+        completeUser['email'],
+      );
+      expect(
+        find.text('Password changed. Please log in again.'),
+        findsOneWidget,
+      );
+      expect(find.text('Could not connect to the server.'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('account uses shared sections and independent forms', (
+    tester,
+  ) async {
+    await show(tester, const ChangePasswordScreen(editProfile: true));
+    expect(find.byType(AppPageScaffold), findsOneWidget);
+    expect(find.byType(Form), findsNWidgets(2));
+    expect(
+      find.widgetWithText(AppSectionHeader, 'Account Details'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(AppSectionHeader, 'Change Password'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(AppPrimaryButton, 'Save Changes'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(AppPrimaryButton, 'Confirm password change'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('guest account uses shared empty state and sign-in actions', (
+    tester,
+  ) async {
+    UserSession.instance.setGuest('user');
+    await show(tester, const ChangePasswordScreen());
+    expect(find.byType(AppPageScaffold), findsOneWidget);
+    expect(find.byType(AppEmptyState), findsOneWidget);
+    expect(
+      find.widgetWithText(AppPrimaryButton, 'Create Account'),
+      findsOneWidget,
+    );
+    expect(find.widgetWithText(AppSecondaryButton, 'Log In'), findsOneWidget);
+    expect(find.byType(Form), findsNothing);
+  });
+
+  for (final cleanupFails in [false, true]) {
+    testWidgets(
+      'logout awaits recording cleanup and continues on failure: $cleanupFails',
+      (tester) async {
+        final finished = Completer<void>();
+        final cleanup = _AudioCleanup()..pending = finished.future;
+        if (cleanupFails) cleanup.failure = StateError('cleanup failed');
+        final auth = _Auth()..logoutFailure = StateError('server unavailable');
+        await show(
+          tester,
+          ChangePasswordScreen(authApi: auth, audioStagingService: cleanup),
+        );
+        await tester.ensureVisible(find.text('Log Out'));
+        await tester.runAsync(() async {
+          await tester.tap(find.text('Log Out'));
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+        });
+        await tester.pump();
+        expect(cleanup.calls, 1);
+        expect(auth.logoutCalls, 0);
+        expect(UserSession.instance.isGuest, isFalse);
+        expect(
+          tester
+              .widget<OutlinedButton>(
+                find.descendant(
+                  of: find.widgetWithText(AppSecondaryButton, 'Log Out'),
+                  matching: find.byType(OutlinedButton),
+                ),
+              )
+              .onPressed,
+          isNull,
+        );
+        await tester.runAsync(() async {
+          finished.complete();
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+        });
+        await tester.pumpAndSettle();
+        expect(auth.logoutCalls, 1);
+        expect(auth.clearTokenCalls, 1);
+        expect(UserSession.instance.isGuest, isTrue);
+        expect(UserSession.instance.id, isNull);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('password server error is inline, focused and cleared on edit', (
     tester,
   ) async {
@@ -158,7 +295,7 @@ void main() {
       'Current password is incorrect.',
     );
     expect(input(tester, 'Current password').focusNode!.hasFocus, isTrue);
-    expect(find.byType(FormErrorBanner), findsNothing);
+    expect(find.byType(AppErrorState), findsNothing);
     await tester.enterText(field('Current password'), 'CorrectedPassword1!');
     await tester.pumpAndSettle();
     expect(input(tester, 'Current password').decoration?.errorText, isNull);
@@ -217,7 +354,7 @@ void main() {
       await tester.enterText(field('New password'), 'NewPassword2!');
       await tester.enterText(field('Retype new password'), 'NewPassword2!');
       await submit(tester, 'Confirm password change');
-      expect(find.byType(FormErrorBanner), findsOneWidget);
+      expect(find.byType(AppErrorState), findsOneWidget);
       expect(find.text('Could not connect to the server.'), findsOneWidget);
       await tester.tap(find.text('Retry'));
       await tester.pumpAndSettle();
@@ -251,7 +388,7 @@ void main() {
           'Please change this value.',
         );
         expect(input(tester, entry.value).focusNode!.hasFocus, isTrue);
-        expect(find.byType(FormErrorBanner), findsNothing);
+        expect(find.byType(AppErrorState), findsNothing);
       },
     );
   }
@@ -277,7 +414,7 @@ void main() {
       await submit(tester, 'Save Changes');
       expect(api.calls, 1);
       expect(find.text('Choose a valid profile image.'), findsOneWidget);
-      expect(find.byType(FormErrorBanner), findsNothing);
+      expect(find.byType(AppErrorState), findsNothing);
     });
   }
 

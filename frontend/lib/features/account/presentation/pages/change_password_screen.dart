@@ -1,3 +1,5 @@
+import 'package:karaok_app/shared/widgets/app_widgets.dart';
+import 'package:karaok_app/features/assessments/data/audio_staging_service.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'package:karaok_app/shared/widgets/form_feedback.dart';
 import 'dart:convert';
@@ -24,12 +26,16 @@ class ChangePasswordScreen extends StatefulWidget {
     this.editProfile = false,
     this.authApi,
     this.accountApi,
+    this.audioStagingService,
+    this.analysisCache,
   });
 
   final bool forceChange;
   final bool editProfile;
   final AuthApi? authApi;
   final AccountApi? accountApi;
+  final AudioStagingService? audioStagingService;
+  final AnalysisCache? analysisCache;
 
   @override
   State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
@@ -38,7 +44,8 @@ class ChangePasswordScreen extends StatefulWidget {
 class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   final _passwordFeedback = FormFeedback();
   final _profileFeedback = FormFeedback();
-  final _scrollController = ScrollController();
+  final _pageTop = GlobalKey();
+  bool _loggingOut = false;
   final _formKey = GlobalKey<FormState>();
   final _profileFormKey = GlobalKey<FormState>();
   final _currentController = TextEditingController();
@@ -103,7 +110,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     UserSession.instance.removeListener(_sessionChanged);
     _passwordFeedback.dispose();
     _profileFeedback.dispose();
-    _scrollController.dispose();
     _currentController.dispose();
     _newController.dispose();
     _confirmController.dispose();
@@ -295,7 +301,12 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       );
       if (!mounted || !_isCurrentSession(revision)) return;
       final email = UserSession.instance.email;
-      await AnalysisCache.instance.clearCurrentUser();
+      try {
+        await (widget.analysisCache ?? AnalysisCache.instance)
+            .clearCurrentUser();
+      } catch (_) {
+        // A successful password change must still invalidate local credentials.
+      }
       if (!mounted || !_isCurrentSession(revision)) return;
       await (widget.authApi ?? AuthApi()).clearTokens();
       if (!mounted || !_isCurrentSession(revision)) return;
@@ -333,9 +344,11 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   void _revealBanner() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _scrollController.hasClients) {
-        _scrollController.animateTo(
-          0,
+      final anchor = _pageTop.currentContext;
+      if (mounted && anchor != null) {
+        Scrollable.ensureVisible(
+          anchor,
+          alignment: 0,
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOut,
         );
@@ -448,28 +461,18 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           ),
         ),
         const SizedBox(height: 24),
-        Row(
-          children: [
-            const Expanded(
-              child: Text(
-                'Account Details',
-                style: TextStyle(
-                  color: AppColors.ink,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            if (!_editingProfile)
-              TextButton.icon(
-                onPressed: () => setState(() {
-                  _resetProfileDraft();
-                  _editingProfile = true;
-                }),
-                icon: const Icon(Icons.edit_outlined, size: 18),
-                label: const Text('Edit'),
-              ),
-          ],
+        AppSectionHeader(
+          title: 'Account Details',
+          action: !_editingProfile
+              ? AppSecondaryButton(
+                  label: 'Edit',
+                  icon: Icons.edit_outlined,
+                  onPressed: () => setState(() {
+                    _resetProfileDraft();
+                    _editingProfile = true;
+                  }),
+                )
+              : null,
         ),
         const SizedBox(height: 12),
         Container(
@@ -696,27 +699,22 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton(
+                  child: AppSecondaryButton(
+                    label: 'Cancel',
                     onPressed: _savingProfile
                         ? null
                         : () => setState(() {
                             _resetProfileDraft();
                             _editingProfile = false;
                           }),
-                    child: const Text('Cancel'),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: FilledButton(
-                    onPressed: _savingProfile ? null : _saveProfile,
-                    child: _savingProfile
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Save Changes'),
+                  child: AppPrimaryButton(
+                    label: 'Save Changes',
+                    isLoading: _savingProfile,
+                    onPressed: _saveProfile,
                   ),
                 ),
               ],
@@ -757,6 +755,8 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   }
 
   Future<void> _logOut() async {
+    if (_loggingOut) return;
+    setState(() => _loggingOut = true);
     // Discard pending account responses as soon as logout begins.
     _sessionRevision++;
     final lastIdentifier = UserSession.instance.email;
@@ -767,11 +767,25 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         // Logging out must still complete if the convenience value cannot save.
       }
     }
-    await AnalysisCache.instance.clearCurrentUser();
+    try {
+      await (widget.audioStagingService ?? AudioStagingService())
+          .cleanupStaleRecordings()
+          .timeout(AudioStagingService.operationTimeout);
+    } catch (_) {
+      // Recording cleanup must never prevent token clearing and logout.
+    }
+    try {
+      await (widget.analysisCache ?? AnalysisCache.instance).clearCurrentUser();
+    } catch (_) {
+      // Cache cleanup is best effort; authentication still needs to end.
+    }
     try {
       await (widget.authApi ?? AuthApi()).logout();
     } catch (_) {
-      // Local logout still completes when the server is unavailable.
+      // Keep local credentials cleared even if an injected/server logout fails.
+      try {
+        await (widget.authApi ?? AuthApi()).clearTokens();
+      } catch (_) {}
     } finally {
       UserSession.instance.setGuest('user');
     }
@@ -783,77 +797,37 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     );
   }
 
-  Widget _guestSettings() {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        backgroundColor: AppColors.background,
-        title: const Text('Settings'),
-        centerTitle: true,
-      ),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              children: [
-                const CircleAvatar(
-                  radius: 38,
-                  backgroundColor: AppColors.surface,
-                  child: Icon(
-                    Icons.person_outline,
-                    color: AppColors.primary,
-                    size: 38,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'You are using KaraOK as a guest',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  'Create an account to save future records and continue evaluating audio after your guest attempts. Existing guest-only reports stay on this device and remain separate from your account history.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.muted, height: 1.5),
-                ),
-                const SizedBox(height: 28),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const SignUpScreen()),
-                    ),
-                    icon: const Icon(Icons.person_add_alt_1),
-                    label: const Text('Create Account'),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    ),
-                    icon: const Icon(Icons.login),
-                    label: const Text('Log In'),
-                  ),
-                ),
-              ],
+  Widget _guestSettings() => AppPageScaffold(
+    title: 'Settings',
+    automaticallyImplyLeading: false,
+    child: AppEmptyState(
+      title: 'You are using KaraOK as a guest',
+      message:
+          'Create an account to save future records and continue evaluating audio after your guest attempts. Existing guest-only reports stay on this device and remain separate from your account history.',
+      icon: Icons.person_outline,
+      action: Column(
+        children: [
+          AppPrimaryButton(
+            label: 'Create Account',
+            icon: Icons.person_add_alt_1,
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SignUpScreen()),
             ),
           ),
-        ),
+          const SizedBox(height: 12),
+          AppSecondaryButton(
+            label: 'Log In',
+            icon: Icons.login,
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
+            ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -862,138 +836,118 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
     return PopScope(
       canPop: !widget.forceChange,
-      child: Scaffold(
-        backgroundColor: AppColors.background,
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          backgroundColor: AppColors.background,
-          title: Text(
-            widget.forceChange ? 'Password Change Required' : 'Settings',
-          ),
-        ),
-        body: SafeArea(
-          child: Form(
-            key: _formKey,
-            child: ListView(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(24),
-              children: [
-                if (_profileError != null)
-                  FormErrorBanner(
-                    message: _profileError!,
-                    onRetry: _savingProfile ? null : _saveProfile,
-                  ),
-                if (_error != null)
-                  FormErrorBanner(
-                    message: _error!,
-                    onRetry: _loading ? null : _submit,
-                  ),
-                if (!widget.forceChange && session.needsProfileCompletion)
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Finish your profile',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const Text(
-                            'Add your details when you are ready. You can keep using KaraOK.',
-                          ),
-                          TextButton(
-                            onPressed: _editingProfile
-                                ? null
-                                : () => setState(() {
-                                    _resetProfileDraft();
-                                    _editingProfile = true;
-                                  }),
-                            child: const Text('Complete profile'),
-                          ),
-                        ],
-                      ),
+      child: AppPageScaffold(
+        title: widget.forceChange ? 'Password Change Required' : 'Settings',
+        automaticallyImplyLeading: false,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            key: _pageTop,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_profileError != null)
+                AppErrorState(
+                  title: 'Could not save account details',
+                  message: _profileError!,
+                  onRetry: _savingProfile ? null : _saveProfile,
+                ),
+              if (_error != null)
+                AppErrorState(
+                  title: 'Could not change password',
+                  message: _error!,
+                  onRetry: _loading ? null : _submit,
+                ),
+              if (!widget.forceChange && session.needsProfileCompletion)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Finish your profile',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const Text(
+                          'Add your details when you are ready. You can keep using KaraOK.',
+                        ),
+                        TextButton(
+                          onPressed: _editingProfile
+                              ? null
+                              : () => setState(() {
+                                  _resetProfileDraft();
+                                  _editingProfile = true;
+                                }),
+                          child: const Text('Complete profile'),
+                        ),
+                      ],
                     ),
                   ),
-                if (!widget.forceChange) ...[
-                  _accountDetails(session),
-                  const SizedBox(height: 28),
-                  const Text(
-                    'Change Password',
-                    style: TextStyle(
-                      color: AppColors.ink,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                Text(
-                  widget.forceChange
-                      ? 'You signed in with a temporary password. Change it now before continuing.'
-                      : 'Enter your current password, then choose a new secure password.',
-                  style: const TextStyle(color: AppColors.muted, height: 1.4),
                 ),
-                const SizedBox(height: 24),
-                if (!widget.forceChange) ...[
-                  _passwordField(
-                    controller: _currentController,
-                    label: 'Current password',
-                    obscure: _obscureCurrent,
-                    toggle: () =>
-                        setState(() => _obscureCurrent = !_obscureCurrent),
-                    validator: (value) => value == null || value.isEmpty
-                        ? 'Enter your current password.'
-                        : null,
-                  ),
-                  const SizedBox(height: 16),
-                ],
+              if (!widget.forceChange) ...[
+                _accountDetails(session),
+                const SizedBox(height: 28),
+                const AppSectionHeader(title: 'Change Password'),
+                const SizedBox(height: 8),
+              ],
+              Text(
+                widget.forceChange
+                    ? 'You signed in with a temporary password. Change it now before continuing.'
+                    : 'Enter your current password, then choose a new secure password.',
+                style: const TextStyle(color: AppColors.muted, height: 1.4),
+              ),
+              const SizedBox(height: 24),
+              if (!widget.forceChange) ...[
                 _passwordField(
-                  controller: _newController,
-                  label: 'New password',
-                  obscure: _obscureNew,
-                  maxLength: PasswordPolicy.maximumLength,
-                  toggle: () => setState(() => _obscureNew = !_obscureNew),
-                  validator: _validateNewPassword,
-                ),
-                const SizedBox(height: 16),
-                PasswordChecklist(controller: _newController),
-                _passwordField(
-                  controller: _confirmController,
-                  label: 'Retype new password',
-                  obscure: _obscureConfirm,
-                  maxLength: PasswordPolicy.maximumLength,
+                  controller: _currentController,
+                  label: 'Current password',
+                  obscure: _obscureCurrent,
                   toggle: () =>
-                      setState(() => _obscureConfirm = !_obscureConfirm),
-                  validator: (value) => value != _newController.text
-                      ? 'The new passwords do not match.'
+                      setState(() => _obscureCurrent = !_obscureCurrent),
+                  validator: (value) => value == null || value.isEmpty
+                      ? 'Enter your current password.'
                       : null,
                 ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  key: const ValueKey('change-password-submit'),
-                  onPressed: _loading ? null : _submit,
-                  child: _loading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Confirm password change'),
-                ),
-                if (!widget.forceChange) ...[
-                  const SizedBox(height: 16),
-                  OutlinedButton.icon(
-                    onPressed: _loading ? null : _logOut,
-                    icon: const Icon(Icons.logout, color: AppColors.error),
-                    label: const Text(
-                      'Log Out',
-                      style: TextStyle(color: AppColors.error),
-                    ),
-                  ),
-                ],
+                const SizedBox(height: 16),
               ],
-            ),
+              _passwordField(
+                controller: _newController,
+                label: 'New password',
+                obscure: _obscureNew,
+                maxLength: PasswordPolicy.maximumLength,
+                toggle: () => setState(() => _obscureNew = !_obscureNew),
+                validator: _validateNewPassword,
+              ),
+              const SizedBox(height: 16),
+              PasswordChecklist(controller: _newController),
+              _passwordField(
+                controller: _confirmController,
+                label: 'Retype new password',
+                obscure: _obscureConfirm,
+                maxLength: PasswordPolicy.maximumLength,
+                toggle: () =>
+                    setState(() => _obscureConfirm = !_obscureConfirm),
+                validator: (value) => value != _newController.text
+                    ? 'The new passwords do not match.'
+                    : null,
+              ),
+              const SizedBox(height: 24),
+              AppPrimaryButton(
+                key: const ValueKey('change-password-submit'),
+                label: 'Confirm password change',
+                isLoading: _loading,
+                onPressed: _loggingOut ? null : _submit,
+              ),
+              if (!widget.forceChange) ...[
+                const SizedBox(height: 16),
+                AppSecondaryButton(
+                  label: 'Log Out',
+                  icon: Icons.logout,
+                  isLoading: _loggingOut,
+                  onPressed: _loading ? null : _logOut,
+                ),
+              ],
+            ],
           ),
         ),
       ),

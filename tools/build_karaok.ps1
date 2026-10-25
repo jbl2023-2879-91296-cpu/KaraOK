@@ -98,6 +98,54 @@ function Find-KaraOkProjectRoot {
     return $null
 }
 
+function Test-KaraOkDarkTheme {
+    param([Parameter(Mandatory)] [AllowEmptyString()] [string]$Source)
+
+    # Skip Dart comments (including nested blocks) and quoted text before
+    # checking direct constructor arguments. Nested calls have their own scope.
+    $pattern = @'
+(?x)
+  /\*(?>(?<comment>/\*)|(?<-comment>\*/)|(?!/\*|\*/)[\s\S])*(?(comment)(?!))\*/
+| //[^\r\n]*
+| r(?:"""[\s\S]*?"""|'''[\s\S]*?'''|"[^"\r\n]*"|'[^'\r\n]*')
+| """(?:\\[\s\S]|(?!""")[\s\S])*"""
+| '''(?:\\[\s\S]|(?!''')[\s\S])*'''
+| "(?:\\[\s\S]|[^"\\])*" | '(?:\\[\s\S]|[^'\\])*'
+| [A-Za-z_$][A-Za-z0-9_$]* | [^\s]
+'@
+    $tokens = [Collections.Generic.List[string]]::new()
+    foreach ($match in [regex]::Matches($Source, $pattern)) {
+        $token = $match.Value
+        if ($token.StartsWith('//') -or $token.StartsWith('/*')) { continue }
+        if ($token -match '^(r?["''])') { $token = '__literal__' }
+        $tokens.Add($token)
+    }
+
+    $scopes = [Collections.Generic.Stack[bool]]::new()
+    for ($i = 0; $i -lt $tokens.Count; $i++) {
+        $token = $tokens[$i]
+        if ($token -eq '(') {
+            $typeIndex = $i - 1
+            # Named constructors such as ColorScheme.fromSeed(...).
+            if ($i -ge 3 -and $tokens[$i - 2] -eq '.') { $typeIndex = $i - 3 }
+            $isTheme = $typeIndex -ge 0 -and $tokens[$typeIndex] -cmatch '^(ThemeData|ColorScheme)$'
+            $scopes.Push($isTheme)
+        }
+        elseif ($token -eq '[' -or $token -eq '{') { $scopes.Push($false) }
+        elseif ($token -in @(')', ']', '}')) {
+            if ($scopes.Count -gt 0) { $null = $scopes.Pop() }
+        }
+        elseif ($scopes.Count -gt 0 -and $scopes.Peek() -and
+            $i -gt 0 -and $tokens[$i - 1] -in @('(', ',') -and
+            $i + 4 -lt $tokens.Count -and $token -ceq 'brightness' -and
+            $tokens[$i + 1] -eq ':' -and $tokens[$i + 2] -ceq 'Brightness' -and
+            $tokens[$i + 3] -eq '.' -and $tokens[$i + 4] -ceq 'dark') {
+            return $true
+        }
+    }
+    return $false
+}
+
 function Read-DefaultValue {
     param(
         [Parameter(Mandatory)] [string]$Prompt,
@@ -416,8 +464,8 @@ try {
     }
     $themePath = Join-Path $ProjectDirectory 'lib/app/app_theme.dart'
     if (Test-Path -LiteralPath $themePath -PathType Leaf) {
-        if ((Get-Content -Raw -LiteralPath $themePath) -match 'Brightness\.dark') {
-            Write-Warning "THEME CHECK: $themePath contains Brightness.dark. Review theme brightness before distributing. Dark icon settings also use this value; this warning alone does not prove a dark UI."
+        if (Test-KaraOkDarkTheme -Source (Get-Content -Raw -LiteralPath $themePath)) {
+            Write-Warning "THEME CHECK: $themePath sets brightness: Brightness.dark in ThemeData or ColorScheme. Review the light-only theme before distributing."
         }
     }
     else {

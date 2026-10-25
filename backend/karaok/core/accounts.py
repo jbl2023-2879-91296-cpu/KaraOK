@@ -87,7 +87,7 @@ def _profile_response(user: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": user["user_id"],
         "username": user["username"],
-        "name": " ".join(part for part in (first_name, last_name) if part) or user["username"],
+        "name": " ".join(part.strip() for part in (first_name, last_name) if part and part.strip()) or user["email"],
         "first_name": first_name,
         "last_name": last_name,
         "email": user["email"],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:karaok_app/features/auth/data/auth_api.dart';
@@ -73,7 +74,7 @@ Future<void> show(WidgetTester tester, Widget screen) async {
 }
 
 Future<void> submit(WidgetTester tester, String label) async {
-  final button = find.widgetWithText(ElevatedButton, label);
+  final button = find.widgetWithText(AppPrimaryButton, label);
   await tester.ensureVisible(button);
   await tester.tap(button);
   await tester.pumpAndSettle();
@@ -412,10 +413,115 @@ void main() {
         await tester.pumpAndSettle();
         expect(api.calls, 2);
         expect(
-          tester.widget<ElevatedButton>(find.byType(ElevatedButton)).onPressed,
+          tester
+              .widget<AppPrimaryButton>(find.byType(AppPrimaryButton))
+              .onPressed,
           isNotNull,
         );
       },
     );
   }
+
+  testWidgets(
+    'login password Done submits credentials through the shared field',
+    (tester) async {
+      final api = _Auth();
+      await show(tester, LoginScreen(authApi: api));
+      await tester.enterText(field(0), 'singer@example.com');
+      await tester.enterText(field(1), 'Example123!');
+      expect(fieldWidget(tester, 1).textInputAction, TextInputAction.done);
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(api.calls, 1);
+      expect(api.email, 'singer@example.com');
+      expect(api.submittedPassword, 'Example123!');
+      expect(find.byType(FormErrorBanner), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'password edit revalidates touched confirmation but leaves untouched confirmation quiet',
+    (tester) async {
+      final api = _Auth();
+      await show(tester, SignUpScreen(authApi: api));
+      await tester.enterText(field(1), 'Example123!');
+      await tester.pumpAndSettle();
+      expect(fieldWidget(tester, 2).decoration?.errorText, isNull);
+      await tester.enterText(field(1), 'Different123!');
+      await tester.pumpAndSettle();
+      expect(fieldWidget(tester, 2).decoration?.errorText, isNull);
+      await tester.enterText(field(2), 'Different123!');
+      await tester.pumpAndSettle();
+      expect(fieldWidget(tester, 2).decoration?.errorText, isNull);
+      await tester.enterText(field(1), 'Updated123!');
+      await tester.pumpAndSettle();
+      expect(
+        fieldWidget(tester, 2).decoration?.errorText,
+        'Passwords must match.',
+      );
+      await tester.enterText(field(1), 'Different123!');
+      await tester.pumpAndSettle();
+      expect(fieldWidget(tester, 2).decoration?.errorText, isNull);
+      expect(api.calls, 0);
+    },
+  );
+
+  testWidgets(
+    'verification delivery 503 is a retry banner rather than an email field error',
+    (tester) async {
+      final api = _Auth()
+        ..failure = const ApiException(
+          503,
+          'Unable to send verification email',
+          fieldErrors: {'email': 'Unable to send verification email'},
+        );
+      await show(tester, SignUpScreen(authApi: api));
+      await signupValues(tester);
+      await submit(tester, 'Send Verification Code');
+      expect(api.calls, 1);
+      expect(find.byType(FormErrorBanner), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(FormErrorBanner),
+          matching: find.text('Unable to send verification email'),
+        ),
+        findsOneWidget,
+      );
+      for (var index = 0; index < 3; index++) {
+        expect(fieldWidget(tester, index).decoration?.errorText, isNull);
+      }
+      expect(find.text('Sign in'), findsNothing);
+      expect(find.text('Reset password'), findsNothing);
+      await tester.ensureVisible(find.text('Retry'));
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(api.calls, 2);
+      expect(
+        fieldWidget(tester, 0).controller!.text.trim(),
+        'singer@example.com',
+      );
+    },
+  );
+
+  testWidgets('signup confirmation Done submits validated registration', (
+    tester,
+  ) async {
+    final api = _Auth();
+    await show(tester, SignUpScreen(authApi: api));
+    await tester.enterText(field(2), 'Example123!');
+    expect(fieldWidget(tester, 2).textInputAction, TextInputAction.done);
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(api.calls, 0);
+    expect(find.text('Enter your email address.'), findsOneWidget);
+    expect(fieldWidget(tester, 0).focusNode!.hasFocus, isTrue);
+
+    await signupValues(tester);
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(api.calls, 1);
+    expect(api.email, 'singer@example.com');
+    expect(api.submittedPassword, 'Example123!');
+    expect(find.byType(FormErrorBanner), findsOneWidget);
+  });
 }

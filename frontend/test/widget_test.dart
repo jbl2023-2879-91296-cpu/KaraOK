@@ -1,4 +1,8 @@
 import 'support/settle_with_storage.dart';
+import 'package:karaok_app/features/auth/data/auth_api.dart';
+import 'package:karaok_app/features/auth/presentation/pages/login_screen.dart';
+import 'package:karaok_app/shared/widgets/app_widgets.dart';
+import 'package:karaok_app/app/app_shell.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +24,52 @@ void main() {
     await GuestAssessmentService.instance.resetForTesting();
   });
   tearDown(UserSession.instance.clear);
+
+  testWidgets('Back after a successful password change opens Home as guest', (
+    tester,
+  ) async {
+    UserSession.instance.setUser(
+      id: 7,
+      name: 'Test User',
+      email: 'user@example.com',
+      userType: 'user',
+    );
+    final api = _SuccessfulPasswordChange();
+    await tester.pumpWidget(
+      MaterialApp(home: ChangePasswordScreen(forceChange: true, authApi: api)),
+    );
+    final fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(0), 'NewPassword123!');
+    await tester.enterText(fields.at(1), 'NewPassword123!');
+    final submit = find.widgetWithText(
+      AppPrimaryButton,
+      'Confirm password change',
+    );
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
+    await settleWithStorage(tester);
+    expect(api.passwordChanges, 1);
+    expect(api.newPassword, 'NewPassword123!');
+    expect(api.currentPassword, isNull);
+    expect(api.tokenClears, 1);
+    expect(UserSession.instance.isLoggedIn, isFalse);
+    expect(UserSession.instance.id, isNull);
+    expect(find.byType(LoginScreen), findsOneWidget);
+    final loginFields = tester
+        .widgetList<TextFormField>(find.byType(TextFormField))
+        .toList();
+    expect(loginFields[0].controller!.text, 'user@example.com');
+    expect(loginFields[1].controller!.text, isEmpty);
+
+    await tester.tap(find.byTooltip('Back'));
+    await settleWithStorage(tester);
+    expect(find.byType(LoginScreen), findsNothing);
+    expect(find.byType(AppShell), findsOneWidget);
+    expect(UserSession.instance.isGuest, isTrue);
+    expect(UserSession.instance.userType, 'user');
+    expect(UserSession.instance.id, isNull);
+    expect(find.text('Evaluate Audio Quality'), findsOneWidget);
+  });
 
   testWidgets('KaraOK opens in guest mode after the launch screen', (
     tester,
@@ -180,7 +230,7 @@ void main() {
       400,
       scrollable: find
           .descendant(
-            of: find.byType(ListView).last,
+            of: find.byType(ChangePasswordScreen),
             matching: find.byType(Scrollable),
           )
           .first,
@@ -498,5 +548,29 @@ class _ResultFlowLauncher extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _SuccessfulPasswordChange extends AuthApi {
+  int passwordChanges = 0;
+  int tokenClears = 0;
+  String? currentPassword;
+  String? newPassword;
+
+  @override
+  Future<void> changePassword({
+    String? currentPassword,
+    required String newPassword,
+  }) async {
+    passwordChanges++;
+    this.currentPassword = currentPassword;
+    this.newPassword = newPassword;
+  }
+
+  @override
+  Future<void> clearTokens() async {
+    tokenClears++;
+    // Exercise real local token cleanup while keeping the request offline.
+    await super.clearTokens();
   }
 }

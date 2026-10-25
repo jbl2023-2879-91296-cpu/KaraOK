@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -67,8 +68,16 @@ void main() {
       ),
     );
 
+    expect(find.byType(AppPageScaffold), findsOneWidget);
+    expect(find.byType(AppSectionHeader), findsOneWidget);
+    final context = tester.element(find.byType(SettingsRecommendationScreen));
+    expect(MediaQuery.textScalerOf(context).scale(10), 13);
+    expect(tester.takeException(), isNull);
     var verifyButton = tester.widget<OutlinedButton>(
-      find.byKey(const Key('verify-settings')),
+      find.descendant(
+        of: find.byKey(const Key('verify-settings')),
+        matching: find.byType(OutlinedButton),
+      ),
     );
     expect(verifyButton.onPressed, isNull);
 
@@ -77,7 +86,10 @@ void main() {
 
     expect(guestStore.saved?.lastPositions?.bass, 5.5);
     verifyButton = tester.widget<OutlinedButton>(
-      find.byKey(const Key('verify-settings')),
+      find.descendant(
+        of: find.byKey(const Key('verify-settings')),
+        matching: find.byType(OutlinedButton),
+      ),
     );
     expect(verifyButton.onPressed, isNotNull);
     await tester.tap(find.byKey(const Key('verify-settings')));
@@ -264,7 +276,15 @@ void main() {
   );
 }
 
-Widget _testApp(Widget home) => MaterialApp(home: home);
+Widget _testApp(Widget home) => MaterialApp(
+  builder: (context, child) => MediaQuery(
+    data: MediaQuery.of(
+      context,
+    ).copyWith(textScaler: const TextScaler.linear(1.3)),
+    child: child!,
+  ),
+  home: home,
+);
 
 void _screenTest(String description, WidgetTesterCallback callback) {
   testWidgets(description, (tester) async {

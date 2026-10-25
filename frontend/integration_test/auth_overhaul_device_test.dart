@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/app_widgets.dart';
 // Native-only smoke suite. Parent runner must build with the isolated Android
 // application ID com.jrpbone.karaok.smoketest (KARAOK_APPLICATION_ID).
 // Run with --no-uninstall: Flutter may cache the original application ID before
@@ -187,13 +188,18 @@ void main() {
       final auth = _NoAuth();
       await tester.pumpWidget(_app(SignUpScreen(authApi: auth)));
       await _checkFrame(tester);
+      expect(find.byType(AppPageScaffold), findsOneWidget);
+      expect(find.byType(AppSectionHeader), findsOneWidget);
+      final context = tester.element(find.byType(SignUpScreen));
+      expect(MediaQuery.textScalerOf(context).scale(10), 13);
+      expect(Theme.of(context).brightness, Brightness.light);
       expect(find.byType(TextFormField), findsNWidgets(3));
       expect(find.text('Email'), findsOneWidget);
       expect(find.text('Password'), findsOneWidget);
       expect(find.text('Confirm password'), findsOneWidget);
       expect(find.textContaining('Username'), findsNothing);
       final submit = find.widgetWithText(
-        ElevatedButton,
+        AppPrimaryButton,
         'Send Verification Code',
       );
       await tester.ensureVisible(submit);

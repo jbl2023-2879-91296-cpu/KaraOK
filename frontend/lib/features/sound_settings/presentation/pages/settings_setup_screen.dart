@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'dart:math' as math;
 
@@ -524,287 +525,262 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
         _loadError == null &&
         _metadata != null &&
         !_submitting;
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        foregroundColor: AppColors.ink,
-        title: const Text('Set Up Your Amplifier'),
-      ),
-      body: SafeArea(
-        child: _loading
-            ? const Center(
-                child: CircularProgressIndicator(color: AppColors.orangeInk),
-              )
-            : SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _sectionTitle('Volume scale'),
-                    const Text(
-                      'Use the numbers printed beside your Volume knob. Higher numbers must mean louder sound.',
-                    ),
-                    SwitchListTile(
-                      title: const Text('Use a separate Volume scale'),
-                      subtitle: const Text(
-                        'Existing profiles keep their saved scale until you change it.',
-                      ),
-                      value: _separateVolumeScale,
-                      onChanged: _submitting
-                          ? null
-                          : (value) => setState(() {
-                              _separateVolumeScale = value;
-                              if (value) {
-                                _volumeAttenuation = false;
-                                _positionControllers['volume']!.clear();
-                              }
-                            }),
-                    ),
-                    if (_separateVolumeScale) ...[
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: [
-                          for (final entry in {
-                            'Minimum': _volumeMinController,
-                            'Maximum': _volumeMaxController,
-                            'Step': _volumeStepController,
-                          }.entries)
-                            SizedBox(
-                              width: 130,
-                              child: _signedNumberField(
-                                key: Key('volume-${entry.key.toLowerCase()}'),
-                                controller: entry.value,
-                                label: entry.key,
-                                onChanged: (_) =>
-                                    setState(() => _positionError = null),
-                              ),
-                            ),
-                        ],
-                      ),
-                      DropdownButtonFormField<String>(
-                        isExpanded: true,
-                        initialValue: _volumeUnit,
-                        decoration: const InputDecoration(
-                          labelText: 'Volume unit',
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: '',
-                            child: Text('Plain numbers'),
+    return AppPageScaffold(
+      title: 'Set Up Your Amplifier',
+      child: _loading
+          ? const AppLoadingSkeleton(semanticLabel: 'Loading amplifier setup')
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _sectionTitle('Volume scale'),
+                const Text(
+                  'Use the numbers printed beside your Volume knob. Higher numbers must mean louder sound.',
+                ),
+                SwitchListTile(
+                  title: const Text('Use a separate Volume scale'),
+                  subtitle: const Text(
+                    'Existing profiles keep their saved scale until you change it.',
+                  ),
+                  value: _separateVolumeScale,
+                  onChanged: _submitting
+                      ? null
+                      : (value) => setState(() {
+                          _separateVolumeScale = value;
+                          if (value) {
+                            _volumeAttenuation = false;
+                            _positionControllers['volume']!.clear();
+                          }
+                        }),
+                ),
+                if (_separateVolumeScale) ...[
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      for (final entry in {
+                        'Minimum': _volumeMinController,
+                        'Maximum': _volumeMaxController,
+                        'Step': _volumeStepController,
+                      }.entries)
+                        SizedBox(
+                          width: 130,
+                          child: _signedNumberField(
+                            key: Key('volume-${entry.key.toLowerCase()}'),
+                            controller: entry.value,
+                            label: entry.key,
+                            onChanged: (_) =>
+                                setState(() => _positionError = null),
                           ),
-                          DropdownMenuItem(value: 'dB', child: Text('dB')),
-                        ],
-                        onChanged: _submitting
-                            ? null
-                            : (value) =>
-                                  setState(() => _volumeUnit = value ?? ''),
-                      ),
-                      const SizedBox(height: 24),
-                    ],
-                    if (_featureDisabled)
-                      const _Notice(
-                        icon: Icons.block,
-                        message: 'Settings generation is not enabled',
-                      ),
-                    if (_loadError case final error?) ...[
-                      _Notice(icon: Icons.cloud_off, message: error),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: OutlinedButton.icon(
-                          key: const Key('settings-load-retry'),
-                          onPressed: _retryLoad,
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Retry'),
                         ),
-                      ),
-                      const SizedBox(height: 16),
                     ],
-                    if (_profilesLoadError case final error?)
-                      _Notice(icon: Icons.cloud_off, message: error),
-                    Text(
-                      'Tell KaraOK how your physical controls are set now.',
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodyLarge?.copyWith(color: AppColors.muted),
+                  ),
+                  DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    initialValue: _volumeUnit,
+                    decoration: const InputDecoration(labelText: 'Volume unit'),
+                    items: const [
+                      DropdownMenuItem(value: '', child: Text('Plain numbers')),
+                      DropdownMenuItem(value: 'dB', child: Text('dB')),
+                    ],
+                    onChanged: _submitting
+                        ? null
+                        : (value) => setState(() => _volumeUnit = value ?? ''),
+                  ),
+                  const SizedBox(height: 24),
+                ],
+                if (_featureDisabled)
+                  const AppEmptyState(
+                    icon: Icons.block,
+                    title: 'Settings generation is not enabled',
+                    message:
+                        'Amplifier setup will be available when settings generation is enabled.',
+                  ),
+                if (_loadError case final error?) ...[
+                  AppEmptyState(
+                    icon: Icons.cloud_off,
+                    title: 'Settings profiles unavailable',
+                    message: error,
+                    action: AppSecondaryButton(
+                      key: const Key('settings-load-retry'),
+                      onPressed: _retryLoad,
+                      icon: Icons.refresh,
+                      label: 'Retry',
                     ),
-                    const SizedBox(height: 20),
-                    _sectionTitle('1. Amplifier'),
-                    const Text("Enter your amplifier's knob ranges"),
-                    const SizedBox(height: 12),
-                    if (!_isGuest && _profiles.isNotEmpty)
-                      DropdownButtonFormField<int>(
-                        key: const Key('amplifier-profile-dropdown'),
-                        isExpanded: true,
-                        initialValue:
-                            _selectedProfile?.id ?? _newProfileSelection,
-                        dropdownColor: AppColors.surface,
-                        style: const TextStyle(color: AppColors.ink),
-                        decoration: _decoration('Saved amplifier'),
-                        items: [
-                          const DropdownMenuItem(
-                            value: _newProfileSelection,
-                            child: Text('Create My Amplifier'),
-                          ),
-                          for (final profile in _profiles)
-                            DropdownMenuItem(
-                              value: profile.id,
-                              child: Text(profile.name),
-                            ),
-                        ],
-                        onChanged: _submitting ? null : _selectProfile,
-                      )
-                    else if (_isGuest)
-                      Text(
-                        'Guest mode saves one amplifier on this device. Saving updates this local setup.',
-                        style: const TextStyle(color: AppColors.muted),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (_profilesLoadError case final error?)
+                  _Notice(icon: Icons.cloud_off, message: error),
+                Text(
+                  'Tell KaraOK how your physical controls are set now.',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyLarge?.copyWith(color: AppColors.muted),
+                ),
+                const SizedBox(height: 20),
+                _sectionTitle('1. Amplifier'),
+                const Text("Enter your amplifier's knob ranges"),
+                const SizedBox(height: 12),
+                if (!_isGuest && _profiles.isNotEmpty)
+                  DropdownButtonFormField<int>(
+                    key: const Key('amplifier-profile-dropdown'),
+                    isExpanded: true,
+                    initialValue: _selectedProfile?.id ?? _newProfileSelection,
+                    dropdownColor: AppColors.surface,
+                    style: const TextStyle(color: AppColors.ink),
+                    decoration: _decoration('Saved amplifier'),
+                    items: [
+                      const DropdownMenuItem(
+                        value: _newProfileSelection,
+                        child: Text('Create My Amplifier'),
                       ),
-                    if (!_isGuest) ...[
-                      const SizedBox(height: 14),
-                      TextFormField(
-                        key: const Key('amplifier-name'),
-                        controller: _nameController,
-                        enabled: !_submitting,
-                        maxLength: 80,
-                        style: const TextStyle(color: AppColors.ink),
-                        decoration: _decoration(
-                          'Amplifier Name',
-                        ).copyWith(errorText: _nameError),
-                        onChanged: (_) => setState(() => _nameError = null),
-                      ),
-                    ],
-                    const SizedBox(height: 14),
-                    DropdownButtonFormField<_ScalePreset>(
-                      key: const Key('scale-preset-dropdown'),
-                      isExpanded: true,
-                      initialValue: _preset,
-                      dropdownColor: AppColors.surface,
-                      style: const TextStyle(color: AppColors.ink),
-                      decoration: _decoration('Control scale'),
-                      items: const [
+                      for (final profile in _profiles)
                         DropdownMenuItem(
-                          value: _ScalePreset.zeroToTen,
-                          child: Text('0–10'),
+                          value: profile.id,
+                          child: Text(profile.name),
                         ),
-                        DropdownMenuItem(
-                          value: _ScalePreset.zeroToHundred,
-                          child: Text('0–100'),
-                        ),
-                        DropdownMenuItem(
-                          value: _ScalePreset.custom,
-                          child: Text('Custom'),
-                        ),
-                      ],
-                      onChanged: _submitting
-                          ? null
-                          : (value) {
-                              if (value != null) _changePreset(value);
-                            },
-                    ),
-                    if (_preset == _ScalePreset.custom) ...[
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _customScaleField(
-                              key: const Key('scale-minimum'),
-                              label: 'Minimum',
-                              controller: _minimumController,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _customScaleField(
-                              key: const Key('scale-maximum'),
-                              label: 'Maximum',
-                              controller: _maximumController,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _customScaleField(
-                              key: const Key('scale-step'),
-                              label: 'Increment',
-                              controller: _stepController,
-                            ),
-                          ),
-                        ],
-                      ),
                     ],
-                    if (_scaleError case final error?) _errorText(error),
-                    const SizedBox(height: 24),
-                    _sectionTitle('2. Genre'),
-                    DropdownButtonFormField<String>(
-                      key: const Key('genre-dropdown'),
-                      isExpanded: true,
-                      initialValue: _genre,
-                      dropdownColor: AppColors.surface,
-                      style: const TextStyle(color: AppColors.ink),
-                      decoration: _decoration('Song genre'),
-                      items: [
-                        for (final genre in _enabledGenres)
-                          DropdownMenuItem(
-                            value: genre,
-                            child: Text(_genreLabel(genre)),
-                          ),
-                      ],
-                      onChanged: canContinue
-                          ? (value) => setState(() {
-                              _genre = value;
-                              _genreError = null;
-                            })
-                          : null,
+                    onChanged: _submitting ? null : _selectProfile,
+                  )
+                else if (_isGuest)
+                  Text(
+                    'Guest mode saves one amplifier on this device. Saving updates this local setup.',
+                    style: const TextStyle(color: AppColors.muted),
+                  ),
+                if (!_isGuest) ...[
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    key: const Key('amplifier-name'),
+                    controller: _nameController,
+                    enabled: !_submitting,
+                    maxLength: 80,
+                    style: const TextStyle(color: AppColors.ink),
+                    decoration: _decoration(
+                      'Amplifier Name',
+                    ).copyWith(errorText: _nameError),
+                    onChanged: (_) => setState(() => _nameError = null),
+                  ),
+                ],
+                const SizedBox(height: 14),
+                DropdownButtonFormField<_ScalePreset>(
+                  key: const Key('scale-preset-dropdown'),
+                  isExpanded: true,
+                  initialValue: _preset,
+                  dropdownColor: AppColors.surface,
+                  style: const TextStyle(color: AppColors.ink),
+                  decoration: _decoration('Control scale'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: _ScalePreset.zeroToTen,
+                      child: Text('0–10'),
                     ),
-                    if (_genreError case final error?) _errorText(error),
-                    const SizedBox(height: 24),
-                    _sectionTitle('3. Current knob positions'),
-                    Text(
-                      'Enter every current position of knobs before recording',
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+                    DropdownMenuItem(
+                      value: _ScalePreset.zeroToHundred,
+                      child: Text('0–100'),
                     ),
-                    const SizedBox(height: 12),
-                    for (final name in amplifierKnobNames) _knobControl(name),
-                    if (_positionError case final error?) _errorText(error),
-                    const SizedBox(height: 20),
-                    _sectionTitle('4. Keep the comparison controlled'),
-                    const _GuidanceItem(
-                      text:
-                          'Use the same source playback level. Change the amplifier Volume only when recommended, then record the same passage again.',
-                    ),
-                    const _GuidanceItem(
-                      text:
-                          'Play the same karaoke instrumental song section for both recordings.',
-                    ),
-                    const _GuidanceItem(
-                      text: 'Play only the instrumental or MIDI accompaniment.',
-                    ),
-                    const _GuidanceItem(
-                      text: 'Keep the phone on top of the Karaoke machine.',
-                    ),
-                    const SizedBox(height: 24),
-                    FilledButton.icon(
-                      key: const Key('settings-continue'),
-                      onPressed: canContinue ? _continue : null,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.orangeInk,
-                        foregroundColor: AppColors.onPrimary,
-                        padding: const EdgeInsets.symmetric(vertical: 15),
-                      ),
-                      icon: _submitting
-                          ? const SizedBox.square(
-                              dimension: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.mic),
-                      label: const Text('Continue to Recording'),
+                    DropdownMenuItem(
+                      value: _ScalePreset.custom,
+                      child: Text('Custom'),
                     ),
                   ],
+                  onChanged: _submitting
+                      ? null
+                      : (value) {
+                          if (value != null) _changePreset(value);
+                        },
                 ),
-              ),
-      ),
+                if (_preset == _ScalePreset.custom) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _customScaleField(
+                          key: const Key('scale-minimum'),
+                          label: 'Minimum',
+                          controller: _minimumController,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _customScaleField(
+                          key: const Key('scale-maximum'),
+                          label: 'Maximum',
+                          controller: _maximumController,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _customScaleField(
+                          key: const Key('scale-step'),
+                          label: 'Increment',
+                          controller: _stepController,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (_scaleError case final error?) _errorText(error),
+                const SizedBox(height: 24),
+                _sectionTitle('2. Genre'),
+                DropdownButtonFormField<String>(
+                  key: const Key('genre-dropdown'),
+                  isExpanded: true,
+                  initialValue: _genre,
+                  dropdownColor: AppColors.surface,
+                  style: const TextStyle(color: AppColors.ink),
+                  decoration: _decoration('Song genre'),
+                  items: [
+                    for (final genre in _enabledGenres)
+                      DropdownMenuItem(
+                        value: genre,
+                        child: Text(_genreLabel(genre)),
+                      ),
+                  ],
+                  onChanged: canContinue
+                      ? (value) => setState(() {
+                          _genre = value;
+                          _genreError = null;
+                        })
+                      : null,
+                ),
+                if (_genreError case final error?) _errorText(error),
+                const SizedBox(height: 24),
+                _sectionTitle('3. Current knob positions'),
+                Text(
+                  'Enter every current position of knobs before recording',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+                ),
+                const SizedBox(height: 12),
+                for (final name in amplifierKnobNames) _knobControl(name),
+                if (_positionError case final error?) _errorText(error),
+                const SizedBox(height: 20),
+                _sectionTitle('4. Keep the comparison controlled'),
+                const _GuidanceItem(
+                  text:
+                      'Use the same source playback level. Change the amplifier Volume only when recommended, then record the same passage again.',
+                ),
+                const _GuidanceItem(
+                  text:
+                      'Play the same karaoke instrumental song section for both recordings.',
+                ),
+                const _GuidanceItem(
+                  text: 'Play only the instrumental or MIDI accompaniment.',
+                ),
+                const _GuidanceItem(
+                  text: 'Keep the phone on top of the Karaoke machine.',
+                ),
+                const SizedBox(height: 24),
+                AppPrimaryButton(
+                  key: const Key('settings-continue'),
+                  onPressed: canContinue ? _continue : null,
+                  icon: Icons.mic,
+                  isLoading: _submitting,
+                  label: 'Continue to Recording',
+                ),
+              ],
+            ),
     );
   }
 
@@ -943,17 +919,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     onChanged: onChanged,
   );
 
-  Widget _sectionTitle(String text) => Padding(
-    padding: const EdgeInsets.only(bottom: 10),
-    child: Text(
-      text,
-      style: const TextStyle(
-        color: AppColors.orangeInk,
-        fontSize: 17,
-        fontWeight: FontWeight.w700,
-      ),
-    ),
-  );
+  Widget _sectionTitle(String text) => AppSectionHeader(title: text);
 
   InputDecoration _decoration(String label) => InputDecoration(
     labelText: label,

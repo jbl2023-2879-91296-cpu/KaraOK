@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -52,6 +53,8 @@ void main() {
       await tester.ensureVisible(find.byKey(const Key('settings-continue')));
       await tester.tap(find.byKey(const Key('settings-continue')));
       await tester.pumpAndSettle();
+      expect(find.byType(AppPageScaffold), findsOneWidget);
+      expect(find.byType(AppSectionHeader), findsNWidgets(5));
       expect(submitted?.current.volumeAttenuation, isFalse);
       expect(submitted?.current.volume, 60);
       expect(guestStore.saved?.lastPositions?.volumeAttenuation, isFalse);
@@ -456,7 +459,10 @@ void main() {
         findsOneWidget,
       );
       final continueButton = tester.widget<FilledButton>(
-        find.byKey(const Key('settings-continue')),
+        find.descendant(
+          of: find.byKey(const Key('settings-continue')),
+          matching: find.byType(FilledButton),
+        ),
       );
       expect(continueButton.onPressed, isNotNull);
     },
@@ -479,7 +485,10 @@ void main() {
 
     expect(find.text('Settings generation is not enabled'), findsOneWidget);
     final button = tester.widget<FilledButton>(
-      find.byKey(const Key('settings-continue')),
+      find.descendant(
+        of: find.byKey(const Key('settings-continue')),
+        matching: find.byType(FilledButton),
+      ),
     );
     expect(button.onPressed, isNull);
   });

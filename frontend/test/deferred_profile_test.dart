@@ -7,6 +7,29 @@ import 'package:karaok_app/features/home/presentation/pages/user_home_screen.dar
 import 'package:karaok_app/features/account/presentation/pages/change_password_screen.dart';
 
 void main() {
+  test('generated usernames never become a display name', () {
+    final session = UserSession.instance;
+    addTearDown(session.clear);
+    for (final displayName in ['', 'user_0123456789abcdef0123456789abcdef']) {
+      session.setUser(
+        id: 31,
+        name: displayName,
+        email: 'user@example.com',
+        userType: 'user',
+        username: 'user_0123456789abcdef0123456789abcdef',
+      );
+      expect(session.name, 'user@example.com');
+    }
+    session.setUser(
+      id: 31,
+      name: 'user_0123456789abcdef0123456789abcdef',
+      email: 'user@example.com',
+      userType: 'user',
+      firstName: ' Ada ',
+      lastName: 'Lovelace',
+    );
+    expect(session.name, 'Ada Lovelace');
+  });
   setUp(
     () => UserSession.instance.setUser(
       id: 31,
@@ -116,8 +139,8 @@ void main() {
     expect(UserSession.instance.birthday, isNull);
   });
 
-  test('empty display name falls back to username', () {
-    expect(UserSession.instance.name, 'new-user');
+  test('empty display name falls back to email', () {
+    expect(UserSession.instance.name, 'user@example.com');
   });
 
   test('completed profile does not need a photo', () {

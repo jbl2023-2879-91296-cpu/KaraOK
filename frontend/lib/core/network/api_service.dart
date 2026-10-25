@@ -8,7 +8,6 @@ import 'package:http/http.dart' as http;
 import 'package:karaok_app/core/config/environment.dart';
 import 'package:karaok_app/core/network/api_exception.dart';
 import 'package:karaok_app/core/security/secure_token_store.dart';
-import 'package:karaok_app/features/assessments/data/audio_staging_service.dart';
 
 export 'package:karaok_app/core/network/api_exception.dart';
 
@@ -166,8 +165,14 @@ class ApiService {
         }
       } catch (_) {}
       if (response.statusCode == 429) {
+        final seconds =
+            retryAfter ??
+            (response.request?.url.path.endsWith('/auth/register') == true
+                ? 3600
+                : 60);
+        final minutes = (seconds / 60).ceil().clamp(1, 2147483647);
         message =
-            '$message Wait ${retryAfter ?? (response.request?.url.path == '/api/auth/register' ? 3600 : 60)} seconds before retrying.';
+            '$message Wait $minutes ${minutes == 1 ? 'minute' : 'minutes'} before retrying.';
       }
       throw ApiException(
         response.statusCode,
@@ -305,11 +310,7 @@ class ApiService {
         await _post('/auth/logout', {'refresh_token': refreshToken});
       }
     } finally {
-      try {
-        await AudioStagingService().cleanupStaleRecordings();
-      } finally {
-        await clearTokens();
-      }
+      await clearTokens();
     }
   }
 

@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:karaok_app/shared/widgets/form_feedback.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
@@ -73,66 +74,51 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        title: const Text('Forgot Password'),
-      ),
-      body: SafeArea(
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(24),
-            children: [
-              if (_feedback.banner != null)
-                FormErrorBanner(
-                  message: _feedback.banner!,
-                  onRetry: _loading ? null : _requestReset,
-                ),
-              const Text(
-                'Recover your account',
-                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+    return AppPageScaffold(
+      title: 'Forgot Password',
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_feedback.banner != null)
+              AppErrorState(
+                message: _feedback.banner!,
+                onRetry: _loading ? null : _requestReset,
+                isRetrying: _loading,
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Enter your verified email address. We will send a temporary password that you can use to sign in. You must change it immediately after login.',
-                style: TextStyle(color: AppColors.muted, height: 1.4),
+            const AppSectionHeader(
+              title: 'Recover your account',
+              subtitle:
+                  'Enter your verified email address. We will send a temporary password that you can use to sign in. You must change it immediately after login.',
+            ),
+            TextFormField(
+              autovalidateMode: AutovalidateMode.onUserInteraction,
+              key: _feedback.key('email'),
+              focusNode: _feedback.focus('email'),
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _requestReset(),
+              onChanged: (_) =>
+                  setState(() => _feedback.errors.remove('email')),
+              controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
+              validator: validateEmail,
+              decoration: InputDecoration(
+                labelText: 'Email address',
+                errorText: _feedback.errors['email'],
+                constraints: const BoxConstraints(minHeight: 48),
               ),
-              const SizedBox(height: 24),
-              TextFormField(
-                autovalidateMode: AutovalidateMode.onUserInteraction,
-                key: _feedback.key('email'),
-                focusNode: _feedback.focus('email'),
-                textInputAction: TextInputAction.done,
-                onFieldSubmitted: (_) => _requestReset(),
-                onChanged: (_) =>
-                    setState(() => _feedback.errors.remove('email')),
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                validator: validateEmail,
-                decoration: InputDecoration(
-                  labelText: 'Email address',
-                  errorText: _feedback.errors['email'],
-                  constraints: const BoxConstraints(minHeight: 48),
-                ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            SizedBox(
+              width: double.infinity,
+              child: AppPrimaryButton(
+                label: 'Send temporary password',
+                onPressed: _requestReset,
+                isLoading: _loading,
               ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                ),
-                onPressed: _loading ? null : _requestReset,
-                child: _loading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Send temporary password'),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

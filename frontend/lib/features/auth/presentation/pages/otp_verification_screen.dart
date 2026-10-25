@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:karaok_app/shared/widgets/form_feedback.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
@@ -28,8 +29,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   final _otpController = TextEditingController();
   bool _loading = false;
   final _feedback = FormFeedback();
-
-  static const _accentColor = AppColors.primary;
 
   @override
   void dispose() {
@@ -85,139 +84,88 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        elevation: 0,
-        leading: IconButton(
-          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-          icon: const Icon(Icons.chevron_left, color: AppColors.ink),
-          onPressed: _loading ? null : () => Navigator.pop(context),
-        ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_feedback.banner != null)
-                  FormErrorBanner(
-                    message: _feedback.banner!,
-                    onRetry: _loading ? null : _verify,
-                  ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Verify Your Email',
-                  style: TextStyle(
-                    color: _accentColor,
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Enter the 6-digit code sent to ${widget.email}.',
-                  style: const TextStyle(
-                    color: AppColors.muted,
-                    fontSize: 14,
-                    height: 1.5,
-                  ),
-                ),
-                if (widget.developmentCode != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    'Development OTP: ${widget.developmentCode}',
-                    style: const TextStyle(color: AppColors.orangeInk),
-                  ),
-                ],
-                const SizedBox(height: 32),
-                const Text(
-                  'Verification Code',
-                  style: TextStyle(
-                    color: AppColors.muted,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                TextFormField(
-                  autovalidateMode: AutovalidateMode.onUserInteraction,
-                  key: _feedback.key('code'),
-                  focusNode: _feedback.focus('code'),
-                  textInputAction: TextInputAction.done,
-                  onFieldSubmitted: (_) => _verify(),
-                  onChanged: (_) =>
-                      setState(() => _feedback.errors.remove('code')),
-                  controller: _otpController,
-                  autofocus: true,
-                  keyboardType: TextInputType.number,
-                  maxLength: 6,
-                  style: const TextStyle(
-                    color: AppColors.ink,
-                    fontSize: 22,
-                    letterSpacing: 8,
-                  ),
-                  validator: (value) =>
-                      value == null ||
-                          !RegExp(r'^\d{6}$').hasMatch(value.trim())
-                      ? 'Enter the 6-digit code from your email'
-                      : null,
-                  decoration: InputDecoration(
-                    errorText: _feedback.errors['code'],
-                    constraints: const BoxConstraints(minHeight: 48),
-                    hintText: '000000',
-                    counterText: '',
-                    hintStyle: const TextStyle(color: AppColors.muted),
-                    filled: true,
-                    fillColor: AppColors.surface,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: _loading ? null : _verify,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _accentColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: _loading
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              color: AppColors.onPrimary,
-                              strokeWidth: 2.5,
-                            ),
-                          )
-                        : const Text(
-                            'Verify Email',
-                            style: TextStyle(
-                              color: AppColors.onPrimary,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                  ),
-                ),
-              ],
+    return AppPageScaffold(
+      title: 'Email verification',
+      automaticallyImplyLeading: !_loading,
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_feedback.banner != null)
+              AppErrorState(
+                message: _feedback.banner!,
+                onRetry: _loading ? null : _verify,
+                isRetrying: _loading,
+              ),
+            AppSectionHeader(
+              title: 'Verify Your Email',
+              subtitle: 'Enter the 6-digit code sent to ${widget.email}.',
             ),
-          ),
+            if (widget.developmentCode != null) ...[
+              Text(
+                'Development OTP: ${widget.developmentCode}',
+                style: const TextStyle(color: AppColors.orangeInk),
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
+            const Text(
+              'Verification Code',
+              style: TextStyle(
+                color: AppColors.muted,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            TextFormField(
+              autovalidateMode: AutovalidateMode.onUserInteraction,
+              key: _feedback.key('code'),
+              focusNode: _feedback.focus('code'),
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _verify(),
+              onChanged: (_) => setState(() => _feedback.errors.remove('code')),
+              controller: _otpController,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              style: const TextStyle(
+                color: AppColors.ink,
+                fontSize: 22,
+                letterSpacing: 8,
+              ),
+              validator: (value) =>
+                  value == null || !RegExp(r'^\d{6}$').hasMatch(value.trim())
+                  ? 'Enter the 6-digit code from your email'
+                  : null,
+              decoration: InputDecoration(
+                errorText: _feedback.errors['code'],
+                constraints: const BoxConstraints(minHeight: 48),
+                hintText: '000000',
+                counterText: '',
+                hintStyle: const TextStyle(color: AppColors.muted),
+                filled: true,
+                fillColor: AppColors.surface,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            SizedBox(
+              width: double.infinity,
+              child: AppPrimaryButton(
+                label: 'Verify Email',
+                onPressed: _verify,
+                isLoading: _loading,
+              ),
+            ),
+          ],
         ),
       ),
     );
