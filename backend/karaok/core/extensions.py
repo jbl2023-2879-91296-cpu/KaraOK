@@ -15,4 +15,6 @@ def configure_extensions(app: Flask) -> Limiter:
         app=app,
         storage_uri=RATELIMIT_STORAGE_URI,
         default_limits=["200 per hour"],
+        headers_enabled=True,
+        retry_after="delta-seconds",
     )

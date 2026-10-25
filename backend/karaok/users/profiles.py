@@ -5,6 +5,7 @@ from __future__ import annotations
 from flask import g
 from flask import jsonify
 from karaok.auth.access import require_auth
+from karaok.auth.accounts import _auth_error, _field_errors
 from karaok.core.accounts import _clean_birthday
 from karaok.core.accounts import _clean_phone
 from karaok.core.accounts import _clean_profile_image
@@ -19,6 +20,7 @@ import re
 
 
 @require_auth("user")
+@_field_errors
 def update_profile():
     data = json_body()
     allowed_fields = {
@@ -80,7 +82,9 @@ def update_profile():
         )
         conflict = cursor.fetchone()
         if conflict:
-            return jsonify({"error": "Username or phone number is already in use"}), 409
+            message = "Username or phone number is already in use"
+            field = "username" if conflict.get("username") == username else "phone_number"
+            return _auth_error(message, 409, **{field: message})
 
         profile_columns = ""
         parameters: list[Any] = [
@@ -109,23 +113,33 @@ def update_profile():
                 WHERE user_id = %s AND is_active = TRUE""",
             tuple(parameters),
         )
-        if cursor.rowcount != 1:
-            conn.rollback()
-            return jsonify({"error": "Account is unavailable"}), 404
         cursor.execute(
             """SELECT user_id, username, first_name, last_name, email,
                       address, city, state_province, area_code, country,
                       country_code, phone_number, birthday, profile_image,
                       profile_image_mime, role AS user_type,
                       requires_password_change
-               FROM user WHERE user_id = %s""",
+               FROM user WHERE user_id = %s AND is_active = TRUE""",
             (g.user_id,),
         )
         updated_user = cursor.fetchone()
+        # MySQL reports zero changed rows when an active user's values match.
+        # The active-row lookup distinguishes that from a missing/disabled user.
+        if updated_user is None:
+            conn.rollback()
+            return jsonify({"error": "Account is unavailable"}), 404
         conn.commit()
     except IntegrityError:
         conn.rollback()
-        return jsonify({"error": "Username or phone number is already in use"}), 409
+        # A concurrent write can win after the preflight query. The database
+        # exception may contain private values; do not parse or return its text.
+        message = "Username or phone number is already in use"
+        return _auth_error(
+            message,
+            409,
+            username=message,
+            phone_number=message,
+        )
     finally:
         cursor.close()
         conn.close()

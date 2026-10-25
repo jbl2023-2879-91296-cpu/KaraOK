@@ -5,6 +5,7 @@ from __future__ import annotations
 from argon2.exceptions import InvalidHashError
 from argon2.exceptions import VerifyMismatchError
 from datetime import datetime
+from functools import wraps
 from flask import g
 from flask import jsonify
 from flask import request
@@ -49,6 +50,42 @@ import smtplib
 SELF_REGISTER_ROLE = "user"
 
 
+def _auth_error(message, status=400, **fields):
+    payload = {"error": message}
+    if len(fields) == 1:
+        payload["field"] = next(iter(fields))
+    elif fields:
+        payload["errors"] = fields
+    return jsonify(payload), status
+
+
+def _field_errors(view):
+    """Add form field keys without changing legacy error messages."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        try:
+            return view(*args, **kwargs)
+        except ValueError as error:
+            message = str(error)
+            field = message.split(" ", 1)[0]
+            field = {"verification": "code", "current": "current_password",
+                     "new": "new_password", "public": "user_type",
+                     "profile": "profile_image"}.get(field, field)
+            if field == "username" and view.__name__ == "login":
+                field = "identifier"
+            if field == "password" and view.__name__ == "change_password":
+                field = "new_password"
+            if field not in {"email", "username", "identifier", "password", "code",
+                             "current_password", "new_password", "user_type",
+                             "first_name", "last_name", "address", "city",
+                             "state_province", "area_code", "country", "country_code",
+                             "phone_number", "birthday", "profile_image",
+                             "profile_image_base64", "profile_image_mime"}:
+                field = "form"
+            return _auth_error(message, **{field: message})
+    return wrapped
+
+
 def auth_response(user: dict[str, Any], status: int = 200):
     access_token, access_expires_at = issue_access_token(user)
     refresh_token, refresh_expires_at = create_refresh_token(user["user_id"])
@@ -64,11 +101,13 @@ def auth_response(user: dict[str, Any], status: int = 200):
     ), status
 
 
+@_field_errors
 @limiter.limit("5 per hour")
 def register():
     data = json_body()
-    username = clean_text(data.get("username"), "username", 3, 50)
-    if not re.fullmatch(r"[A-Za-z0-9_.-]{3,50}", username):
+    username = (clean_text(data["username"], "username", 3, 50)
+                if data.get("username") is not None else None)
+    if username is not None and not re.fullmatch(r"[A-Za-z0-9_.-]{3,50}", username):
         raise ValueError(
             "username may contain only letters, numbers, dots, dashes, and underscores"
         )
@@ -109,6 +148,16 @@ def register():
             (email,),
         )
         email_user = cursor.fetchone()
+        if username is None:
+            if email_user:
+                username = email_user["username"]
+            else:
+                # Use a schema-compatible random name, retrying existing collisions.
+                while True:
+                    username = "user_" + secrets.token_hex(16)
+                    cursor.execute("SELECT user_id FROM user WHERE username = %s LIMIT 1", (username,))
+                    if not cursor.fetchone():
+                        break
         cursor.execute(
             """SELECT user_id, username, email, email_verified_at
                FROM user WHERE username = %s LIMIT 1 FOR UPDATE""",
@@ -120,11 +169,11 @@ def register():
             email_user["email_verified_at"] is not None
             or email_user["username"] != username
         ):
-            return jsonify({"error": "Unable to create account"}), 409
+            return _auth_error("Unable to create account", 409, email="Unable to create account")
         if username_user and (
             not email_user or username_user["user_id"] != email_user["user_id"]
         ):
-            return jsonify({"error": "Unable to create account"}), 409
+            return _auth_error("Unable to create account", 409, username="Unable to create account")
 
         password_hash = password_hasher.hash(password)
         if email_user:
@@ -204,11 +253,11 @@ def register():
         conn.commit()
     except IntegrityError:
         conn.rollback()
-        return jsonify({"error": "Unable to create account"}), 409
+        return _auth_error("Unable to create account", 409, form="Unable to create account")
     except (OSError, smtplib.SMTPException, RuntimeError):
         conn.rollback()
         app.logger.exception("Registration OTP delivery failed")
-        return jsonify({"error": "Unable to send verification email"}), 503
+        return _auth_error("Unable to send verification email", 503, email="Unable to send verification email")
     finally:
         cursor.close()
         conn.close()
@@ -222,6 +271,7 @@ def register():
     return jsonify(response), 202
 
 
+@_field_errors
 @limiter.limit("10 per hour")
 def verify_registration():
     data = json_body()
@@ -258,7 +308,7 @@ def verify_registration():
             conn.commit()
         cursor.close()
         conn.close()
-        return jsonify({"error": "Invalid or expired verification code"}), 400
+        return _auth_error("Invalid or expired verification code", 400, code="Invalid or expired verification code")
     try:
         cursor.execute(
             """UPDATE user SET email_verified_at = UTC_TIMESTAMP()
@@ -274,7 +324,7 @@ def verify_registration():
         conn.rollback()
         cursor.close()
         conn.close()
-        return jsonify({"error": "Unable to create account"}), 409
+        return _auth_error("Unable to create account", 409, form="Unable to create account")
     cursor.close()
     conn.close()
     user = {
@@ -305,6 +355,7 @@ def verify_registration():
     return auth_response(user, 201)
 
 
+@_field_errors
 @limiter.limit("5 per minute")
 def login():
     data = json_body()
@@ -317,7 +368,7 @@ def login():
     elif not re.fullmatch(r"[A-Za-z0-9_.-]{3,50}", identifier):
         raise ValueError("username is invalid")
     password = data.get("password")
-    if not isinstance(password, str) or len(password) > 128:
+    if not isinstance(password, str) or not password or len(password) > 128:
         raise ValueError("password is invalid")
 
     conn = get_db()
@@ -346,7 +397,7 @@ def login():
             valid = False
     if not valid:
         audit("login", "failure", user_id=user["user_id"] if user else None)
-        return jsonify({"error": "Invalid username/email or password"}), 401
+        return _auth_error("Invalid username/email or password", 401, identifier="Invalid username/email or password", password="Invalid username/email or password")
     if password_hasher.check_needs_rehash(user["password_hash"]):
         conn = get_db()
         cursor = conn.cursor()
@@ -435,6 +486,7 @@ def logout():
     return jsonify({"message": "Logged out"})
 
 
+@_field_errors
 @limiter.limit("3 per hour", exempt_when=lambda: DEV_MODE)
 def forgot_password():
     email = clean_email(json_body().get("email"))
@@ -484,6 +536,7 @@ def forgot_password():
     return jsonify({"message": "If the account exists, a temporary password has been sent."})
 
 
+@_field_errors
 @limiter.limit("10 per hour", exempt_when=lambda: DEV_MODE)
 @require_auth("user", "admin")
 def change_password():
@@ -491,7 +544,7 @@ def change_password():
     current_password = data.get("current_password")
     new_password = validate_password(data.get("new_password"))
     if not g.requires_password_change and (
-        not isinstance(current_password, str) or len(current_password) > 128
+        not isinstance(current_password, str) or not current_password or len(current_password) > 128
     ):
         raise ValueError("current password is invalid")
     if isinstance(current_password, str) and secrets.compare_digest(current_password, new_password):
@@ -504,10 +557,12 @@ def change_password():
     if not user:
         cursor.close()
         conn.close()
-        return jsonify({"error": "Account is unavailable"}), 401
+        return _auth_error("Account is unavailable", 401, form="Account is unavailable")
     if g.requires_password_change:
         try:
             if password_hasher.verify(user["password"], new_password):
+                cursor.close()
+                conn.close()
                 raise ValueError("new password must be different from the temporary password")
         except (VerifyMismatchError, InvalidHashError):
             pass
@@ -519,7 +574,7 @@ def change_password():
         if not valid:
             cursor.close()
             conn.close()
-            return jsonify({"error": "Current password is incorrect"}), 401
+            return _auth_error("Current password is incorrect", 401, current_password="Current password is incorrect")
 
     cursor.execute(
         """UPDATE user

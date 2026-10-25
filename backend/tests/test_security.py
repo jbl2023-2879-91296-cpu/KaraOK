@@ -278,8 +278,11 @@ class SecurityValidationTests(unittest.TestCase):
             json={"email": "changed@example.com"},
         ):
             g.user_id = 7
-            with self.assertRaisesRegex(ValueError, "email cannot be changed"):
-                api.update_profile.__wrapped__()
+            response, status = api.update_profile.__wrapped__()
+            self.assertEqual(status, 400)
+            self.assertEqual(response.get_json(), {
+                "error": "email cannot be changed", "field": "email",
+            })
 
     def test_registration_otp_schema_has_user_foreign_key(self):
         schema = (
