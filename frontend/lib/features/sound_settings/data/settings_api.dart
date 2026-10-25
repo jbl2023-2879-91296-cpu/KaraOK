@@ -59,6 +59,21 @@ class SettingsApi {
     return _client.deleteAmplifierProfile(profileId);
   }
 
+  Future<SettingsRecommendation> saveFeedback(
+    int recommendationId,
+    String feedback,
+  ) async {
+    if (recommendationId < 1 ||
+        !const {'better', 'same', 'worse'}.contains(feedback)) {
+      throw ArgumentError(
+        'Choose Better, Same or Worse for a saved recommendation.',
+      );
+    }
+    return SettingsRecommendation.fromJson(
+      await _client.saveSettingsFeedback(recommendationId, feedback),
+    );
+  }
+
   Future<SettingsRecommendation> getRecommendation(int recommendationId) async {
     if (recommendationId < 1) {
       throw ArgumentError.value(

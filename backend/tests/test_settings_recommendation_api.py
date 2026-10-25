@@ -221,6 +221,58 @@ class SettingsRecommendationApiTests(unittest.TestCase):
             )
         return response, connection, cursor
 
+    def test_feedback_owner_can_save_change_and_read_answer(self):
+        for value in ("better", "same", "worse"):
+            with self.subTest(value=value):
+                response, connection, cursor = self.request_with_database(
+                    "POST", "/api/settings-recommendations/41/feedback",
+                    fetchone=[recommendation_row(feedback="same")],
+                    json_body={"feedback": value},
+                )
+                self.assertEqual(response.status_code, 200, response.get_json())
+                self.assertEqual(response.get_json()["feedback"], value)
+                update = next(call for call in cursor.execute.call_args_list
+                              if "SET feedback" in call.args[0])
+                self.assertEqual(update.args[1], (value, 41, 7))
+                owned = next(call for call in cursor.execute.call_args_list
+                             if "FOR UPDATE" in call.args[0])
+                self.assertEqual(owned.args[1], (41, 7, 7))
+                connection.commit.assert_called_once()
+                fetched, _, _ = self.request_with_database(
+                    "GET", "/api/settings-recommendations/41",
+                    fetchone=[recommendation_row(feedback=value)],
+                )
+                self.assertEqual(fetched.get_json()["feedback"], value)
+
+    def test_feedback_other_owner_or_missing_is_not_found(self):
+        response, connection, cursor = self.request_with_database(
+            "POST", "/api/settings-recommendations/41/feedback",
+            fetchone=[None], json_body={"feedback": "better"},
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(any("SET feedback" in call.args[0]
+                             for call in cursor.execute.call_args_list))
+        connection.commit.assert_not_called()
+        connection.rollback.assert_called_once()
+
+    def test_feedback_requires_authentication(self):
+        with patch.object(api, "SETTINGS_RECOMMENDATIONS_ENABLED", True, create=True):
+            response = self.client.post("/api/settings-recommendations/41/feedback",
+                                        json={"feedback": "better"})
+        self.assertEqual(response.status_code, 401)
+
+    def test_feedback_rejects_invalid_values(self):
+        for value in (None, "", "great", "Better", 1, True, [], {}):
+            with self.subTest(value=value):
+                response, connection, cursor = self.request_with_database(
+                    "POST", "/api/settings-recommendations/41/feedback",
+                    json_body={"feedback": value},
+                )
+                self.assertEqual(response.status_code, 400, response.get_json())
+                connection.commit.assert_not_called()
+                self.assertFalse(any("SET feedback" in call.args[0]
+                                     for call in cursor.execute.call_args_list))
+
     def explicit_positions(self, *, unit="dB", volume=-22.5):
         return dict(applied_positions(), volume=volume, volume_scale={
             "minimum": -60, "maximum": 0, "step": 0.5, "unit": unit,

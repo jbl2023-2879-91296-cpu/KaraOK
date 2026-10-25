@@ -49,6 +49,7 @@ class SuggestionContext:
     verification_of: int | None = None
     guest_verification: GuestVerificationContext | None = None
     before_score: float | None = None
+    amplifier_profile_name: str | None = None
 
     @property
     def verification(self) -> bool:
@@ -319,6 +320,7 @@ def recommendation_payload(
             "id": recommendation_id,
             "persisted": persisted,
             "amplifier_profile_id": context.amplifier_profile_id,
+            "amplifier_profile_name": context.amplifier_profile_name,
             "parent_recommendation_id": context.verification_of,
             "original_score": before_score,
             "verification_score": after_score,
@@ -347,6 +349,8 @@ def _recommendation_response(row: Mapping[str, Any]) -> dict[str, Any]:
     response = {
         "id": int(row["recommendation_id"]),
         "persisted": True,
+        "feedback": row.get("feedback"),
+        "amplifier_profile_name": row.get("amplifier_profile_name"),
         "assessment_id": int(row["assessment_id"]),
         "amplifier_profile_id": int(row["amplifier_profile_id"]),
         "parent_recommendation_id": (
@@ -404,6 +408,8 @@ def stored_recommendation_payload(row: Mapping[str, Any]) -> dict[str, Any] | No
         "recommendation_status",
         "created_at",
         "applied_at",
+        "feedback",
+        "amplifier_profile_name",
         "scale_min",
         "scale_max",
         "scale_step",

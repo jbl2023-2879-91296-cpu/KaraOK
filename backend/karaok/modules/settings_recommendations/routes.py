@@ -153,3 +153,17 @@ def apply_recommendation(recommendation_id: int):
         return result
     _audit("settings_recommendation_applied", "settings_recommendation", recommendation_id)
     return jsonify(result)
+
+
+@blueprint.post("/settings-recommendations/<int:recommendation_id>/feedback")
+@_feature_required
+@_require_user
+def recommendation_feedback(recommendation_id: int):
+    result = _service_call(
+        recommendations.save_recommendation_feedback,
+        g.user_id, recommendation_id, _body().get("feedback"),
+    )
+    if isinstance(result, tuple):
+        return result
+    _audit("settings_recommendation_feedback", "settings_recommendation", recommendation_id)
+    return jsonify(result)

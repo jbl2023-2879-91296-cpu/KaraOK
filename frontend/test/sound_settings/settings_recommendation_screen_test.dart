@@ -1,3 +1,4 @@
+import 'package:karaok_app/features/sound_settings/data/settings_api.dart';
 import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import '../support/settle_with_storage.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +10,120 @@ import 'package:karaok_app/features/sound_settings/domain/settings_recommendatio
 import 'package:karaok_app/features/sound_settings/presentation/pages/settings_recommendation_screen.dart';
 
 void main() {
+  _screenTest(
+    'shows named profile, plain knob reasons and verification near the top',
+    (tester) async {
+      final data = _sample(reasonCode: 'above_genre_range').toJson();
+      data['amplifier_profile_name'] = 'Living room';
+      await tester.pumpWidget(
+        _testApp(
+          SettingsRecommendationScreen(
+            recommendation: SettingsRecommendation.fromJson(data),
+          ),
+        ),
+      );
+      expect(
+        find.textContaining(
+          'These settings are a starting point for Living room.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'Your recording was brighter than the songs we compared it with.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester.getTopLeft(find.byKey(const Key('verify-settings'))).dy,
+        lessThan(tester.getTopLeft(find.text('Volume')).dy),
+      );
+    },
+  );
+
+  _screenTest('feedback saves each choice and stays selected after reopening', (
+    tester,
+  ) async {
+    UserSession.instance.clear();
+    final api = _FeedbackApi();
+    for (final value in ['better', 'same', 'worse']) {
+      await tester.pumpWidget(
+        _testApp(
+          SettingsRecommendationScreen(
+            key: UniqueKey(),
+            recommendation: api.saved,
+            settingsApi: api,
+          ),
+        ),
+      );
+      expect(find.text('Did this sound better?'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(Key('feedback-$value')));
+      await tester.tap(find.byKey(Key('feedback-$value')));
+      await tester.pumpAndSettle();
+      expect(api.saved.feedback, value);
+      expect(
+        tester.widget<ChoiceChip>(find.byKey(Key('feedback-$value'))).selected,
+        isTrue,
+      );
+      expect(find.text('Your answer is saved.'), findsOneWidget);
+    }
+    await tester.pumpWidget(
+      _testApp(
+        SettingsRecommendationScreen(
+          key: UniqueKey(),
+          recommendation: api.saved,
+          settingsApi: api,
+        ),
+      ),
+    );
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(const Key('feedback-worse')))
+          .selected,
+      isTrue,
+    );
+  });
+
+  _screenTest('failed feedback preserves answer and lets the listener retry', (
+    tester,
+  ) async {
+    UserSession.instance.clear();
+    final api = _FeedbackApi()..fail = true;
+    await tester.pumpWidget(
+      _testApp(
+        SettingsRecommendationScreen(
+          recommendation: api.saved,
+          settingsApi: api,
+        ),
+      ),
+    );
+    await tester.ensureVisible(find.byKey(const Key('feedback-better')));
+    await tester.tap(find.byKey(const Key('feedback-better')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Could not save your answer.'), findsOneWidget);
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(const Key('feedback-better')))
+          .selected,
+      isFalse,
+    );
+    api.fail = false;
+    await tester.tap(find.byKey(const Key('feedback-better')));
+    await tester.pumpAndSettle();
+    expect(find.text('Your answer is saved.'), findsOneWidget);
+  });
+
+  _screenTest('guest recommendations do not claim to save feedback', (
+    tester,
+  ) async {
+    UserSession.instance.setGuest('user');
+    addTearDown(UserSession.instance.clear);
+    await tester.pumpWidget(
+      _testApp(SettingsRecommendationScreen(recommendation: _sample())),
+    );
+    expect(find.text('Did this sound better?'), findsNothing);
+  });
+
   _screenTest(
     'attenuation decrease is shown as louder and survives round trip',
     (tester) async {
@@ -301,4 +416,22 @@ SettingsRecommendation _sample({
     'created_at': '2026-09-02T00:00:00Z',
     'applied_at': null,
   });
+}
+
+class _FeedbackApi extends SettingsApi {
+  SettingsRecommendation saved = _sample();
+  bool fail = false;
+
+  @override
+  Future<SettingsRecommendation> saveFeedback(
+    int recommendationId,
+    String feedback,
+  ) async {
+    if (fail) throw Exception('Offline');
+    saved = SettingsRecommendation.fromJson({
+      ...saved.toJson(),
+      'feedback': feedback,
+    });
+    return saved;
+  }
 }

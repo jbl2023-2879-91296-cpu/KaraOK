@@ -449,6 +449,16 @@ class ApiService {
     await _post('/settings-recommendations/$recommendationId/apply', {}) as Map,
   );
 
+  Future<Map<String, dynamic>> saveSettingsFeedback(
+    int recommendationId,
+    String feedback,
+  ) async => Map<String, dynamic>.from(
+    await _post('/settings-recommendations/$recommendationId/feedback', {
+          'feedback': feedback,
+        })
+        as Map,
+  );
+
   Future<List<dynamic>> getAudioUploads() async =>
       List<dynamic>.from(await _get('/audio-uploads') as List);
 

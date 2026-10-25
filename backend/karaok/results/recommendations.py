@@ -25,7 +25,8 @@ def _recommendation_select(*, lock: bool) -> str:
                   sr.genre_profile_version, sr.genre_profile_checksum,
                   sr.unavailable_message,
                   sr.recommendation_status,
-                  sr.created_at, sr.applied_at,
+                  sr.created_at, sr.applied_at, sr.feedback,
+                  ap.name AS amplifier_profile_name,
                   sr.scale_min, sr.scale_max, sr.scale_step,
                   ap.scale_min AS profile_scale_min,
                   ap.scale_max AS profile_scale_max,
@@ -127,6 +128,35 @@ def mark_recommendation_applied(
     except Exception:
         if not rolled_back:
             connection.rollback()
+        raise
+    finally:
+        cursor.close()
+        connection.close()
+
+
+def save_recommendation_feedback(
+    user_id: int, recommendation_id: int, feedback: str,
+) -> dict[str, Any]:
+    if not isinstance(feedback, str) or feedback not in {"better", "same", "worse"}:
+        raise ValueError("Choose Better, Same or Worse")
+    connection = _connection()
+    cursor = connection.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            _recommendation_select(lock=True), (recommendation_id, user_id, user_id),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise LookupError("Settings recommendation was not found")
+        cursor.execute(
+            """UPDATE settings_recommendation SET feedback = %s
+               WHERE recommendation_id = %s AND user_id = %s""",
+            (feedback, recommendation_id, user_id),
+        )
+        connection.commit()
+        return _recommendation_response(dict(row, feedback=feedback))
+    except Exception:
+        connection.rollback()
         raise
     finally:
         cursor.close()

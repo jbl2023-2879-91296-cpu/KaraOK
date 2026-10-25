@@ -238,6 +238,8 @@ class SettingsRecommendation {
     required this.verificationToken,
     required this.createdAt,
     required this.appliedAt,
+    this.feedback,
+    this.amplifierProfileName,
   }) : recommended = Map.unmodifiable(recommended),
        adjustments = Map.unmodifiable(adjustments);
 
@@ -339,7 +341,14 @@ class SettingsRecommendation {
       throw const FormatException('message must be a non-empty string.');
     }
 
+    final feedback = json['feedback'];
+    if (feedback != null &&
+        !const {'better', 'same', 'worse'}.contains(feedback)) {
+      throw const FormatException('Invalid feedback.');
+    }
     return SettingsRecommendation._(
+      feedback: feedback as String?,
+      amplifierProfileName: json['amplifier_profile_name'] as String?,
       id: _nullablePositiveInt(json['id'], 'id'),
       persisted: persisted,
       assessmentId: _nullablePositiveInt(
@@ -413,10 +422,14 @@ class SettingsRecommendation {
   final String? verificationToken;
   final String? createdAt;
   final String? appliedAt;
+  final String? feedback;
+  final String? amplifierProfileName;
 
   Map<String, dynamic> toJson() => {
     'id': id,
     'persisted': persisted,
+    'feedback': feedback,
+    'amplifier_profile_name': amplifierProfileName,
     'assessment_id': assessmentId,
     'amplifier_profile_id': amplifierProfileId,
     'parent_recommendation_id': parentRecommendationId,

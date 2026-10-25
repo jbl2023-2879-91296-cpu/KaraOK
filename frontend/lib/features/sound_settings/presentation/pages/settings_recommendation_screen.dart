@@ -51,6 +51,29 @@ class _SettingsRecommendationScreenState
   late bool _applied;
   bool _applying = false;
   String? _applyError;
+  bool _savingFeedback = false;
+  String? _feedbackError;
+
+  Future<void> _saveFeedback(String value) async {
+    if (_savingFeedback || _applying) return;
+    setState(() {
+      _savingFeedback = true;
+      _feedbackError = null;
+    });
+    try {
+      final saved = await _settingsApi.saveFeedback(_recommendation.id!, value);
+      if (mounted) setState(() => _recommendation = saved);
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _feedbackError =
+              'Could not save your answer. Tap your choice to try again.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingFeedback = false);
+    }
+  }
 
   bool get _isGuest => UserSession.instance.isGuest;
 
@@ -222,8 +245,24 @@ class _SettingsRecommendationScreenState
             AppSectionHeader(
               title: 'Your amplifier settings',
               subtitle:
-                  'These suggestions use your evaluation and genre references. Apply the changes yourself, then record the same passage at the same volume and phone position to check the result.',
+                  'These settings are a starting point for ${_recommendation.amplifierProfileName ?? _genreLabel(_recommendation.genre)}. Amplifiers differ, so adjust by ear and run a verification recording.',
             ),
+            if (_canOfferVerification)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'After applying these settings, record the same song section again to check the sound. Keep the same volume and phone position.',
+                ),
+              ),
+            if (_canOfferVerification) ...[
+              const SizedBox(height: 10),
+              AppSecondaryButton(
+                key: const Key('verify-settings'),
+                onPressed: _applied ? _verify : null,
+                icon: Icons.mic,
+                label: 'Record Again to Verify',
+              ),
+            ],
             const SizedBox(height: 18),
             for (final name in amplifierKnobNames.where(
               (name) =>
@@ -244,6 +283,38 @@ class _SettingsRecommendationScreenState
               ),
               const SizedBox(height: 10),
             ],
+            if (!_isGuest &&
+                _recommendation.persisted &&
+                _recommendation.id != null) ...[
+              const Text(
+                'Did this sound better?',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final value in const ['better', 'same', 'worse'])
+                    ChoiceChip(
+                      key: Key('feedback-$value'),
+                      label: Text(
+                        '${value[0].toUpperCase()}${value.substring(1)}',
+                      ),
+                      selected: _recommendation.feedback == value,
+                      onSelected: _savingFeedback || _applying
+                          ? null
+                          : (_) => _saveFeedback(value),
+                    ),
+                ],
+              ),
+              if (_savingFeedback) const Text('Saving your answer…'),
+              if (_recommendation.feedback != null && !_savingFeedback)
+                const Text('Your answer is saved.'),
+              if (_feedbackError != null)
+                Text(
+                  _feedbackError!,
+                  style: const TextStyle(color: AppColors.error),
+                ),
+            ],
             if (_applyError case final error?) ...[
               const SizedBox(height: 4),
               AppErrorState(
@@ -255,22 +326,15 @@ class _SettingsRecommendationScreenState
             const SizedBox(height: 14),
             AppPrimaryButton(
               key: const Key('apply-settings'),
-              onPressed: _applied || _applying ? null : _apply,
+              onPressed: _applied || _applying || _savingFeedback
+                  ? null
+                  : _apply,
               isLoading: _applying,
               icon: _applied ? Icons.check : Icons.tune,
               label: _applied
                   ? 'Settings Marked as Applied'
                   : "I've Applied These Settings",
             ),
-            if (_canOfferVerification) ...[
-              const SizedBox(height: 10),
-              AppSecondaryButton(
-                key: const Key('verify-settings'),
-                onPressed: _applied ? _verify : null,
-                icon: Icons.mic,
-                label: 'Record Again to Verify',
-              ),
-            ],
             const SizedBox(height: 8),
           ],
           AppSecondaryButton(
@@ -439,7 +503,7 @@ class _AdjustmentCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            _reasonMessage(adjustment.reasonCode),
+            _reasonMessage(adjustment.reasonCode, knob),
             style: const TextStyle(color: AppColors.muted),
           ),
           const SizedBox(height: 4),
@@ -539,22 +603,37 @@ String _blockerMessage(SettingsRecommendation recommendation) {
   };
 }
 
-String _reasonMessage(String reasonCode) => switch (reasonCode) {
-  'tone_increase_blocked_by_distortion' =>
-    'Keep unchanged: clipping or excessive distortion was detected. Resolve it before boosting tone controls.',
-  'optional_neutral_reset' => 'Reset this optional control to neutral (0).',
-  'optional_control_unchanged' => '',
-  'volume_muted' =>
-    'Volume is muted. Select an audible level before recording playback.',
-  'below_genre_range' => 'This measurement is below the genre target range.',
-  'above_genre_range' => 'This measurement is above the genre target range.',
-  'within_genre_range' => 'This measurement is already in the target range.',
-  'volume_increase_blocked_by_clipping' =>
-    'Volume stays unchanged because clipping was detected.',
-  'volume_increase_blocked_by_distortion' =>
-    'Volume stays unchanged because distortion was detected.',
-  _ => 'This target follows the measured genre profile.',
-};
+String _reasonMessage(String reasonCode, String knob) {
+  final comparison = switch (knob) {
+    'volume' => ('quieter', 'louder'),
+    'bass' => ('lighter in deep bass', 'heavier in deep bass'),
+    'treble' => ('less bright', 'brighter'),
+    'sharpness' => ('less sharp', 'sharper'),
+    _ => (
+      'less even across low and high sounds',
+      'more even across low and high sounds',
+    ),
+  };
+  return switch (reasonCode) {
+    'tone_increase_blocked_by_distortion' =>
+      'Keep unchanged: clipping or excessive distortion was detected. Resolve it before boosting tone controls.',
+    'optional_neutral_reset' => 'Reset this optional control to neutral (0).',
+    'optional_control_unchanged' => '',
+    'volume_muted' =>
+      'Volume is muted. Select an audible level before recording playback.',
+    'below_genre_range' =>
+      'Your recording was ${comparison.$1} than the songs we compared it with.',
+    'above_genre_range' =>
+      'Your recording was ${comparison.$2} than the songs we compared it with.',
+    'within_genre_range' =>
+      'This part of your sound is already in the usual range.',
+    'volume_increase_blocked_by_clipping' =>
+      'Volume stays unchanged because clipping was detected.',
+    'volume_increase_blocked_by_distortion' =>
+      'Volume stays unchanged because distortion was detected.',
+    _ => 'This suggestion uses the songs we compared your recording with.',
+  };
+}
 
 String _genreLabel(String value) {
   if (value == 'hip-hop') return 'Hip-Hop';

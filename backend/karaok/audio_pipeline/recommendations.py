@@ -286,6 +286,7 @@ def parse_suggestion_form(
             scale=scale,
             current=current,
             amplifier_profile_id=profile_id,
+            amplifier_profile_name=profile.get("name"),
             verification_of=verification_of,
             before_score=before_score,
         )

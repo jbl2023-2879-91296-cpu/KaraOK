@@ -19,6 +19,8 @@ void main() {
     expect(fixture.keys.toSet(), {
       'id',
       'persisted',
+      'feedback',
+      'amplifier_profile_name',
       'assessment_id',
       'amplifier_profile_id',
       'parent_recommendation_id',
@@ -45,6 +47,8 @@ void main() {
     });
     expect(recommendation.id, 41);
     expect(recommendation.persisted, isTrue);
+    expect(recommendation.feedback, isNull);
+    expect(recommendation.amplifierProfileName, isNull);
     expect(recommendation.assessmentId, 31);
     expect(recommendation.amplifierProfileId, 12);
     expect(recommendation.parentRecommendationId, isNull);

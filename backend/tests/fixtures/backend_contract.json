@@ -334,6 +334,14 @@
       "settings_recommendations.apply_recommendation"
     ],
     [
+      "/api/settings-recommendations/<int:recommendation_id>/feedback",
+      [
+        "OPTIONS",
+        "POST"
+      ],
+      "settings_recommendations.recommendation_feedback"
+    ],
+    [
       "/api/users",
       [
         "GET",

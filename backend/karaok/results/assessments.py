@@ -41,6 +41,8 @@ SETTINGS_RECOMMENDATION_SELECT_COLUMNS = """
     sr.recommendation_status AS settings_recommendation_status,
     sr.created_at AS settings_created_at,
     sr.applied_at AS settings_applied_at,
+    sr.feedback AS settings_feedback,
+    ap.name AS settings_amplifier_profile_name,
     sr.scale_min AS settings_scale_min,
     sr.scale_max AS settings_scale_max,
     sr.scale_step AS settings_scale_step

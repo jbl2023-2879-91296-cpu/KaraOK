@@ -187,6 +187,7 @@ CREATE TABLE IF NOT EXISTS settings_recommendation (
     genre_profile_version VARCHAR(30) NULL,
     genre_profile_checksum CHAR(64) NULL,
     unavailable_message VARCHAR(255) NULL,
+    feedback ENUM('better', 'same', 'worse') NULL DEFAULT NULL,
     recommendation_status
         ENUM('generated','applied','verified','reverted','unavailable')
         NOT NULL DEFAULT 'generated',
