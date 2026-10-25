@@ -30,6 +30,18 @@ void main() {
   test('web logout cleanup returns before filesystem operations', () async {
     await _NoFilesystemService().cleanupStaleRecordings();
   }, skip: !kIsWeb);
+  test('overlong audio explains the exact trim-and-retry action', () {
+    expect(
+      () => AudioStagingService.validateDuration(const Duration(minutes: 6)),
+      throwsA(
+        isA<AudioStagingException>().having(
+          (error) => error.message,
+          'message',
+          'This audio is longer than 5 minutes. Trim it to a 10-second to 5-minute section and try again.',
+        ),
+      ),
+    );
+  });
   group('native staging', () {
     Future<File> fixture(String name, List<int> bytes) async {
       final directory = await Directory.systemTemp.createTemp('karaok-header-');
@@ -64,7 +76,7 @@ void main() {
           isA<AudioStagingException>().having(
             (e) => e.message,
             'message',
-            contains('five-minute'),
+            AudioStagingService.durationLimitMessage,
           ),
         ),
       );
@@ -109,7 +121,7 @@ void main() {
               isA<AudioStagingException>().having(
                 (e) => e.message,
                 'duration violation',
-                contains('five-minute'),
+                AudioStagingService.durationLimitMessage,
               ),
             ),
           );
@@ -128,7 +140,7 @@ void main() {
             isA<AudioStagingException>().having(
               (e) => e.message,
               'duration violation',
-              contains('five-minute'),
+              AudioStagingService.durationLimitMessage,
             ),
           ),
         );
@@ -302,7 +314,7 @@ void main() {
             isA<AudioStagingException>().having(
               (e) => e.message,
               'message',
-              contains('five-minute'),
+              AudioStagingService.durationLimitMessage,
             ),
           ),
         );

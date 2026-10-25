@@ -270,7 +270,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
       _timer = Timer.periodic(const Duration(seconds: 1), (_) async {
         if (!mounted || _state != AudioInputState.recording) return;
         setState(() => _elapsed += const Duration(seconds: 1));
-        if (_elapsed >= _limit) await _stop();
+        if (_elapsed >= _limit) await _stop(atLimit: true);
       });
       if (mounted) setState(() => _state = AudioInputState.recording);
     } catch (e, st) {
@@ -303,7 +303,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
     }
   }
 
-  Future<void> _stop() async {
+  Future<void> _stop({bool atLimit = false}) async {
     if (_state != AudioInputState.recording &&
         _state != AudioInputState.paused) {
       return;
@@ -333,7 +333,9 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
       if (mounted) {
         setState(() {
           _state = AudioInputState.staged;
-          _message = kIsWeb
+          _message = atLimit
+              ? 'Recording stopped at the 5-minute limit.'
+              : kIsWeb
               ? 'Recording is ready for this browser session.'
               : 'Recording saved in the app\'s local storage.';
         });

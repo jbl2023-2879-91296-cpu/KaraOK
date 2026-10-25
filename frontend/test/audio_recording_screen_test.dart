@@ -12,7 +12,7 @@ import 'package:path/path.dart' as p;
 import 'support/audio_platform_stub.dart';
 
 void main() {
-  for (final outcome in ['cancel', 'denied', 'short', 'valid']) {
+  for (final outcome in ['cancel', 'denied', 'short', 'valid', 'limit']) {
     testWidgets(
       'Record Again uses microphone and handles $outcome replacement',
       (tester) async {
@@ -42,6 +42,7 @@ void main() {
             TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
         var granted = true;
         var starts = 0;
+        var stops = 0;
         String? path;
         messenger.setMockMethodCallHandler(
           const MethodChannel('flutter.baseflow.com/permissions/methods'),
@@ -64,7 +65,10 @@ void main() {
               path = args['path'] as String;
               File(path!).writeAsBytesSync([1, 2, 3]);
             }
-            if (call.method == 'stop') return path;
+            if (call.method == 'stop') {
+              stops++;
+              return path;
+            }
             return null;
           },
         );
@@ -95,7 +99,31 @@ void main() {
               : find.text('Cancel recording').evaluate().isNotEmpty,
         );
         expect(starts, outcome == 'denied' ? 1 : 2);
-        if (outcome == 'cancel') {
+        if (outcome == 'limit') {
+          audio.duration = const Duration(minutes: 5);
+          await tester.pump(const Duration(minutes: 4, seconds: 59));
+          expect(stops, 1);
+          expect(find.text('Cancel recording'), findsOneWidget);
+          await tester.pump(const Duration(seconds: 1));
+          for (
+            var attempt = 0;
+            attempt < 100 && staging.current?.duration != audio.duration;
+            attempt++
+          ) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 10)),
+            );
+            await tester.pump();
+          }
+          expect(stops, 2);
+          expect(staging.current?.duration, audio.duration);
+          expect(
+            find.text('Recording stopped at the 5-minute limit.'),
+            findsOneWidget,
+          );
+          await tester.pump(const Duration(seconds: 2));
+          expect(stops, 2);
+        } else if (outcome == 'cancel') {
           await _tapAndWait(
             tester,
             'Cancel recording',
@@ -111,7 +139,9 @@ void main() {
         }
         expect(
           find.text(previousName),
-          outcome == 'valid' ? findsNothing : findsOneWidget,
+          outcome == 'valid' || outcome == 'limit'
+              ? findsNothing
+              : findsOneWidget,
         );
         if (outcome == 'short') {
           expect(

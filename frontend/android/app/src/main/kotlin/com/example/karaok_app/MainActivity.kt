@@ -3,6 +3,10 @@ package com.jrpbone.karaok
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import android.content.ContentValues
+import android.content.pm.ApplicationInfo
+import android.os.Build
+import android.provider.MediaStore
 import android.app.Activity
 import android.content.Intent
 import android.provider.OpenableColumns
@@ -30,7 +34,52 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "karaok/audio_picker")
             .setMethodCallHandler { call, result ->
-                if (call.method != "pickAudio") {
+                if (call.method == "publishPickerTestFixture" &&
+                    applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0 &&
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    // Integration tests generate audio in app cache, then publish
+                    // it to Downloads so the real document picker can select it.
+                    val source = File(call.argument<String>("path") ?: "").canonicalFile
+                    val name = call.argument<String>("name") ?: ""
+                    if (!source.path.startsWith(cacheDir.canonicalPath + File.separator) ||
+                        !name.matches(Regex("karaok-picker-[a-z0-9-]+\\.(wav|mp3)"))) {
+                        result.error("invalid_fixture", "Invalid picker test fixture.", null)
+                        return@setMethodCallHandler
+                    }
+                    audioWorker.execute {
+                        var published: android.net.Uri? = null
+                        try {
+                            val values = ContentValues().apply {
+                                put(MediaStore.Downloads.DISPLAY_NAME, name)
+                                put(MediaStore.Downloads.MIME_TYPE, if (name.endsWith(".wav")) "audio/wav" else "audio/mpeg")
+                                put(MediaStore.Downloads.IS_PENDING, 1)
+                            }
+                            val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                                ?: error("Could not publish fixture")
+                            published = uri
+                            contentResolver.openOutputStream(uri)!!.use { output ->
+                                source.inputStream().use { it.copyTo(output) }
+                            }
+                            values.clear()
+                            values.put(MediaStore.Downloads.IS_PENDING, 0)
+                            contentResolver.update(uri, values, null, null)
+                            runOnUiThread { result.success(uri.toString()) }
+                        } catch (error: Exception) {
+                            published?.let { contentResolver.delete(it, null, null) }
+                            runOnUiThread { result.error("fixture_failed", "Could not publish picker test fixture.", null) }
+                        }
+                    }
+                } else if (call.method == "deletePickerTestFixture" &&
+                    applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0 &&
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val uri = android.net.Uri.parse(call.argument<String>("uri") ?: "")
+                    if (!uri.toString().startsWith(MediaStore.Downloads.EXTERNAL_CONTENT_URI.toString() + "/")) {
+                        result.error("invalid_fixture", "Invalid picker test fixture.", null)
+                    } else {
+                        contentResolver.delete(uri, null, null)
+                        result.success(null)
+                    }
+                } else if (call.method != "pickAudio") {
                     result.notImplemented()
                 } else if (audioPick != null) {
                     result.error("busy", "A file selection is already open.", null)

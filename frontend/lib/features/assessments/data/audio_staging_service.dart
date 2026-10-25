@@ -45,6 +45,8 @@ class AudioStagingException implements Exception {
 
 class AudioStagingService {
   static const androidPicker = MethodChannel('karaok/audio_picker');
+  static const durationLimitMessage =
+      'This audio is longer than 5 minutes. Trim it to a 10-second to 5-minute section and try again.';
   static const maxBytes = 25 * 1024 * 1024;
   static const minDuration = Duration(seconds: 10);
   static const maxDuration = Duration(minutes: 5);
@@ -101,9 +103,7 @@ class AudioStagingService {
       );
     }
     if (duration > maxDuration) {
-      throw const AudioStagingException(
-        'The audio exceeds the five-minute limit.',
-      );
+      throw const AudioStagingException(durationLimitMessage);
     }
   }
 
@@ -262,7 +262,7 @@ class AudioStagingService {
       } on AudioStagingException catch (error) {
         // Only a confirmed duration violation rejects an MP3 at this stage.
         // Tags, junk, and unsupported headers defer to the native duration probe.
-        if (extension != 'mp3' || error.message.contains('five-minute')) {
+        if (extension != 'mp3' || error.message == durationLimitMessage) {
           rethrow;
         }
       } on TimeoutException {
@@ -493,9 +493,7 @@ class AudioStagingService {
         frames++;
         offset += frameSize;
         if (seconds > maxDuration.inSeconds + 0.001) {
-          throw const AudioStagingException(
-            'The audio exceeds the five-minute limit.',
-          );
+          throw const AudioStagingException(durationLimitMessage);
         }
       }
       if (frames < 3 || offset != size) return null;
