@@ -1,3 +1,5 @@
+import 'package:karaok_app/shared/widgets/app_widgets.dart';
+import 'package:karaok_app/app/app_shell.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'recording_checklist.dart';
 import 'dart:async';
@@ -192,6 +194,13 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
       ),
     );
     _guestLimitDialogVisible = false;
+    if (signIn != true && mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const AppShell()),
+        (route) => false,
+      );
+    }
     if (signIn == true && mounted) {
       Navigator.pushAndRemoveUntil(
         context,
@@ -317,7 +326,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
         await _staging.stagePath(
           path,
           AudioSourceType.recording,
-          temporary: false,
+          temporary: true,
         );
       }
       _recordingFileName = null;
@@ -646,17 +655,16 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
     final item = _staging.current;
     final recording =
         _state == AudioInputState.recording || _state == AudioInputState.paused;
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(title: Text(widget.purpose.pageTitle), centerTitle: true),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
+    return AppPageScaffold(
+      title: widget.purpose.pageTitle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppSpacing.lg),
             decoration: BoxDecoration(
               color: AppColors.surface,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(AppRadii.control),
             ),
             child: Row(
               children: [
@@ -684,24 +692,24 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
             ),
           ),
           if (!recording && !_busy) const RecordingChecklist(),
-          const SizedBox(height: 20),
+          const SizedBox(height: AppSpacing.xl),
           Text(
             '${_time(_elapsed)} / 05:00',
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+            style: Theme.of(context).textTheme.headlineLarge,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.lg),
           const Text(
             'Minimum 10 seconds, maximum 5 minutes. For better results, record 20–30 seconds of continuous music.',
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.lg),
           if (recording) ...[
             LinearProgressIndicator(
               value: _elapsed.inSeconds / _limit.inSeconds,
               color: AppColors.orangeInk,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: AppSpacing.xl),
             Row(
               children: [
                 Expanded(
@@ -733,16 +741,16 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
               label: const Text('Cancel recording'),
             ),
           ] else if (item == null) ...[
-            FilledButton.icon(
+            AppPrimaryButton(
               onPressed: _busy ? null : _start,
-              icon: const Icon(Icons.mic),
-              label: const Text('Record Audio'),
+              icon: Icons.mic,
+              label: 'Record Audio',
             ),
             const SizedBox(height: 10),
-            OutlinedButton.icon(
+            AppSecondaryButton(
               onPressed: _busy ? null : _selectFile,
-              icon: const Icon(Icons.audio_file),
-              label: const Text('Select Audio File'),
+              icon: Icons.audio_file,
+              label: 'Select Audio File',
             ),
           ],
           if (_busy)
@@ -770,20 +778,14 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
           if (item != null &&
               !recording &&
               (!_busy || _state == AudioInputState.uploading)) ...[
-            const SizedBox(height: 24),
+            const SizedBox(height: AppSpacing.xl),
             Card(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(AppSpacing.lg),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      item.fileName,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
+                    AppSectionHeader(title: item.fileName),
                     const SizedBox(height: 8),
                     Text(
                       '${item.source == AudioSourceType.recording ? 'Recorded' : 'Selected'} • ${item.format} • ${(item.sizeBytes / 1024 / 1024).toStringAsFixed(2)} MB • ${_time(item.duration)}',
@@ -881,19 +883,26 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
               ),
             ),
           ],
-          if (_message != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 16),
-              child: Text(
-                _message!,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: _state == AudioInputState.success
-                      ? AppColors.success
-                      : AppColors.orangeInk,
-                ),
-              ),
-            ),
+          AnimatedSize(
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 180),
+            alignment: Alignment.topCenter,
+            child: _message == null
+                ? const SizedBox.shrink()
+                : Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.lg),
+                    child: Semantics(
+                      liveRegion: true,
+                      child: AppStatusChip(
+                        label: _message!,
+                        status: _state == AudioInputState.success
+                            ? AppStatus.success
+                            : AppStatus.warning,
+                      ),
+                    ),
+                  ),
+          ),
           if (_state == AudioInputState.success &&
               UserSession.instance.isGuest) ...[
             const SizedBox(height: 12),

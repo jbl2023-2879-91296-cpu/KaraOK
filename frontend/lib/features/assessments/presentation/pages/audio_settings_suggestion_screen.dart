@@ -1,3 +1,4 @@
+import 'package:karaok_app/app/app_shell.dart';
 import 'package:flutter/material.dart';
 
 import 'package:karaok_app/core/security/guest_assessment_service.dart';
@@ -68,6 +69,13 @@ class _AudioSettingsSuggestionScreenState
       ),
     );
     _limitDialogVisible = false;
+    if (signIn != true && mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const AppShell()),
+        (route) => false,
+      );
+    }
     if (signIn == true && mounted) {
       Navigator.pushAndRemoveUntil(
         context,

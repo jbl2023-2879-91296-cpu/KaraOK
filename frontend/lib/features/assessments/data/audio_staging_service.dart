@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
@@ -55,6 +56,36 @@ class AudioStagingService {
   };
 
   StagedAudio? current;
+  static const operationTimeout = Duration(seconds: 15);
+
+  Future<T> _guard<T>(Future<T> Function() action) async {
+    try {
+      return await action();
+    } on AudioStagingException {
+      rethrow;
+    } on TimeoutException {
+      throw const AudioStagingException(
+        'Reading the audio took too long. Please try another file.',
+      );
+    } catch (_) {
+      throw const AudioStagingException(
+        'Could not read the audio. Please try again or choose another file.',
+      );
+    }
+  }
+
+  Future<Duration?> _playerDuration(String path, {bool browser = false}) async {
+    final player = AudioPlayer();
+    try {
+      return await (browser ? player.setUrl(path) : player.setFilePath(path))
+          .timeout(operationTimeout);
+    } finally {
+      // A disposal error must not hide the useful staging error.
+      try {
+        await player.dispose().timeout(operationTimeout);
+      } catch (_) {}
+    }
+  }
 
   static void validateDuration(Duration? duration) {
     if (duration == null) {
@@ -74,7 +105,9 @@ class AudioStagingService {
     }
   }
 
-  Future<StagedAudio?> pickAudio() async {
+  Future<StagedAudio?> pickAudio() => _guard(_pickAudio);
+
+  Future<StagedAudio?> _pickAudio() async {
     final selectedFile = await openFile(
       acceptedTypeGroups: [
         XTypeGroup(label: 'audio', extensions: supportedExtensions.toList()),
@@ -89,9 +122,6 @@ class AudioStagingService {
     }
     final selectedPath = selectedFile.path;
     final source = File(selectedPath);
-    if (!await source.exists()) {
-      throw const AudioStagingException('The selected file no longer exists.');
-    }
     return stagePath(
       source.path,
       AudioSourceType.selectedFile,
@@ -108,6 +138,11 @@ class AudioStagingService {
   Future<StagedAudio> _stageBrowserFile(
     XFile selectedFile, {
     required AudioSourceType source,
+  }) => _guard(() => _readBrowserFile(selectedFile, source: source));
+
+  Future<StagedAudio> _readBrowserFile(
+    XFile selectedFile, {
+    required AudioSourceType source,
   }) async {
     final fileName = selectedFile.name;
     final extension = p.extension(fileName).replaceFirst('.', '').toLowerCase();
@@ -117,7 +152,7 @@ class AudioStagingService {
     if (!supportedExtensions.contains(extension)) {
       throw const AudioStagingException('This audio format is not supported.');
     }
-    final size = await selectedFile.length();
+    final size = await selectedFile.length().timeout(operationTimeout);
     if (size == 0) {
       throw const AudioStagingException('The audio file is empty.');
     }
@@ -127,20 +162,15 @@ class AudioStagingService {
       );
     }
 
-    final player = AudioPlayer();
-    Duration? duration;
-    try {
-      duration = await player.setUrl(selectedFile.path);
-    } catch (_) {
-      throw const AudioStagingException(
-        'The audio file is corrupted or unreadable.',
-      );
-    } finally {
-      await player.dispose();
-    }
+    final duration = await _playerDuration(selectedFile.path, browser: true);
     validateDuration(duration);
 
-    final bytes = await selectedFile.readAsBytes();
+    final bytes = await selectedFile.readAsBytes().timeout(operationTimeout);
+    if (bytes.length > maxBytes) {
+      throw const AudioStagingException(
+        'The audio file exceeds the 25 MB limit.',
+      );
+    }
     if (bytes.isEmpty) {
       throw const AudioStagingException('The audio file is empty.');
     }
@@ -162,12 +192,18 @@ class AudioStagingService {
     String path,
     AudioSourceType source, {
     required bool temporary,
+  }) => _guard(() => _stagePath(path, source, temporary: temporary));
+
+  Future<StagedAudio> _stagePath(
+    String path,
+    AudioSourceType source, {
+    required bool temporary,
   }) async {
     final file = File(path);
-    if (!await file.exists()) {
+    if (!await file.exists().timeout(operationTimeout)) {
       throw const AudioStagingException('The audio file is missing.');
     }
-    final size = await file.length();
+    final size = await file.length().timeout(operationTimeout);
     if (size == 0) {
       throw const AudioStagingException('The audio file is empty.');
     }
@@ -183,17 +219,9 @@ class AudioStagingService {
     if (!supportedExtensions.contains(extension)) {
       throw const AudioStagingException('This audio format is not supported.');
     }
-    final player = AudioPlayer();
-    Duration? duration;
-    try {
-      duration = await player.setFilePath(path);
-    } catch (_) {
-      throw const AudioStagingException(
-        'The audio file is corrupted or unreadable.',
-      );
-    } finally {
-      await player.dispose();
-    }
+    final duration = extension == 'mp3' || extension == 'wav'
+        ? await _headerDuration(file, extension, size)
+        : await _playerDuration(path);
     validateDuration(duration);
     await discard();
     current = StagedAudio(
@@ -208,19 +236,241 @@ class AudioStagingService {
     return current!;
   }
 
-  Future<Directory> recordingDirectory() async {
-    final documents = await getApplicationDocumentsDirectory();
+  /// Removes recordings owned by this app, including leftovers from prior sessions.
+  /// Call after stopping the recorder during logout.
+  Future<void> cleanupStaleRecordings() => _guard(() async {
+    if (kIsWeb) return;
+    await discard();
+    final directory = await recordingDirectory();
+    final files = await directory
+        .list(followLinks: false)
+        .toList()
+        .timeout(operationTimeout);
+    for (final file in files) {
+      if (file is File) await file.delete().timeout(operationTimeout);
+    }
+  });
+
+  Future<Duration> _headerDuration(
+    File file,
+    String extension,
+    int size,
+  ) async {
+    final handle = await file.open().timeout(operationTimeout);
+    final clock = Stopwatch()..start();
+    const invalid = AudioStagingException(
+      'The audio header is unsupported or damaged. Please choose another file.',
+    );
+    Future<Uint8List> read(int offset, int count) async {
+      if (clock.elapsed > operationTimeout) {
+        throw TimeoutException('Audio header');
+      }
+      if (offset < 0 || offset + count > size) throw invalid;
+      await handle.setPosition(offset).timeout(operationTimeout);
+      final bytes = await handle.read(count).timeout(operationTimeout);
+      if (bytes.length != count) throw invalid;
+      return bytes;
+    }
+
+    int u32(Uint8List b, int offset) =>
+        ByteData.sublistView(b).getUint32(offset, Endian.little);
+    bool tag(Uint8List b, int offset, String text) =>
+        String.fromCharCodes(b.sublist(offset, offset + text.length)) == text;
+    try {
+      if (extension == 'wav') {
+        final header = await read(0, 12);
+        if (!tag(header, 0, 'RIFF') || !tag(header, 8, 'WAVE')) throw invalid;
+        final end = u32(header, 4) + 8;
+        if (end > size) throw invalid;
+        int? rate;
+        int? alignment;
+        int? dataSize;
+        var offset = 12;
+        for (var chunks = 0; offset + 8 <= end && chunks < 256; chunks++) {
+          final chunk = await read(offset, 8);
+          final length = u32(chunk, 4);
+          if (offset + 8 + length > end) throw invalid;
+          if (tag(chunk, 0, 'fmt ')) {
+            if (length < 16) throw invalid;
+            final fmt = ByteData.sublistView(await read(offset + 8, 16));
+            var format = fmt.getUint16(0, Endian.little);
+            final channels = fmt.getUint16(2, Endian.little);
+            final sampleRate = fmt.getUint32(4, Endian.little);
+            rate = fmt.getUint32(8, Endian.little);
+            alignment = fmt.getUint16(12, Endian.little);
+            final bits = fmt.getUint16(14, Endian.little);
+            if (format == 0xfffe) {
+              // WAVEFORMATEXTENSIBLE requires the complete 22-byte extension.
+              // Read only its fixed header, never the audio payload.
+              if (length < 40) throw invalid;
+              final extended = await read(offset + 8, 40);
+              final fields = ByteData.sublistView(extended);
+              final extensionSize = fields.getUint16(16, Endian.little);
+              final validBits = fields.getUint16(18, Endian.little);
+              final channelMask = fields.getUint32(20, Endian.little);
+              final subtype = fields.getUint32(24, Endian.little);
+              const guidTail = [0, 0, 16, 0, 128, 0, 0, 170, 0, 56, 155, 113];
+              if (extensionSize < 22 ||
+                  18 + extensionSize > length ||
+                  (subtype != 1 && subtype != 3) ||
+                  validBits == 0 ||
+                  validBits > bits ||
+                  (subtype == 3 &&
+                      (validBits != bits || (bits != 32 && bits != 64)))) {
+                throw invalid;
+              }
+              for (var index = 0; index < guidTail.length; index++) {
+                if (extended[28 + index] != guidTail[index]) throw invalid;
+              }
+              var speakers = 0;
+              for (var mask = channelMask; mask != 0; mask >>= 1) {
+                speakers += mask & 1;
+              }
+              if (channelMask != 0 &&
+                  (channelMask > 0x3ffff || speakers != channels)) {
+                throw invalid;
+              }
+              format = subtype;
+            }
+            if ((format != 1 && format != 3) ||
+                channels == 0 ||
+                bits == 0 ||
+                bits % 8 != 0 ||
+                alignment != channels * (bits ~/ 8) ||
+                sampleRate == 0 ||
+                rate != sampleRate * alignment) {
+              throw invalid;
+            }
+          } else if (tag(chunk, 0, 'data')) {
+            dataSize = length;
+          }
+          offset += 8 + length + (length & 1);
+        }
+        if (rate == null ||
+            alignment == null ||
+            dataSize == null ||
+            dataSize == 0 ||
+            dataSize % alignment != 0) {
+          throw invalid;
+        }
+        return Duration(microseconds: (dataSize * 1000000 / rate).round());
+      }
+
+      var offset = 0;
+      final first = await read(0, 10);
+      if (tag(first, 0, 'ID3')) {
+        if (first[3] < 2 ||
+            first[3] > 4 ||
+            first.sublist(6, 10).any((b) => b >= 128)) {
+          throw invalid;
+        }
+        final length =
+            (first[6] << 21) | (first[7] << 14) | (first[8] << 7) | first[9];
+        offset = 10 + length + ((first[3] == 4 && first[5] & 16 != 0) ? 10 : 0);
+      }
+      var seconds = 0.0;
+      var frames = 0;
+      var hasId3v1 = false;
+      // Only four bytes per frame are read; payload is skipped, never decoded.
+      while (offset + 4 <= size && frames < 20000) {
+        if (size - offset == 128 && tag(await read(offset, 3), 0, 'TAG')) {
+          hasId3v1 = true;
+          break;
+        }
+        final b = await read(offset, 4);
+        final version = (b[1] >> 3) & 3;
+        final bitrateIndex = b[2] >> 4;
+        final sampleIndex = (b[2] >> 2) & 3;
+        if (b[0] != 255 ||
+            b[1] & 224 != 224 ||
+            version == 1 ||
+            (b[1] >> 1) & 3 != 1 ||
+            bitrateIndex == 0 ||
+            bitrateIndex == 15 ||
+            sampleIndex == 3) {
+          throw invalid;
+        }
+        final bitrate = (version == 3
+            ? const [
+                0,
+                32,
+                40,
+                48,
+                56,
+                64,
+                80,
+                96,
+                112,
+                128,
+                160,
+                192,
+                224,
+                256,
+                320,
+              ]
+            : const [
+                0,
+                8,
+                16,
+                24,
+                32,
+                40,
+                48,
+                56,
+                64,
+                80,
+                96,
+                112,
+                128,
+                144,
+                160,
+              ])[bitrateIndex];
+        final sampleRate =
+            const [44100, 48000, 32000][sampleIndex] ~/
+            (version == 3 ? 1 : (version == 2 ? 2 : 4));
+        final frameSize =
+            ((version == 3 ? 144000 : 72000) * bitrate ~/ sampleRate) +
+            ((b[2] >> 1) & 1);
+        if (offset + frameSize > size) throw invalid;
+        seconds += (version == 3 ? 1152 : 576) / sampleRate;
+        frames++;
+        offset += frameSize;
+        if (seconds > maxDuration.inSeconds + 0.001) {
+          throw const AudioStagingException(
+            'The audio exceeds the five-minute limit.',
+          );
+        }
+      }
+      if (frames < 2 || (offset != size && !hasId3v1)) throw invalid;
+      return Duration(microseconds: (seconds * 1000000).round());
+    } finally {
+      await handle.close().timeout(operationTimeout);
+    }
+  }
+
+  Future<Directory> recordingDirectory() => _guard(_recordingDirectory);
+
+  Future<Directory> _recordingDirectory() async {
+    final documents = await getApplicationDocumentsDirectory().timeout(
+      operationTimeout,
+    );
     final directory = Directory(p.join(documents.path, 'karaok_recordings'));
-    if (!await directory.exists()) await directory.create(recursive: true);
+    if (!await directory.exists().timeout(operationTimeout)) {
+      await directory.create(recursive: true).timeout(operationTimeout);
+    }
     return directory;
   }
 
-  Future<void> discard() async {
+  Future<void> discard() => _guard(_discard);
+
+  Future<void> _discard() async {
     final item = current;
     current = null;
     if (item?.temporary == true && item?.bytes == null) {
       final file = File(item!.path);
-      if (await file.exists()) await file.delete();
+      if (await file.exists().timeout(operationTimeout)) {
+        await file.delete().timeout(operationTimeout);
+      }
     }
   }
 
@@ -228,6 +478,10 @@ class AudioStagingService {
     final item = current;
     if (item == null) return false;
     if (item.bytes != null) return item.bytes!.isNotEmpty;
-    return File(item.path).exists();
+    try {
+      return await File(item.path).exists().timeout(operationTimeout);
+    } catch (_) {
+      return false;
+    }
   }
 }
