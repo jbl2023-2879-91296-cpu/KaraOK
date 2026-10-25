@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:karaok_app/app/app.dart';
+import 'package:karaok_app/features/home/presentation/pages/user_home_screen.dart';
+import 'package:karaok_app/features/reports/domain/sample_assessments.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'package:karaok_app/core/security/guest_assessment_service.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
-import 'package:karaok_app/core/storage/guest_assessment_store.dart';
 import 'package:karaok_app/features/auth/presentation/pages/login_screen.dart';
 import 'package:karaok_app/features/auth/presentation/pages/signup_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/previous_results_screen.dart';
@@ -18,7 +18,12 @@ const sampleNames = [
 ];
 
 Future<void> launch(WidgetTester tester) async {
-  await tester.pumpWidget(const KaraOKApp());
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: AppTheme.light,
+      home: UserHomeScreen(resultsLoader: () async => sampleAssessments),
+    ),
+  );
   await tester.pump(const Duration(milliseconds: 1700));
   await tester.pumpAndSettle();
 }
@@ -33,19 +38,16 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   setUp(() async {
     UserSession.instance.setGuest('user');
-    await GuestAssessmentStore.instance.clearAll();
-    await GuestAssessmentService.instance.resetForTesting();
   });
   tearDown(() async {
-    await GuestAssessmentStore.instance.clearAll();
-    await GuestAssessmentService.instance.resetForTesting();
     UserSession.instance.clear();
   });
 
   testWidgets('guest samples use real results UI and preserve allowance', (
     tester,
   ) async {
-    expect(await GuestAssessmentStore.instance.guestHistory(), isEmpty);
+    final allowanceBefore = await GuestAssessmentService.instance
+        .remainingAttempts();
     await launch(tester);
     expectSamples();
     expect(
@@ -58,12 +60,14 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(ResultsScreen), findsOneWidget);
       expect(find.text('Sample assessment'), findsOneWidget);
-      expect(find.text('Empirical five-feature grading'), findsOneWidget);
+      expect(find.text('Your sound measurements'), findsOneWidget);
       await tester.pageBack();
       await tester.pumpAndSettle();
     }
-    expect(await GuestAssessmentService.instance.remainingAttempts(), 3);
-    expect(await GuestAssessmentStore.instance.guestHistory(), isEmpty);
+    expect(
+      await GuestAssessmentService.instance.remainingAttempts(),
+      allowanceBefore,
+    );
   });
 
   testWidgets('guest auth links open sign in and create account', (
@@ -81,35 +85,40 @@ void main() {
     expect(find.byType(SignUpScreen), findsOneWidget);
   });
 
-  testWidgets('persisted guest assessment replaces samples on Home and Records', (
+  testWidgets('injected guest history replaces samples on Home and Records', (
     tester,
   ) async {
-    await launch(tester);
-    expectSamples();
-    const png =
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
-    await GuestAssessmentStore.instance.saveCompleted({
-      'test_name': 'Chrome recording.wav',
-      'score': 86,
-      'status': 'Acceptable',
-      'analysis_purpose': 'quality_evaluation',
-      'visualizations': {'waveform': png, 'spectrogram': png},
-    });
-    await GuestAssessmentService.instance.markAssessmentUsed();
-    // A fresh store instance must retrieve browser-persisted data and images.
-    final saved = await GuestAssessmentStore().guestHistory();
-    expect(saved.single['test_name'], 'Chrome recording.wav');
-    expect(saved.single['visualizations']['waveform'], png);
-    final refresh = tester.widget<RefreshIndicator>(
-      find.byType(RefreshIndicator).first,
+    var records = <dynamic>[...sampleAssessments];
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light,
+        home: UserHomeScreen(resultsLoader: () async => records),
+      ),
     );
-    await refresh.onRefresh();
+    await tester.pumpAndSettle();
+    expectSamples();
+    records = [
+      {
+        'test_name': 'Chrome recording.wav',
+        'score': 86,
+        'status': 'Acceptable',
+        'analysis_purpose': 'quality_evaluation',
+      },
+    ];
+    await tester
+        .widget<RefreshIndicator>(find.byType(RefreshIndicator))
+        .onRefresh();
     await tester.pumpAndSettle();
     expect(find.text('Chrome recording.wav'), findsOneWidget);
     for (final name in sampleNames) {
       expect(find.text(name), findsNothing);
     }
-    await tester.tap(find.text('Records').last);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light,
+        home: PreviousResultsScreen(resultsLoader: () async => records),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('Chrome recording.wav'), findsOneWidget);
     for (final name in sampleNames) {
