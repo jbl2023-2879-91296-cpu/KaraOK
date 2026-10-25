@@ -134,14 +134,14 @@ try {
     Write-Output 'PASS: guided signing setup creates a private keystore and ignored properties file'
     New-Item -ItemType Directory -Path (Join-Path $testProject 'lib') -Force | Out-Null
     Set-Content -LiteralPath (Join-Path $testProject 'lib/main.dart') -Value 'void main() {}'
-    $signedPlan = @(& $buildScript -ProjectDirectory $testProject -NonInteractive -PlanOnly)
+    $signedPlan = @(& $buildScript -ProjectDirectory $testProject -NonInteractive -PlanOnly -AllowDirty)
     if (($signedPlan -join "`n") -notmatch 'Release signing: True') {
         throw 'FAIL: build tool cannot read its own Java-escaped signing properties.'
     }
     $relativeProperties = [IO.File]::ReadAllText($testProperties)
     $relativeProperties = [regex]::Replace($relativeProperties, '(?m)^storeFile=.*$', 'storeFile=../keystore/disposable-test.jks')
     [IO.File]::WriteAllText($testProperties, $relativeProperties)
-    $relativePlan = @(& $buildScript -ProjectDirectory $testProject -NonInteractive -PlanOnly)
+    $relativePlan = @(& $buildScript -ProjectDirectory $testProject -NonInteractive -PlanOnly -AllowDirty)
     if (($relativePlan -join "`n") -notmatch 'Release signing: True') {
         throw 'FAIL: relative keystore paths must resolve from android/app, like Gradle.'
     }
