@@ -1,3 +1,4 @@
+import 'package:karaok_app/features/reports/domain/measurement_glossary.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'measurement_guide.dart';
 import 'package:flutter/material.dart';
@@ -36,13 +37,6 @@ class EmpiricalFeatureTable extends StatelessWidget {
     final unit = _units[key]!;
     return '${value.toDouble().toStringAsFixed(decimals)}${unit.isEmpty ? '' : ' $unit'}';
   }
-
-  String _statusLabel(String status) => switch (status) {
-    'good' => 'Good',
-    'good_but_needs_improvement' => 'Needs improvement',
-    'bad' => 'Bad',
-    _ => 'Not evaluated',
-  };
 
   Color _statusColor(String status) => switch (status) {
     'good' => AppColors.success,
@@ -92,19 +86,7 @@ class EmpiricalFeatureTable extends StatelessWidget {
               builder: (context) {
                 final feature = reportMap(features[key]);
                 final value = reportNumber(feature['value']);
-                final lower = reportNumber(feature['target_lower']);
-                final upper = reportNumber(feature['target_upper']);
-                final direction =
-                    value == null ||
-                        lower == null ||
-                        upper == null ||
-                        lower > upper
-                    ? null
-                    : value < lower
-                    ? 'below'
-                    : value > upper
-                    ? 'above'
-                    : 'within';
+                final direction = measurementDirection(feature);
                 final score = reportNumber(feature['score']);
                 final status = feature['status']?.toString() ?? 'not_evaluated';
                 return Material(
@@ -137,6 +119,13 @@ class EmpiricalFeatureTable extends StatelessWidget {
                                     ),
                                   ),
                                   Text(
+                                    glossaryEntry(_labels[key]!).definition,
+                                    style: const TextStyle(
+                                      color: AppColors.muted,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  Text(
                                     value == null
                                         ? 'Not measured'
                                         : _measurement(key, value),
@@ -163,14 +152,10 @@ class EmpiricalFeatureTable extends StatelessWidget {
                               flex: 3,
                               child: Text(
                                 switch (direction) {
-                                  'above' =>
-                                    '${_statusLabel(status)} — above genre range',
-                                  'below' =>
-                                    '${_statusLabel(status)} — below genre range',
-                                  'within' =>
-                                    '${_statusLabel(status)} — within genre range',
-                                  _ =>
-                                    '${_statusLabel(status)} — range unavailable',
+                                  'above' => 'Too high',
+                                  'below' => 'Too low',
+                                  'within' => 'Good',
+                                  _ => 'Unavailable',
                                 },
                                 textAlign: TextAlign.right,
                                 style: TextStyle(

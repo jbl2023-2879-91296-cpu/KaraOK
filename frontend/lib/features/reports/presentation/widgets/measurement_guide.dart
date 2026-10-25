@@ -1,3 +1,4 @@
+import 'package:karaok_app/features/reports/domain/measurement_glossary.dart';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'package:karaok_app/features/reports/domain/report_values.dart';
@@ -6,25 +7,13 @@ import 'package:karaok_app/features/reports/domain/report_values.dart';
 class MeasurementGuide extends StatelessWidget {
   const MeasurementGuide({super.key});
 
-  static const explanations = {
-    'Loudness':
-        'Loudness is reported in LUFS. It describes the recorded audio level, not the sound pressure in the room. Louder does not automatically mean better.',
-    'Bass':
-        'Bass is the percentage of measured energy in the low-frequency band used by the analysis. It is not a recommended bass knob position.',
-    'Treble':
-        'Treble is the percentage of measured energy in the high-frequency band used by the analysis. It is not a recommended treble knob position.',
-    'Sharpness':
-        'Sharpness describes the high-frequency character of the recording using the analysis algorithm. Compare it with the saved reference-based grade; a higher value is not automatically better.',
-    'Flatness':
-        'Spectral flatness describes how evenly energy is distributed across frequencies. It does not mean the speaker has a flat frequency response. A higher value is not automatically better.',
+  static final definitions = {
+    for (final label in measurementLabels.values)
+      label: glossaryEntry(label).definition,
   };
-
-  static const definitions = {
-    'Loudness': 'How loud the recording sounds overall.',
-    'Bass': 'How much of the sound comes from low, deep notes.',
-    'Treble': 'How much of the sound comes from high, bright notes.',
-    'Sharpness': 'How bright or piercing the recording may sound.',
-    'Flatness': 'Whether the sound is more note-like or more noise-like.',
+  static final explanations = {
+    for (final label in measurementLabels.values)
+      label: glossaryEntry(label).why,
   };
 
   static String _tip(String label, String? direction) {
@@ -59,6 +48,53 @@ class MeasurementGuide extends StatelessWidget {
       _ =>
         'Change one setting at a time and compare the same song section again.',
     };
+  }
+
+  static Future<void> showEstimate(
+    BuildContext context, {
+    required String label,
+    required String value,
+    required String meaning,
+  }) {
+    final entry = glossaryEntry(label);
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: .7,
+        minChildSize: .35,
+        maxChildSize: .95,
+        builder: (context, controller) => ListView(
+          controller: controller,
+          padding: const EdgeInsets.all(24),
+          children: [
+            Text(label, style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 8),
+            Text(entry.definition),
+            const SizedBox(height: 16),
+            Text('Estimated value: $value'),
+            const SizedBox(height: 12),
+            Text(meaning),
+            const SizedBox(height: 12),
+            Text(entry.why),
+            const SizedBox(height: 12),
+            Text("What's good: ${entry.good}"),
+            const SizedBox(height: 12),
+            Text(entry.tip),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   static Future<void> showMetric(
@@ -160,6 +196,11 @@ class MeasurementGuide extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
+            const SizedBox(height: 12),
+            if (direction == 'above' || direction == 'below')
+              Text('$label: ${measurementMeaning(label, direction!)}'),
+            const SizedBox(height: 12),
+            Text("What's good: ${glossaryEntry(label).good}"),
             const SizedBox(height: 12),
             Text(_tip(label, direction)),
             const SizedBox(height: 12),

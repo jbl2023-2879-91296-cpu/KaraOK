@@ -1,3 +1,5 @@
+import 'package:karaok_app/features/reports/domain/measurement_glossary.dart';
+import 'package:karaok_app/features/reports/presentation/widgets/what_this_means_card.dart';
 import 'package:karaok_app/features/reports/domain/sample_assessments.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
@@ -129,21 +131,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
   String get _scoreLabel => reportScoreLabel(widget.score);
 
-  String get _interpretation {
-    if (_grade == 'NOT SCORED') {
-      return 'No valid score is available for this assessment.';
-    }
-    return switch (widget.empiricalStatus) {
-      'good' =>
-        'The saved weighted score is at least 80 against its good-audio reference. Individual feature grades are shown separately.',
-      'good_but_needs_improvement' =>
-        'The saved weighted score is at least 50 and below 80 against its good-audio reference.',
-      'bad' =>
-        'The saved weighted score is below 50 against its good-audio reference.',
-      _ =>
-        'This is a saved score. Detailed reference information is unavailable for this assessment.',
-    };
-  }
+  String get _interpretation =>
+      reportInterpretation(widget.score, widget.empiricalStatus);
 
   @override
   Widget build(BuildContext context) {
@@ -253,7 +242,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                             const SizedBox(height: 10),
                             Text(
                               widget.isSample
-                                  ? "Example of the app's weighted audio-quality score. Values are illustrative, not measurements of your audio."
+                                  ? "Example quality score. These are not measurements of your audio."
                                   : _interpretation,
                               textAlign: TextAlign.center,
                               style: const TextStyle(
@@ -264,6 +253,11 @@ class _ResultsScreenState extends State<ResultsScreen> {
                             ),
                           ],
                         ),
+                      ),
+                      const SizedBox(height: 20),
+                      WhatThisMeansCard(
+                        features: widget.featureResults,
+                        isSample: widget.isSample,
                       ),
                       const SizedBox(height: 20),
                       if (widget.featureResults.isNotEmpty ||
@@ -540,4 +534,4 @@ class _ResultsScreenState extends State<ResultsScreen> {
   }
 }
 
-// ── Metric bar ────────────────────────────────────────────────────────────────
+// â”€â”€ Metric bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

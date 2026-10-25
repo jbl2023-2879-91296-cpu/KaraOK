@@ -56,6 +56,14 @@ void main() {
         ),
         findsOneWidget,
       );
+      await tester.scrollUntilVisible(
+        find.textContaining('reduce bass one small step'),
+        120,
+        scrollable: find.descendant(
+          of: find.byType(BottomSheet),
+          matching: find.byType(Scrollable),
+        ),
+      );
       expect(find.textContaining('reduce bass one small step'), findsOneWidget);
     },
   );
@@ -81,6 +89,14 @@ void main() {
         'Low for this reference range: the recording may have quieter overall.',
       ),
       findsOneWidget,
+    );
+    await tester.scrollUntilVisible(
+      find.textContaining('Check the recording distance first.'),
+      120,
+      scrollable: find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.byType(Scrollable),
+      ),
     );
     expect(
       find.textContaining('Check the recording distance first.'),

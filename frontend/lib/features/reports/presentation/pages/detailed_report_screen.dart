@@ -1,3 +1,5 @@
+import 'package:karaok_app/features/reports/domain/measurement_glossary.dart';
+import 'package:karaok_app/features/reports/presentation/widgets/what_this_means_card.dart';
 import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'dart:convert';
@@ -221,10 +223,18 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
                         letterSpacing: 2,
                       ),
                     ),
+                    const SizedBox(height: 10),
+                    Text(
+                      reportInterpretation(
+                        widget.score,
+                        widget.empiricalStatus,
+                      ),
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 12),
+              WhatThisMeansCard(features: widget.featureResults),
             ],
           ),
         ),
