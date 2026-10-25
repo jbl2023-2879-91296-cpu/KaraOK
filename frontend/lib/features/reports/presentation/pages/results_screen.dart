@@ -21,6 +21,7 @@ class ResultsScreen extends StatefulWidget {
     this.testName = 'Audio test',
     this.score,
     this.noiseLevelDb,
+    this.noiseReliable,
     this.distortionLevel,
     this.empiricalStatus,
     this.referenceRecordingCount,
@@ -46,6 +47,7 @@ class ResultsScreen extends StatefulWidget {
           reportNumber(empirical['overall_score']) ??
           reportNumber(record['score']),
       noiseLevelDb: reportNumber(record['noise_level']),
+      noiseReliable: reportBool(record['noise_reliable']),
       distortionLevel: reportNumber(record['distortion_level']),
       empiricalStatus: empirical['overall_status']?.toString(),
       referenceRecordingCount: reportReferenceCount(
@@ -72,6 +74,7 @@ class ResultsScreen extends StatefulWidget {
   final String testName;
   final num? score;
   final num? noiseLevelDb;
+  final bool? noiseReliable;
   final num? distortionLevel;
   final String? empiricalStatus;
   final int? referenceRecordingCount;
@@ -281,6 +284,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         const SizedBox(height: 20),
                       ReportMeasurements(
                         noiseLevelDb: widget.noiseLevelDb,
+                        noiseReliable: widget.noiseReliable,
                         distortionLevel: widget.distortionLevel,
                       ),
                       const SizedBox(height: 20),
@@ -361,6 +365,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                                     referenceRecordingCount:
                                         widget.referenceRecordingCount,
                                     noiseLevelDb: widget.noiseLevelDb,
+                                    noiseReliable: widget.noiseReliable,
                                     distortionLevel: widget.distortionLevel,
                                     assessmentId: widget.assessmentId,
                                     visualizationImages:

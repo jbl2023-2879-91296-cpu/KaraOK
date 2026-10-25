@@ -4,6 +4,9 @@ num? reportNumber(Object? value) {
   return number != null && number.isFinite ? number : null;
 }
 
+/// Only an explicit JSON boolean can establish measurement reliability.
+bool? reportBool(Object? value) => value is bool ? value : null;
+
 Map<String, dynamic> reportMap(Object? value) =>
     value is Map ? Map<String, dynamic>.from(value) : const {};
 

@@ -9,10 +9,12 @@ class ReportMeasurements extends StatelessWidget {
   const ReportMeasurements({
     super.key,
     this.noiseLevelDb,
+    this.noiseReliable,
     this.distortionLevel,
   });
 
   final num? noiseLevelDb;
+  final bool? noiseReliable;
   final num? distortionLevel;
 
   @override
@@ -27,7 +29,11 @@ class ReportMeasurements extends StatelessWidget {
           value: noise == null
               ? 'Not measured'
               : '${noise.toStringAsFixed(2)} dBFS',
-          band: noise == null ? null : noiseBand(noise),
+          band: noise != null && noiseReliable == true
+              ? noiseBand(noise)
+              : null,
+          fallback: noiseReliable == true ? null : noiseUncertain,
+          mutedValue: noiseReliable != true,
           explanation: '$noiseCaution\n$noiseImplication',
         ),
         const SizedBox(height: 10),
@@ -54,6 +60,8 @@ class _Measurement extends StatelessWidget {
     required this.explanation,
     required this.guideLabel,
     this.band,
+    this.fallback,
+    this.mutedValue = false,
   });
 
   final String label;
@@ -61,6 +69,8 @@ class _Measurement extends StatelessWidget {
   final String explanation;
   final String guideLabel;
   final String? band;
+  final String? fallback;
+  final bool mutedValue;
 
   @override
   Widget build(BuildContext context) => Material(
@@ -72,7 +82,8 @@ class _Measurement extends StatelessWidget {
         context,
         label: guideLabel,
         value: value,
-        meaning: '${band ?? 'No estimate is available.'}\n\n$explanation',
+        meaning:
+            '${band ?? fallback ?? 'No estimate is available.'}\n\n$explanation',
       ),
       child: Container(
         width: double.infinity,
@@ -102,14 +113,18 @@ class _Measurement extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               value,
-              style: const TextStyle(
-                color: AppColors.ink,
-                fontWeight: FontWeight.w600,
+              style: TextStyle(
+                color: mutedValue ? AppColors.muted : AppColors.ink,
+                fontWeight: mutedValue ? FontWeight.normal : FontWeight.w600,
               ),
             ),
             const SizedBox(height: 6),
             if (band != null) ...[
               Text(band!, style: const TextStyle(color: AppColors.ink)),
+              const SizedBox(height: 6),
+            ],
+            if (fallback != null) ...[
+              Text(fallback!, style: const TextStyle(color: AppColors.muted)),
               const SizedBox(height: 6),
             ],
             Text(

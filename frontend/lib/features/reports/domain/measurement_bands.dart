@@ -16,3 +16,6 @@ const noiseImplication =
 
 const noiseCaution =
     'More negative numbers mean quieter sound. Music in the quiet parts can raise this estimate, so listen for noise before changing your setup.';
+
+const noiseUncertain =
+    'Not enough quiet moments to judge background noise. To check, record a few seconds of silence before the song starts.';

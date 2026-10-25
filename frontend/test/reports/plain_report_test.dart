@@ -8,6 +8,7 @@ import 'package:karaok_app/features/reports/presentation/pages/detailed_report_s
 import 'package:karaok_app/features/reports/presentation/widgets/what_this_means_card.dart';
 import 'package:karaok_app/features/reports/presentation/widgets/empirical_feature_table.dart';
 import 'package:karaok_app/features/reports/presentation/widgets/measurement_guide.dart';
+import 'package:karaok_app/features/reports/presentation/widgets/report_measurements.dart';
 
 Map<String, dynamic> features({bool high = false}) => {
   for (final key in measurementLabels.keys)
@@ -33,6 +34,141 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
     UserSession.instance.clear();
   });
+  for (final sample in [
+    (
+      name: 'reliable quiet',
+      value: -65,
+      reliable: true,
+      band: 'Quiet background',
+    ),
+    (
+      name: 'reliable noisy',
+      value: -10,
+      reliable: true,
+      band: 'Noisy background — you may hear hiss, hum or room noise',
+    ),
+    (name: 'unreliable', value: -10, reliable: false, band: null),
+    (name: 'legacy unknown', value: -10, reliable: null, band: null),
+  ]) {
+    for (final guest in [false, true]) {
+      testWidgets(
+        '${sample.name} survives results and detail navigation guest=$guest',
+        (tester) async {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: ResultsScreen.fromRecord({
+                'noise_level': sample.value,
+                if (sample.reliable != null) 'noise_reliable': sample.reliable,
+                'score': 80,
+              }, isGuest: guest),
+            ),
+          );
+          void checkNoise() {
+            final measurements = find.byType(ReportMeasurements).last;
+            final scope = find.descendant(
+              of: measurements,
+              matching: find.byType(Text),
+            );
+            if (sample.band != null) {
+              expect(
+                find.descendant(
+                  of: measurements,
+                  matching: find.text(sample.band!),
+                ),
+                findsOneWidget,
+              );
+              expect(
+                find.descendant(
+                  of: measurements,
+                  matching: find.textContaining('Not enough quiet moments'),
+                ),
+                findsNothing,
+              );
+            } else {
+              expect(
+                find.descendant(
+                  of: measurements,
+                  matching: find.textContaining(
+                    'Not enough quiet moments to judge background noise.',
+                  ),
+                ),
+                findsOneWidget,
+              );
+              expect(
+                find.descendant(
+                  of: measurements,
+                  matching: find.textContaining('Noisy background'),
+                ),
+                findsNothing,
+              );
+            }
+            expect(scope, findsWidgets);
+            expect(
+              tester.widget<ReportMeasurements>(measurements).noiseReliable,
+              sample.reliable,
+            );
+          }
+
+          checkNoise();
+          await tester.ensureVisible(find.text('View Visual Report'));
+          await tester.tap(find.text('View Visual Report'));
+          await tester.pumpAndSettle();
+          expect(find.byType(DetailedReportScreen), findsOneWidget);
+          checkNoise();
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+  for (final invalid in ['true', 'false', 1, 0, {}, []]) {
+    testWidgets('malformed reliability $invalid stays unknown', (tester) async {
+      final screen = ResultsScreen.fromRecord({
+        'noise_level': -10,
+        'noise_reliable': invalid,
+      });
+      expect(screen.noiseReliable, isNull);
+      await tester.pumpWidget(MaterialApp(home: screen));
+      expect(
+        find.textContaining(
+          'Not enough quiet moments to judge background noise.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Noisy background'), findsNothing);
+    });
+  }
+  testWidgets(
+    'summary never treats noise as a problem from an uncertain recording',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: WhatThisMeansCard(
+              features: {
+                ...features(),
+                'flatness': {'value': 3, 'target_lower': 0, 'target_upper': 2},
+                'noise': {
+                  'value': -10,
+                  'target_lower': -60,
+                  'target_upper': -45,
+                  'reliable': false,
+                },
+              },
+            ),
+          ),
+        ),
+      );
+      expect(find.textContaining('Noisy background'), findsNothing);
+      expect(find.textContaining('hiss or room noise'), findsNothing);
+      expect(find.textContaining('Noise:'), findsNothing);
+      expect(
+        find.text(
+          'Flatness: more noise-like sound than usual — compare the same song section again.',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
   for (final entry in {
     'good': 85,
     'good_but_needs_improvement': 65,

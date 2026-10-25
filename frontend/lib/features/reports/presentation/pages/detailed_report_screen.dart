@@ -18,6 +18,7 @@ class DetailedReportScreen extends StatefulWidget {
     this.testName = 'Audio test',
     this.score,
     this.noiseLevelDb,
+    this.noiseReliable,
     this.distortionLevel,
     this.assessmentId,
     this.empiricalStatus,
@@ -29,6 +30,7 @@ class DetailedReportScreen extends StatefulWidget {
   final String testName;
   final num? score;
   final num? noiseLevelDb;
+  final bool? noiseReliable;
   final num? distortionLevel;
   final int? assessmentId;
   final String? empiricalStatus;
@@ -168,6 +170,7 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
               const SizedBox(height: 20),
               ReportMeasurements(
                 noiseLevelDb: widget.noiseLevelDb,
+                noiseReliable: widget.noiseReliable,
                 distortionLevel: widget.distortionLevel,
               ),
               const SizedBox(height: 20),

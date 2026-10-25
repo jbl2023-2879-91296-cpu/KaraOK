@@ -57,8 +57,8 @@ const measurementGlossary = [
   GlossaryEntry(
     'Noise level',
     'An estimate of background sound in the recording.',
-    'Hiss, hum and room noise can cover quiet parts. Quiet music can raise this estimate, so listen for noise before changing your setup. Background noise does not change the quality score.',
-    'At or below -60 dBFS: quiet background. Above -60 through -45 dBFS: some background noise. Above -45 dBFS: noisy background; you may hear hiss, hum or room noise.',
+    'We only judge background noise when there are enough quiet moments; otherwise, record a few seconds of silence before the song starts. Background noise does not change the quality score.',
+    'When the estimate is reliable: at or below -60 dBFS is quiet background; above -60 through -45 dBFS is some background noise; above -45 dBFS is noisy background. Without enough quiet moments, the number alone cannot tell you whether the background is noisy.',
   ),
   GlossaryEntry(
     'Distortion risk',
@@ -144,7 +144,7 @@ String measurementMeaning(String label, String direction) {
           : 'less brightness or edge than usual — high notes may sound dull.',
     'Flatness' =>
       high
-          ? 'more noise-like sound than usual — listen for hiss or room noise.'
+          ? 'more noise-like sound than usual — compare the same song section again.'
           : 'more note-like sound than usual — clear sustained notes can cause this.',
     _ => 'Compare the reading with the range shown.',
   };

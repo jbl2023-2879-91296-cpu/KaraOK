@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:karaok_app/app/app_theme.dart';
 import 'package:karaok_app/features/reports/domain/measurement_bands.dart';
 import 'package:karaok_app/features/reports/presentation/widgets/report_measurements.dart';
 
@@ -16,7 +17,10 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: SingleChildScrollView(
-              child: ReportMeasurements(noiseLevelDb: entry.key),
+              child: ReportMeasurements(
+                noiseLevelDb: entry.key,
+                noiseReliable: true,
+              ),
             ),
           ),
         ),
@@ -25,6 +29,55 @@ void main() {
       expect(find.textContaining(noiseImplication), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+  }
+  for (final reliability in <bool?>[false, null]) {
+    for (final value in [-65, -10]) {
+      testWidgets('noise $value has no verdict when reliability is $reliability', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: ReportMeasurements(
+                  noiseLevelDb: value,
+                  noiseReliable: reliability,
+                ),
+              ),
+            ),
+          ),
+        );
+        expect(find.text('Quiet background'), findsNothing);
+        expect(find.text('Some background noise'), findsNothing);
+        expect(find.textContaining('Noisy background'), findsNothing);
+        expect(
+          find.text(
+            'Not enough quiet moments to judge background noise. To check, record a few seconds of silence before the song starts.',
+          ),
+          findsOneWidget,
+        );
+        final number = tester.widget<Text>(
+          find.text('${value.toStringAsFixed(2)} dBFS'),
+        );
+        expect(number.style?.color, AppColors.muted);
+        expect(number.style?.fontWeight, FontWeight.normal);
+        await tester.tap(find.text('Estimated noise level'));
+        await tester.pumpAndSettle();
+        expect(find.byType(BottomSheet), findsOneWidget);
+        expect(
+          find.textContaining(
+            'We only judge background noise when there are enough quiet moments',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining(
+            'Not enough quiet moments to judge background noise.',
+          ),
+          findsWidgets,
+        );
+      });
+    }
   }
   for (final entry in <double, String>{
     0: 'Low risk',
