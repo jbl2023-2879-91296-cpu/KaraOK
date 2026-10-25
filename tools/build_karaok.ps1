@@ -32,6 +32,7 @@ param(
     [Parameter()] [switch]$Clean,
     [Parameter()] [switch]$SkipPubGet,
     [Parameter()] [switch]$SkipChecks,
+    [Parameter()] [switch]$AllowDirty,
     [Parameter()] [switch]$Obfuscate,
     [Parameter()] [switch]$SplitPerAbi,
     [Parameter()] [switch]$OpenOutputDirectory,
@@ -144,6 +145,35 @@ function Test-KaraOkDarkTheme {
         }
     }
     return $false
+}
+
+function Get-KaraOkGitState {
+    param([Parameter(Mandatory)] [string]$Directory)
+
+    $commit = & git -C $Directory rev-parse --verify HEAD 2>$null
+    if ($LASTEXITCODE -ne 0) { throw 'BUILD PROVENANCE: Cannot determine the Git commit.' }
+    # Include the whole repository and untracked files, even when called from frontend.
+    $status = @(& git -C $Directory status --porcelain --untracked-files=all 2>$null)
+    if ($LASTEXITCODE -ne 0) { throw 'BUILD PROVENANCE: Cannot determine whether the working tree is dirty.' }
+    return [pscustomobject]@{
+        GitCommit = "$commit".Trim()
+        GitDirty = [bool]($status.Count -gt 0)
+    }
+}
+
+function Assert-KaraOkBuildGitState {
+    param(
+        [Parameter(Mandatory)] $State,
+        [Parameter(Mandatory)] [ValidateSet('debug', 'profile', 'release')] [string]$Mode,
+        [switch]$AllowDirty
+    )
+
+    if ($State.GitDirty) {
+        if ($Mode -eq 'release' -and -not $AllowDirty) {
+            throw 'BUILD PROVENANCE: Release build refused because the working tree is dirty (including untracked files). Commit or resolve the changes, or pass -AllowDirty to build with gitDirty: true.'
+        }
+        Write-Warning 'BUILD PROVENANCE: The working tree is dirty (including untracked files). The manifest will record gitDirty: true.'
+    }
 }
 
 function Read-DefaultValue {
@@ -534,6 +564,11 @@ try {
     $Format = $options.Format
     $Mode = $options.Mode
 
+    $gitState = Get-KaraOkGitState -Directory $ProjectDirectory
+    Assert-KaraOkBuildGitState -State $gitState -Mode $Mode -AllowDirty:$AllowDirty
+    $gitCommit = $gitState.GitCommit
+    $gitDirty = $gitState.GitDirty
+
     . (Join-Path $PSScriptRoot 'lib/build-api-config.ps1')
     $apiConfiguration = Resolve-KaraOkBuildApi -Mode $Mode -ExplicitUrl $ApiBaseUrl `
         -EnvironmentUrl $env:KARAOK_API_BASE_URL -AdditionalDefines $DartDefine
@@ -622,6 +657,11 @@ try {
     }
     [Environment]::SetEnvironmentVariable('KARAOK_APPLICATION_NAME', $ApplicationName, 'Process')
     [Environment]::SetEnvironmentVariable('KARAOK_APPLICATION_ID', $ApplicationId, 'Process')
+    # Refresh after package restore and checks, which may change tracked files.
+    $gitState = Get-KaraOkGitState -Directory $ProjectDirectory
+    Assert-KaraOkBuildGitState -State $gitState -Mode $Mode -AllowDirty:$AllowDirty
+    $gitCommit = $gitState.GitCommit
+    $gitDirty = $gitState.GitDirty
     Invoke-FlutterStep -Title "Building $ApplicationName Android artifact..." -Arguments $arguments
 
     if ($Format -eq 'aab') {
@@ -689,6 +729,7 @@ try {
         projectDirectory = $ProjectDirectory
         gitBranch = $gitBranch
         gitCommit = $gitCommit
+        gitDirty = [bool]$gitDirty
         mainFrontendDirectory = $mainFrontendDirectory
         applicationName = $ApplicationName
         applicationId = $applicationId
