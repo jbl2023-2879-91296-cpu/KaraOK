@@ -12,7 +12,7 @@ def main():
     destination = ROOT / "artifacts" / "uat-noise-samples.csv"
     destination.parent.mkdir(exist_ok=True)
     with destination.open("w", newline="", encoding="utf-8") as output:
-        fields = ["set", "file", "noise_dbfs", "separation_db", "distortion", "warning", "error"]
+        fields = ["set", "file", "noise_dbfs", "separation_db", "reliable", "distortion", "warning", "error"]
         writer = csv.DictWriter(output, fieldnames=fields)
         writer.writeheader()
         for group in ("good", "bad"):
@@ -25,6 +25,7 @@ def main():
                     noise = result["noise"]
                     row.update(noise_dbfs=noise["noise_dbfs"],
                                separation_db=noise["signal_to_quiet_frame_separation_db"],
+                               reliable=noise["reliable"],
                                distortion=result["distortion"]["estimated_score"],
                                warning=noise["reliability_warning"])
                 except Exception as error:
