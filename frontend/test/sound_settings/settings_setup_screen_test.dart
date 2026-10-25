@@ -27,7 +27,7 @@ void main() {
   tearDown(UserSession.instance.clear);
 
   _tallTestWidgets(
-    'volume slider saves compatible volume and neutral optional controls',
+    'numeric volume saves its independent default scale and neutral optional controls',
     (tester) async {
       SettingsSuggestionInput? submitted;
       await tester.pumpWidget(
@@ -52,9 +52,81 @@ void main() {
       await tester.ensureVisible(find.byKey(const Key('settings-continue')));
       await tester.tap(find.byKey(const Key('settings-continue')));
       await tester.pumpAndSettle();
-      expect(submitted?.current.volumeAttenuation, isTrue);
+      expect(submitted?.current.volumeAttenuation, isFalse);
       expect(submitted?.current.volume, 60);
-      expect(guestStore.saved?.lastPositions?.volumeAttenuation, isTrue);
+      expect(guestStore.saved?.lastPositions?.volumeAttenuation, isFalse);
+      expect(
+        submitted?.current.volumeScale,
+        const AmplifierScale(minimum: 0, maximum: 100, step: 1),
+      );
+      expect(
+        guestStore.saved?.lastPositions?.volumeScale,
+        submitted?.current.volumeScale,
+      );
+    },
+  );
+
+  _tallTestWidgets(
+    'custom dB Volume scale stays independent of tone controls',
+    (tester) async {
+      SettingsSuggestionInput? submitted;
+      await tester.pumpWidget(
+        _testApp(
+          SettingsSetupScreen(
+            settingsApi: settingsApi,
+            guestStore: guestStore,
+            onContinue: (value) => submitted = value,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _selectScale(tester, 'Custom');
+      for (final entry in {
+        'scale-minimum': '-10',
+        'scale-maximum': '10',
+        'scale-step': '0.5',
+        'volume-minimum': '-80',
+        'volume-maximum': '0',
+        'volume-step': '1',
+      }.entries) {
+        final field = find.byKey(Key(entry.key));
+        await tester.ensureVisible(field);
+        await tester.enterText(field, entry.value);
+        await tester.pump();
+      }
+      await tester.ensureVisible(find.text('Plain numbers'));
+      await tester.tap(find.text('Plain numbers'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('dB').last);
+      await tester.pumpAndSettle();
+      await _selectGenre(tester, 'Rock');
+      await _enterPositions(tester, const {
+        'volume': '-35',
+        'bass': '-4.5',
+        'treble': '2.5',
+      });
+      await tester.ensureVisible(find.byKey(const Key('settings-continue')));
+      await tester.tap(find.byKey(const Key('settings-continue')));
+      await tester.pumpAndSettle();
+      expect(submitted, isNotNull);
+      expect(
+        submitted!.amplifierScale,
+        const AmplifierScale(minimum: -10, maximum: 10, step: 0.5),
+      );
+      expect(
+        submitted!.current.volumeScale,
+        const AmplifierScale(minimum: -80, maximum: 0, step: 1, unit: 'dB'),
+      );
+      expect(submitted!.current.volume, -35);
+      expect(submitted!.current.volumeAttenuation, isFalse);
+      expect(submitted!.current.bass, -4.5);
+      expect(submitted!.current.treble, 2.5);
+      expect(guestStore.saved!.lastPositions!.toJson()['volume_scale'], {
+        'minimum': -80.0,
+        'maximum': 0.0,
+        'step': 1.0,
+        'unit': 'dB',
+      });
     },
   );
 
@@ -101,6 +173,18 @@ void main() {
   _tallTestWidgets(
     'volume runs from mute to maximum and blocks muted recordings',
     (tester) async {
+      guestStore.stored = const AmplifierProfile(
+        name: 'Legacy amplifier',
+        scale: AmplifierScale(minimum: 0, maximum: 10, step: 0.5),
+        lastPositions: KnobSettings(
+          volume: 60,
+          bass: 4,
+          treble: 6,
+          sharpness: 0,
+          flatness: 0,
+          volumeAttenuation: true,
+        ),
+      );
       SettingsSuggestionInput? submitted;
       await tester.pumpWidget(
         _testApp(
@@ -128,6 +212,9 @@ void main() {
       await tester.tap(find.byKey(const Key('settings-continue')));
       await tester.pumpAndSettle();
       expect(submitted!.current.volume, 10);
+      expect(submitted!.current.volumeAttenuation, isTrue);
+      expect(submitted!.current.volumeScale, isNull);
+      expect(guestStore.saved?.lastPositions?.volumeAttenuation, isTrue);
     },
   );
 
@@ -677,7 +764,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(_knobText(tester, 'volume'), isEmpty);
+      expect(_knobText(tester, 'volume'), '8');
       expect(_knobText(tester, 'bass'), '3');
       expect(_knobText(tester, 'flatness'), '2');
       expect(
@@ -826,7 +913,9 @@ Widget _testApp(Widget home) => MaterialApp(home: home);
 
 void _tallTestWidgets(String description, WidgetTesterCallback callback) {
   testWidgets(description, (tester) async {
+    tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(800, 1800);
+    addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.view.resetPhysicalSize);
     await callback(tester);
   });
@@ -856,7 +945,8 @@ Future<void> _enterPositions(
   Map<String, String> values,
 ) async {
   for (final entry in values.entries) {
-    if (entry.key == 'volume') {
+    if (entry.key == 'volume' &&
+        find.byKey(const Key('knob-volume')).evaluate().isEmpty) {
       final volume = find.byKey(const Key('knob-volume-slider'));
       await tester.ensureVisible(volume);
       tester.widget<Slider>(volume).onChanged!(110 - double.parse(entry.value));
@@ -871,7 +961,8 @@ Future<void> _enterPositions(
 }
 
 String _knobText(WidgetTester tester, String name) {
-  if (name == 'volume') {
+  if (name == 'volume' &&
+      find.byKey(const Key('knob-volume')).evaluate().isEmpty) {
     final label = tester
         .widget<Text>(find.byKey(const Key('volume-level-label')))
         .data!;

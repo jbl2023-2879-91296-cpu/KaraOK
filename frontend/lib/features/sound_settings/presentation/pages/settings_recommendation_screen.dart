@@ -81,6 +81,7 @@ class _SettingsRecommendationScreenState
     if (values.values.any((value) => value == null)) return null;
     return KnobSettings(
       volumeAttenuation: _recommendation.current.volumeAttenuation,
+      volumeScale: _recommendation.current.volumeScale,
       volume: values['volume']!,
       bass: values['bass']!,
       treble: values['treble']!,
@@ -584,7 +585,7 @@ int _decimalPlaces(double step) {
 }
 
 String _physical(double value, AmplifierScale scale) =>
-    value.toStringAsFixed(_decimalPlaces(scale.step));
+    '${value.toStringAsFixed(_decimalPlaces(scale.step))}${scale.unit.isEmpty ? '' : ' ${scale.unit}'}';
 
 String _signed(double value, int digits) {
   final prefix = value > 0 ? '+' : '';

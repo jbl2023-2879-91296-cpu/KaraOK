@@ -95,10 +95,11 @@ def _knob_settings(
     scale: AmplifierScale,
     field: str,
 ) -> KnobSettings:
-    if set(value) - {"volume_attenuation"} != set(KNOB_NAMES):
+    if set(value) - {"volume_attenuation", "volume_scale"} != set(KNOB_NAMES):
         raise ValueError(f"{field} must contain exactly all five knob values")
     settings = KnobSettings(**{name: _strict_number(value[name], f"{field}.{name}") for name in KNOB_NAMES},
-                            volume_attenuation=value.get("volume_attenuation", False))
+                            volume_attenuation=value.get("volume_attenuation", False),
+                            volume_scale=value.get("volume_scale"))
     for name, position in settings.items():
         control_scale = settings.control_scale(name, scale)
         control_scale.validate(position)
@@ -139,6 +140,13 @@ def _same_positions(
     right: KnobSettings,
     scale: AmplifierScale,
 ) -> bool:
+    if (left.volume_scale is None) != (right.volume_scale is None):
+        return False
+    if left.volume_scale is not None and right.volume_scale is not None:
+        if left.volume_scale["unit"] != right.volume_scale["unit"]:
+            return False
+        if not _same_scale(left.control_scale("volume", scale), right.control_scale("volume", scale)):
+            return False
     return left.volume_attenuation == right.volume_attenuation and all(
         _quantized_step_index(getattr(left, name), left.control_scale(name, scale))
         == _quantized_step_index(getattr(right, name), right.control_scale(name, scale))

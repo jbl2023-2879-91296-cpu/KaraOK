@@ -1,6 +1,7 @@
 import json
 import math
 import unittest
+from pathlib import Path
 from types import MappingProxyType
 
 from audio_thresholds.genre_profiles import (
@@ -77,6 +78,140 @@ def request(
 
 
 class SettingsRecommendationEngineTests(unittest.TestCase):
+    def test_volume_endpoint_recommendations_remain_on_step_and_reparse(self):
+        for minimum, maximum, step, current, loudness, expected in (
+            (0, 1, 0.3, 0.9, 0, 0.9),
+            (-1, 0, 0.3, -0.1, 0, -0.1),
+            (0.1, 1.1, 0.3, 1.0, 0, 1.0),
+            (0, 1, 0.12, 0.84, 0, 0.96),
+            (0, 1, 0.1, 0.9, 0, 1.0),
+            (0, 1, 0.1, 0.1, 80, 0.0),
+        ):
+            with self.subTest(minimum=minimum, maximum=maximum, step=step, current=current):
+                result = generate_recommendation(request(
+                    current=KnobSettings(current, 50, 50, 50, 50, volume_scale={
+                        "minimum": minimum, "maximum": maximum, "step": step, "unit": ""}),
+                    measurements=dict(loudness=loudness, bass=40, treble=40, sharpness=40, flatness=40)),
+                    profile())
+                adjustment = result.adjustments["volume"]
+                self.assertAlmostEqual(adjustment.recommended, expected)
+                self.assertLessEqual(abs(adjustment.delta_normalized), 15)
+                self.assertGreaterEqual(adjustment.recommended, minimum)
+                self.assertLessEqual(adjustment.recommended, maximum)
+                # The public output must be usable as the next recording snapshot.
+                snapshot = KnobSettings(**result.to_dict()["recommended"])
+                self.assertEqual(snapshot.volume, adjustment.recommended)
+
+    def test_independent_db_volume_uses_own_range_step_and_delta_cap(self):
+        genre_profile = load_genre_profiles().genres["rock"]
+        for verification, expected in ((False, -52), (True, -56)):
+            for safety in (SafetySignals(), SafetySignals(clipping=True),
+                           SafetySignals(excessive_distortion=True)):
+                measurements = {k: t.preferred for k, t in genre_profile.metrics.items()}
+                measurements["loudness"] = genre_profile.metrics["loudness"].lower - 100
+                result = generate_recommendation(request(
+                    scale=AmplifierScale(-10, 10, 0.5),
+                    current=KnobSettings(-60, 0, 0, 0, 0, volume_scale={
+                        "minimum": -80, "maximum": 0, "step": 1, "unit": "dB"}),
+                    measurements=measurements, verification=verification, safety=safety), genre_profile)
+                adjustment = result.adjustments["volume"]
+                blocked = safety.clipping or safety.excessive_distortion
+                self.assertEqual(adjustment.recommended, -60 if blocked else expected)
+                self.assertEqual(adjustment.delta_normalized, 0 if blocked else (5 if verification else 10))
+                self.assertEqual(result.adjustments["bass"].delta, 0)
+                self.assertEqual(result.to_dict()["recommended"]["volume_scale"]["unit"], "dB")
+
+    def technician_recordings(self):
+        path = Path(__file__).resolve().parents[1] / "audio_thresholds" / "genre_audio_profiles.json"
+        return json.loads(path.read_text(encoding="utf-8"))["sources"]["recordings"]
+
+    def test_independent_volume_cuts_round_on_own_step_and_stop_at_boundary(self):
+        genre_profile = load_genre_profiles().genres["pop"]
+        measurements = {k: t.preferred for k, t in genre_profile.metrics.items()}
+        measurements["loudness"] = genre_profile.metrics["loudness"].upper + 100
+        for current, expected, delta in ((-60, -68, -10), (-79, -80, -1.25)):
+            result = generate_recommendation(request(
+                scale=AmplifierScale(-10, 10, 0.5),
+                current=KnobSettings(current, 0, 0, 0, 0, volume_scale={
+                    "minimum": -80, "maximum": 0, "step": 1, "unit": "dB"}),
+                measurements=measurements), genre_profile)
+            self.assertEqual(result.adjustments["volume"].recommended, expected)
+            self.assertEqual(result.adjustments["volume"].delta_normalized, delta)
+
+    def test_recorded_samples_produce_stronger_genre_specific_tone_corrections(self):
+        artifact = load_genre_profiles()
+        recordings = {row["recording_id"]: row for row in self.technician_recordings()}
+        expected = {
+            "pop-01": {"pop": (3, 2), "r&b": (0, 1), "rock": (3, 0)},
+            "pop-10": {"pop": (-2, 0), "r&b": (-3, 0), "rock": (0, 0)},
+            "pop-11": {"pop": (0, -2), "r&b": (-2, -3), "rock": (3, -3)},
+        }
+        for recording_id, genres in expected.items():
+            for genre, deltas in genres.items():
+                with self.subTest(recording=recording_id, genre=genre):
+                    result = generate_recommendation(
+                        request(scale=AmplifierScale(-10, 10, 1),
+                                current=KnobSettings(0, 0, 0, 0, 0),
+                                measurements=recordings[recording_id]["measurements"]),
+                        artifact.genres[genre],
+                    )
+                    self.assertEqual(tuple(result.adjustments[k].delta for k in ("bass", "treble")), deltas)
+
+    def test_recorded_corpus_preserves_tone_dead_zone_direction_and_caps(self):
+        artifact = load_genre_profiles()
+        for row in self.technician_recordings():
+            for genre_profile in artifact.genres.values():
+                for scale in (AmplifierScale(-10, 10, 1), AmplifierScale(0, 100, 0.5),
+                              AmplifierScale(0, 10, 2)):
+                    for verification in (False, True):
+                        current = scale.minimum + (scale.maximum - scale.minimum) / 2
+                        for position in (scale.minimum, current, scale.maximum):
+                            with self.subTest(recording=row["recording_id"], genre=genre_profile.key,
+                                              scale=scale, verification=verification, position=position):
+                                result = generate_recommendation(
+                                    request(scale=scale, current=KnobSettings(position, position, position, 0, 0),
+                                            measurements=row["measurements"], verification=verification),
+                                    genre_profile,
+                                )
+                                for knob in ("bass", "treble"):
+                                    adjustment = result.adjustments[knob]
+                                    target = genre_profile.metrics[knob]
+                                    measured = row["measurements"][knob]
+                                    self.assertLessEqual(abs(adjustment.delta_normalized), 7.5 if verification else 15)
+                                    self.assertLessEqual(scale.minimum, adjustment.recommended)
+                                    self.assertGreaterEqual(scale.maximum, adjustment.recommended)
+                                    if target.lower <= measured <= target.upper:
+                                        self.assertEqual(adjustment.delta, 0)
+                                    else:
+                                        self.assertGreaterEqual(adjustment.delta * (target.preferred - measured), 0)
+
+    def test_stronger_tones_still_block_unsafe_boosts_and_allow_cuts(self):
+        genre_profile = load_genre_profiles().genres["rock"]
+        for safety in (SafetySignals(clipping=True), SafetySignals(excessive_distortion=True)):
+            for above in (False, True):
+                measurements = {k: t.preferred for k, t in genre_profile.metrics.items()}
+                for knob in ("bass", "treble"):
+                    target = genre_profile.metrics[knob]
+                    measurements[knob] = target.upper + target.robust_scale if above else target.lower - target.robust_scale
+                result = generate_recommendation(
+                    request(scale=AmplifierScale(-10, 10, 1), current=KnobSettings(0, 0, 0, 0, 0),
+                            measurements=measurements, safety=safety), genre_profile)
+                for knob in ("bass", "treble"):
+                    self.assertEqual(result.adjustments[knob].delta, -3 if above else 0)
+                    if not above:
+                        self.assertEqual(result.adjustments[knob].reason_code, "tone_increase_blocked_by_distortion")
+
+    def test_technician_tone_caps_expand_without_expanding_volume(self):
+        genre_profile = load_genre_profiles().genres["rock"]
+        measurements = {k: t.lower - 10 * t.robust_scale for k, t in genre_profile.metrics.items()}
+        for verification, tone_delta, volume_delta in ((False, 3, 2), (True, 1.5, 1)):
+            result = generate_recommendation(
+                request(scale=AmplifierScale(-10, 10, 0.5), current=KnobSettings(0, 0, 0, 0, 0),
+                        measurements=measurements, verification=verification), genre_profile)
+            self.assertEqual(result.adjustments["volume"].delta, volume_delta)
+            for knob in ("bass", "treble"):
+                self.assertEqual(result.adjustments[knob].delta, tone_delta)
+
     def test_scale_validates_values_and_rounds_to_supported_increment(self):
         scale = AmplifierScale(0.0, 10.0, 0.5)
         self.assertEqual(scale.normalize(5.5), 55.0)

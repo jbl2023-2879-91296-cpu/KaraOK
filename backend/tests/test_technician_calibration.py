@@ -25,7 +25,7 @@ class TechnicianCalibrationTests(unittest.TestCase):
 
     def test_high_bass_decreases_and_other_controls_remain_unchanged(self):
         result = self.recommend(80)
-        self.assertEqual(result.adjustments['bass'].recommended, 2)
+        self.assertEqual(result.adjustments['bass'].recommended, 1)
         self.assertEqual(result.adjustments['bass'].reason_code, 'above_genre_range')
         self.assertGreater(result.adjustments['volume'].delta, 0)
         for knob in ('treble', 'sharpness', 'flatness'):
@@ -46,7 +46,7 @@ class TechnicianCalibrationTests(unittest.TestCase):
             self.assertEqual(result.adjustments[knob].reason_code, 'tone_increase_blocked_by_distortion')
 
     def test_verification_cap_and_hardware_boundaries(self):
-        self.assertEqual(self.recommend(80, verification=True).adjustments['bass'].recommended, 3)
+        self.assertEqual(self.recommend(80, verification=True).adjustments['bass'].recommended, 2.5)
         self.assertEqual(self.recommend(0, current=10).adjustments['bass'].recommended, 10)
         self.assertEqual(self.recommend(80, current=-10).adjustments['bass'].recommended, -10)
 

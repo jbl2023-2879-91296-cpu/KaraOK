@@ -250,6 +250,13 @@ class SettingsRecommendation {
     final rawRecommended = Map<String, dynamic>.from(
       _object(json['recommended'], 'recommended'),
     );
+    final volumeScale = rawRecommended.remove('volume_scale');
+    if ((volumeScale == null) != (current.volumeScale == null) ||
+        (volumeScale != null &&
+            AmplifierScale.fromJson(_object(volumeScale, 'volume_scale')) !=
+                current.volumeScale)) {
+      throw const FormatException('Volume scale must match current settings.');
+    }
     final attenuation = rawRecommended.remove('volume_attenuation') ?? false;
     if (attenuation != current.volumeAttenuation) {
       throw const FormatException('Volume scales do not match.');
@@ -425,6 +432,11 @@ class SettingsRecommendation {
     'recommended': {
       ...recommended,
       if (current.volumeAttenuation) 'volume_attenuation': true,
+      if (current.volumeScale != null)
+        'volume_scale': {
+          ...current.volumeScale!.toJson(),
+          'unit': current.volumeScale!.unit,
+        },
     },
     'adjustments': {
       for (final entry in adjustments.entries) entry.key: entry.value.toJson(),

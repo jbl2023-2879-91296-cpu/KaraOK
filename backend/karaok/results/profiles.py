@@ -58,7 +58,7 @@ def _positions(
 ) -> dict[str, float] | None:
     if value is None:
         return None
-    if not isinstance(value, Mapping) or set(value) - {"volume_attenuation"} != set(KNOB_NAMES):
+    if not isinstance(value, Mapping) or set(value) - {"volume_attenuation", "volume_scale"} != set(KNOB_NAMES):
         raise ValueError("last_positions must contain exactly all five knob values")
     from karaok.core.recommendation_contracts import _knob_settings
     from karaok.core.recommendation_models import AmplifierScale

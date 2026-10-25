@@ -90,20 +90,54 @@ class KnobSettings:
     sharpness: float
     flatness: float
     volume_attenuation: bool = False
+    volume_scale: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.volume_attenuation, bool):
             raise ValueError("volume_attenuation must be boolean")
+        if self.volume_scale is not None:
+            value = self.volume_scale
+            if not isinstance(value, Mapping) or set(value) != {
+                "minimum", "maximum", "step", "unit"
+            }:
+                raise ValueError("volume_scale must contain exactly minimum, maximum, step, and unit")
+            if value["unit"] not in ("dB", ""):
+                raise ValueError("volume_scale.unit must be 'dB' or empty")
+            scale = AmplifierScale(value["minimum"], value["maximum"], value["step"])
+            if scale.step > scale.maximum - scale.minimum:
+                raise ValueError("volume_scale.step must not exceed the scale range")
+            object.__setattr__(self, "volume_scale", MappingProxyType({
+                **scale.to_dict(), "unit": value["unit"]
+            }))
+            # Explicit scales increase toward louder volume, even with a stale
+            # legacy flag carried over from an attenuation profile.
+            object.__setattr__(self, "volume_attenuation", False)
         for name in KNOB_NAMES:
             object.__setattr__(self, name, _finite_number(getattr(self, name), name))
+        if self.volume_scale is not None:
+            volume_scale = self.control_scale("volume", AmplifierScale(0, 100, 1))
+            volume_scale.validate(self.volume)
+            steps = (self.volume - volume_scale.minimum) / volume_scale.step
+            if not math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-6):
+                raise ValueError("Volume must use the configured step")
+
 
     def items(self) -> tuple[tuple[str, float], ...]:
         return tuple((name, getattr(self, name)) for name in KNOB_NAMES)
 
     def to_dict(self) -> dict[str, Any]:
-        return {**dict(self.items()), **({"volume_attenuation": True} if self.volume_attenuation else {})}
+        payload = dict(self.items())
+        if self.volume_attenuation:
+            payload["volume_attenuation"] = True
+        if self.volume_scale is not None:
+            payload["volume_scale"] = dict(self.volume_scale)
+        return payload
 
     def control_scale(self, name: str, scale: AmplifierScale) -> AmplifierScale:
+        if name == "volume" and self.volume_scale is not None:
+            return AmplifierScale(**{
+                key: self.volume_scale[key] for key in ("minimum", "maximum", "step")
+            })
         # 110 is the serialized mute detent, displayed as infinity; never dB.
         if name == "volume" and self.volume_attenuation:
             return AmplifierScale(10, 110, 10)
@@ -279,6 +313,8 @@ class SettingsRecommendation:
         }
         if self.message is not None:
             payload["message"] = self.message.strip()
+        if self.current.volume_scale is not None:
+            payload["recommended"]["volume_scale"] = dict(self.current.volume_scale)
         if self.current.volume_attenuation:
             payload["recommended"]["volume_attenuation"] = True
         return payload

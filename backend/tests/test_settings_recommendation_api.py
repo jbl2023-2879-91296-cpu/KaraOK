@@ -221,6 +221,215 @@ class SettingsRecommendationApiTests(unittest.TestCase):
             )
         return response, connection, cursor
 
+    def explicit_positions(self, *, unit="dB", volume=-22.5):
+        return dict(applied_positions(), volume=volume, volume_scale={
+            "minimum": -60, "maximum": 0, "step": 0.5, "unit": unit,
+        })
+
+    def guest_scale_form(self, positions):
+        return {
+            "analysis_purpose": "settings_suggestion", "genre": "rock",
+            "amplifier_scale": json.dumps({"minimum": 0, "maximum": 10, "step": 0.5}),
+            "current_settings": json.dumps(positions),
+        }
+
+    def test_explicit_volume_scale_profile_create_roundtrip_uses_json_storage(self):
+        for unit in ("dB", ""):
+            with self.subTest(unit=unit):
+                positions = self.explicit_positions(unit=unit)
+                response, connection, cursor = self.request_with_database(
+                    "POST", "/api/amplifier-profiles",
+                    fetchone=[profile_row(last_positions=json.dumps(positions))],
+                    lastrowid=12,
+                    json_body=dict(name="Amp", scale_min=0, scale_max=10,
+                                   scale_step=0.5, last_positions=positions),
+                )
+                self.assertEqual(response.status_code, 201, response.get_json())
+                self.assertEqual(response.get_json()["last_positions"], positions)
+                insert = next(call for call in cursor.execute.call_args_list
+                              if "INSERT INTO amplifier_profile" in call.args[0])
+                self.assertEqual(json.loads(insert.args[1][-1]), positions)
+                connection.commit.assert_called_once()
+                fetched, _, _ = self.request_with_database(
+                    "GET", "/api/amplifier-profiles/12",
+                    fetchone=[profile_row(last_positions=insert.args[1][-1])],
+                )
+                self.assertEqual(fetched.get_json()["last_positions"], positions)
+
+    def test_authenticated_current_and_stored_recommendation_preserve_volume_scale(self):
+        positions = self.explicit_positions()
+        connection = MagicMock()
+        connection.cursor.return_value.fetchone.return_value = profile_row(
+            last_positions=json.dumps(positions),
+        )
+        with patch.object(api, "get_db", return_value=connection):
+            context = recommendation_service.parse_suggestion_form(
+                dict(analysis_purpose="settings_suggestion", genre="rock",
+                     amplifier_profile_id="12", current_settings=json.dumps(positions)),
+                guest=False, user_id=7,
+            )
+        self.assertEqual(context.current.to_dict(), positions)
+        response, _, _ = self.request_with_database(
+            "GET", "/api/settings-recommendations/41",
+            fetchone=[recommendation_row(current_positions=json.dumps(positions),
+                                         recommended_positions=json.dumps(positions))],
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["current"], positions)
+        self.assertEqual(response.get_json()["recommended"], positions)
+
+    def test_explicit_volume_scale_rejects_invalid_metadata_and_out_of_bounds(self):
+        valid = self.explicit_positions()
+        invalid_scales = [
+            {}, [], "dB", dict(valid["volume_scale"], unit="db"),
+            dict(valid["volume_scale"], step=0),
+            dict(valid["volume_scale"], step=-1),
+            dict(valid["volume_scale"], step=61),
+            dict(valid["volume_scale"], step=True),
+            dict(valid["volume_scale"], minimum=0),
+            dict(valid["volume_scale"], maximum="0"),
+            dict(valid["volume_scale"], minimum=float("nan")),
+            dict(valid["volume_scale"], maximum=float("inf")),
+            dict(valid["volume_scale"], unexpected=True),
+            {k: v for k, v in valid["volume_scale"].items() if k != "unit"},
+        ]
+        invalid_positions = [dict(valid, volume_scale=value) for value in invalid_scales]
+        invalid_positions += [dict(valid, volume=value) for value in (-60.5, 0.5, True)]
+        for positions in invalid_positions:
+            with self.subTest(positions=positions):
+                with self.assertRaises(ValueError):
+                    recommendation_service.parse_suggestion_form(
+                        self.guest_scale_form(positions), guest=True, user_id=None,
+                    )
+                response, connection, _ = self.request_with_database(
+                    "POST", "/api/amplifier-profiles",
+                    json_body=dict(name="Amp", scale_min=0, scale_max=10,
+                                   scale_step=0.5, last_positions=positions),
+                )
+                self.assertEqual(response.status_code, 400, response.get_json())
+                connection.commit.assert_not_called()
+
+    def test_explicit_volume_scale_rejects_off_step_current_and_profile_positions(self):
+        for unit in ("dB", ""):
+            for volume in (-59.75, -22.25, -0.25):
+                with self.subTest(unit=unit, volume=volume):
+                    positions = self.explicit_positions(unit=unit, volume=volume)
+                    with self.assertRaisesRegex(ValueError, "configured step"):
+                        KnobSettings(**positions)
+                    with self.assertRaisesRegex(ValueError, "configured step"):
+                        recommendation_service.parse_suggestion_form(
+                            self.guest_scale_form(positions), guest=True, user_id=None,
+                        )
+                    response, connection, _ = self.request_with_database(
+                        "POST", "/api/amplifier-profiles",
+                        json_body=dict(name="Amp", scale_min=0, scale_max=10,
+                                       scale_step=0.5, last_positions=positions),
+                    )
+                    self.assertEqual(response.status_code, 400, response.get_json())
+                    self.assertIn("configured step", response.get_json()["error"])
+                    connection.commit.assert_not_called()
+
+    def test_large_volume_range_rejects_half_step_without_relative_tolerance(self):
+        for unit in ("dB", ""):
+            with self.subTest(unit=unit):
+                positions = dict(self.explicit_positions(volume=999999.9995), volume_scale={
+                    "minimum": 0, "maximum": 1000000, "step": 0.001, "unit": unit,
+                })
+                with self.assertRaisesRegex(ValueError, "configured step"):
+                    KnobSettings(**positions)
+                with self.assertRaisesRegex(ValueError, "configured step"):
+                    recommendation_service.parse_suggestion_form(
+                        self.guest_scale_form(positions), guest=True, user_id=None,
+                    )
+                response, connection, _ = self.request_with_database(
+                    "POST", "/api/amplifier-profiles",
+                    json_body=dict(name="Amp", scale_min=0, scale_max=10,
+                                   scale_step=0.5, last_positions=positions),
+                )
+                self.assertEqual(response.status_code, 400, response.get_json())
+                self.assertIn("configured step", response.get_json()["error"])
+                connection.commit.assert_not_called()
+                aligned = dict(positions, volume=999999.999)
+                self.assertEqual(KnobSettings(**aligned).volume, aligned["volume"])
+
+    def test_explicit_volume_step_accepts_decimal_roundoff_relative_to_minimum(self):
+        positions = dict(self.explicit_positions(volume=0.1 + 0.2), volume_scale={
+            "minimum": -0.3, "maximum": 0.7, "step": 0.1, "unit": "",
+        })
+        context = recommendation_service.parse_suggestion_form(
+            self.guest_scale_form(positions), guest=True, user_id=None,
+        )
+        self.assertAlmostEqual(context.current.volume, 0.3)
+        self.assertEqual(context.current.to_dict()["volume_scale"], positions["volume_scale"])
+
+    def test_explicit_volume_scale_current_and_recommended_snapshots_roundtrip(self):
+        artifact = recommendation_service.load_genre_profiles()
+        summary = {name: metric.preferred
+                   for name, metric in artifact.genres["rock"].metrics.items()}
+        for unit in ("dB", ""):
+            for volume in (-60, -22.5, 0):
+                with self.subTest(unit=unit, volume=volume):
+                    positions = self.explicit_positions(unit=unit, volume=volume)
+                    context = recommendation_service.parse_suggestion_form(
+                        self.guest_scale_form(positions), guest=True, user_id=None,
+                    )
+                    recommendation = recommendation_service.build_recommendation(
+                        summary, context, verification=False,
+                    )
+                    payload = recommendation.to_dict()
+                    self.assertEqual(payload["current"], positions)
+                    self.assertEqual(payload["recommended"]["volume_scale"], positions["volume_scale"])
+                    recommended_volume = payload["recommended"]["volume"]
+                    self.assertGreaterEqual(recommended_volume, -60)
+                    self.assertLessEqual(recommended_volume, 0)
+                    self.assertAlmostEqual((recommended_volume + 60) / 0.5,
+                                           round((recommended_volume + 60) / 0.5))
+                    snapshot = recommendation_service.parse_suggestion_form(
+                        self.guest_scale_form(payload["recommended"]), guest=True, user_id=None,
+                    )
+                    self.assertEqual(snapshot.current.to_dict(), payload["recommended"])
+
+    def test_explicit_volume_scale_guest_token_preserves_and_binds_metadata(self):
+        positions = self.explicit_positions(volume=0)
+        context = recommendation_service.parse_suggestion_form(
+            self.guest_scale_form(positions), guest=True, user_id=None,
+        )
+        artifact = recommendation_service.load_genre_profiles()
+        summary = {name: metric.preferred
+                   for name, metric in artifact.genres["rock"].metrics.items()}
+        recommendation = recommendation_service.build_recommendation(summary, context, verification=False)
+        token = recommendation_service.issue_guest_verification_token(
+            recommendation, context.scale, before_score=80,
+        )
+        recommended = recommendation.to_dict()["recommended"]
+        form = dict(self.guest_scale_form(recommended), verification_token=token)
+        verified = recommendation_service.parse_suggestion_form(form, guest=True, user_id=None)
+        self.assertEqual(verified.current.to_dict(), recommended)
+        for change in ({"unit": ""}, {"minimum": -70}, {"maximum": 1}, {"step": 1}):
+            changed = dict(recommended, volume_scale=dict(recommended["volume_scale"], **change))
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, "match"):
+                recommendation_service.parse_suggestion_form(
+                    dict(form, current_settings=json.dumps(changed)), guest=True, user_id=None,
+                )
+
+    def test_legacy_volume_attenuation_is_preserved_and_explicit_scale_overrides_it(self):
+        legacy = dict(applied_positions(), volume=110, volume_attenuation=True)
+        context = recommendation_service.parse_suggestion_form(
+            self.guest_scale_form(legacy), guest=True, user_id=None,
+        )
+        self.assertEqual(context.current.to_dict(), legacy)
+        self.assertEqual(context.current.control_scale("volume", context.scale), AmplifierScale(10, 110, 10))
+        with self.assertRaisesRegex(ValueError, "detent"):
+            recommendation_service.parse_suggestion_form(
+                self.guest_scale_form(dict(legacy, volume=105)), guest=True, user_id=None,
+            )
+        explicit = dict(self.explicit_positions(), volume_attenuation=True)
+        context = recommendation_service.parse_suggestion_form(
+            self.guest_scale_form(explicit), guest=True, user_id=None,
+        )
+        self.assertFalse(context.current.volume_attenuation)
+        self.assertEqual(context.current.to_dict(), self.explicit_positions())
+
     def test_profile_routes_require_user_auth(self):
         with patch.object(api, "audit"), patch.object(
             api, "SETTINGS_RECOMMENDATIONS_ENABLED", True, create=True

@@ -76,7 +76,33 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
 
   bool _loading = true;
   bool _submitting = false;
-  final bool _volumeAttenuation = true;
+  bool _volumeAttenuation = false;
+  bool _separateVolumeScale = true;
+  final _volumeMinController = TextEditingController(text: '0');
+  final _volumeMaxController = TextEditingController(text: '100');
+  final _volumeStepController = TextEditingController(text: '1');
+  String _volumeUnit = '';
+
+  AmplifierScale? get _volumeScale {
+    if (!_separateVolumeScale) return null;
+    final min = double.tryParse(_volumeMinController.text);
+    final max = double.tryParse(_volumeMaxController.text);
+    final step = double.tryParse(_volumeStepController.text);
+    if (min == null || max == null || step == null) return null;
+    final scale = AmplifierScale(
+      minimum: min,
+      maximum: max,
+      step: step,
+      unit: _volumeUnit,
+    );
+    try {
+      scale.validate();
+      return scale;
+    } on FormatException {
+      return null;
+    }
+  }
+
   bool _featureDisabled = false;
   String? _loadError;
   String? _profilesLoadError;
@@ -111,6 +137,9 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     _maximumController.dispose();
     _stepController.dispose();
     _nameController.dispose();
+    _volumeMinController.dispose();
+    _volumeMaxController.dispose();
+    _volumeStepController.dispose();
     super.dispose();
   }
 
@@ -179,14 +208,24 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     _minimumController.text = _formatNumber(profile.scale.minimum);
     _maximumController.text = _formatNumber(profile.scale.maximum);
     _stepController.text = _formatNumber(profile.scale.step);
+    final savedVolume = profile.lastPositions?.volumeScale;
+    _separateVolumeScale = savedVolume != null;
+    _volumeAttenuation =
+        savedVolume == null &&
+        (profile.lastPositions?.volumeAttenuation ?? false);
+    if (savedVolume != null) {
+      _volumeMinController.text = _formatNumber(savedVolume.minimum);
+      _volumeMaxController.text = _formatNumber(savedVolume.maximum);
+      _volumeStepController.text = _formatNumber(savedVolume.step);
+      _volumeUnit = savedVolume.unit;
+    }
     final positions = profile.lastPositions?.toJson();
     if (positions != null) {
       for (final entry in positions.entries) {
-        if (entry.key == 'volume_attenuation') continue;
-        _positionControllers[entry.key]!.text =
-            entry.key == 'volume' && !profile.lastPositions!.volumeAttenuation
-            ? ''
-            : _formatNumber(entry.value);
+        if (!amplifierKnobNames.contains(entry.key)) continue;
+        _positionControllers[entry.key]!.text = _formatNumber(
+          (entry.value as num).toDouble(),
+        );
       }
     } else {
       // A saved profile without positions must not inherit values from
@@ -210,6 +249,8 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     if (id == _newProfileSelection) {
       setState(() {
         _selectedProfile = null;
+        _separateVolumeScale = true;
+        _volumeAttenuation = false;
         _nameController.text = _nextProfileName();
         _nameError = null;
         _scale = _zeroToTen;
@@ -261,7 +302,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
           (entry) =>
               entry.key != 'sharpness' &&
               entry.key != 'flatness' &&
-              !(entry.key == 'volume' && _volumeAttenuation) &&
+              entry.key != 'volume' &&
               entry.value.text.trim().isNotEmpty,
         )) {
       final selected = await showDialog<_ScaleChangeChoice>(
@@ -303,7 +344,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
         for (final entry in _positionControllers.entries) {
           if (entry.key == 'sharpness' ||
               entry.key == 'flatness' ||
-              (entry.key == 'volume' && _volumeAttenuation)) {
+              entry.key == 'volume') {
             continue;
           }
           final controller = entry.value;
@@ -347,6 +388,11 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
   }
 
   KnobSettings? _readPositions(AmplifierScale scale) {
+    if (_separateVolumeScale && _volumeScale == null) {
+      _positionError =
+          'Enter a valid Volume minimum, maximum and positive step.';
+      return null;
+    }
     final values = <String, double>{};
     if (_positionControllers.values.any(
       (controller) => controller.text.trim().isEmpty,
@@ -362,13 +408,13 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
           value < controlScale.minimum ||
           value > controlScale.maximum) {
         _positionError =
-            'Use positions between ${_formatNumber(scale.minimum)} and ${_formatNumber(scale.maximum)}.';
+            'Use positions between ${_formatNumber(controlScale.minimum)} and ${_formatNumber(controlScale.maximum)}.';
         return null;
       }
       final steps = (value - controlScale.minimum) / controlScale.step;
       if ((steps - steps.round()).abs() > 1e-7) {
         _positionError =
-            'Use increments of ${_formatNumber(scale.step)} for every position.';
+            'Use increments of ${_formatNumber(controlScale.step)} for ${_knobLabels[entry.key]}.';
         return null;
       }
       values[entry.key] = value;
@@ -380,6 +426,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
     }
     return KnobSettings(
       volumeAttenuation: _volumeAttenuation,
+      volumeScale: _volumeScale,
       volume: values['volume']!,
       bass: values['bass']!,
       treble: values['treble']!,
@@ -494,6 +541,68 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    _sectionTitle('Volume scale'),
+                    const Text(
+                      'Use the numbers printed beside your Volume knob. Higher numbers must mean louder sound.',
+                    ),
+                    SwitchListTile(
+                      title: const Text('Use a separate Volume scale'),
+                      subtitle: const Text(
+                        'Existing profiles keep their saved scale until you change it.',
+                      ),
+                      value: _separateVolumeScale,
+                      onChanged: _submitting
+                          ? null
+                          : (value) => setState(() {
+                              _separateVolumeScale = value;
+                              if (value) {
+                                _volumeAttenuation = false;
+                                _positionControllers['volume']!.clear();
+                              }
+                            }),
+                    ),
+                    if (_separateVolumeScale) ...[
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          for (final entry in {
+                            'Minimum': _volumeMinController,
+                            'Maximum': _volumeMaxController,
+                            'Step': _volumeStepController,
+                          }.entries)
+                            SizedBox(
+                              width: 130,
+                              child: _signedNumberField(
+                                key: Key('volume-${entry.key.toLowerCase()}'),
+                                controller: entry.value,
+                                label: entry.key,
+                                onChanged: (_) =>
+                                    setState(() => _positionError = null),
+                              ),
+                            ),
+                        ],
+                      ),
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        initialValue: _volumeUnit,
+                        decoration: const InputDecoration(
+                          labelText: 'Volume unit',
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: '',
+                            child: Text('Plain numbers'),
+                          ),
+                          DropdownMenuItem(value: 'dB', child: Text('dB')),
+                        ],
+                        onChanged: _submitting
+                            ? null
+                            : (value) =>
+                                  setState(() => _volumeUnit = value ?? ''),
+                      ),
+                      const SizedBox(height: 24),
+                    ],
                     if (_featureDisabled)
                       const _Notice(
                         icon: Icons.block,
@@ -717,7 +826,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
   Widget _knobControl(String name) {
     final scale = _controlScale(name, _effectiveScaleOrNull() ?? _scale);
     final controller = _positionControllers[name]!;
-    if (name == 'volume' && _volumeAttenuation) {
+    if (name == 'volume' && _volumeAttenuation && !_separateVolumeScale) {
       // Keep the saved attenuation representation compatible with existing
       // profiles and API recommendations; the UI increases from mute to 100.
       final stored = double.tryParse(controller.text);
@@ -800,7 +909,9 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                 child: _signedNumberField(
                   key: Key('knob-$name'),
                   controller: controller,
-                  label: 'Position',
+                  label: name == 'volume' && _volumeUnit.isNotEmpty
+                      ? _volumeUnit
+                      : 'Position',
                   onChanged: (_) => setState(() {
                     _positionError = null;
                   }),
@@ -885,6 +996,7 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
         sharpness: 0,
         flatness: 0,
         volumeAttenuation: _volumeAttenuation,
+        volumeScale: _volumeScale,
       ).controlScale(name, scale);
 }
 

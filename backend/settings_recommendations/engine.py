@@ -183,6 +183,7 @@ def _confidence(
 def _bounded_physical_target(
     *,
     request: RecommendationRequest,
+    knob: str,
     current: float,
     current_normalized: float,
     target_normalized: float,
@@ -200,7 +201,7 @@ def _bounded_physical_target(
         allowed_low = max(0.0, current_normalized - cap)
         allowed_high = current_normalized
 
-    scale = request.scale
+    scale = request.current.control_scale(knob, request.scale)
     span = scale.maximum - scale.minimum
     physical_low = scale.minimum + allowed_low * span / 100.0
     physical_high = scale.minimum + allowed_high * span / 100.0
@@ -220,7 +221,13 @@ def _bounded_physical_target(
                 round(scale.minimum + step_index * scale.step, 12)
             )
     for boundary in (scale.minimum, scale.maximum):
-        if physical_low - 1e-12 <= boundary <= physical_high + 1e-12:
+        # A range endpoint is not necessarily a supported knob increment.
+        # Keep legacy ranges valid without proposing an off-step snapshot.
+        boundary_step = (boundary - scale.minimum) / scale.step
+        if (
+            math.isclose(boundary_step, round(boundary_step), abs_tol=1e-7)
+            and physical_low - 1e-12 <= boundary <= physical_high + 1e-12
+        ):
             candidates.add(boundary)
 
     valid_candidates = []
@@ -246,6 +253,7 @@ def _adjustment(
     profile: GenreProfile,
 ) -> KnobAdjustment:
     current = getattr(request.current, knob)
+    scale = request.current.control_scale(knob, request.scale)
     if knob in ("sharpness", "flatness") and profile.knob_preferences is not None:
         optional_scale = request.current.control_scale(knob, request.scale)
         return KnobAdjustment(current=current, recommended=0.0, delta=-current,
@@ -275,8 +283,19 @@ def _adjustment(
     raw_delta = MONOTONIC_DIRECTION[knob] * SENSITIVITY_NORMALIZED * normalized_error
     if profile.knob_preferences is not None:
         cap = 5.0 if request.verification else 10.0
+        if knob in ("bass", "treble"):
+            cap = VERIFICATION_DELTA_CAP if request.verification else INITIAL_DELTA_CAP
+            if distance != 0:
+                # Keep the acceptable interval as a dead zone. Outside it, aim
+                # toward the genre median without assuming a calibrated response.
+                normalized_error = _clamp(
+                    (target.preferred - measurement) / target.robust_scale,
+                    -1.0,
+                    1.0,
+                )
         if distance != 0:
-            raw_delta = math.copysign(min(abs(normalized_error) * 10.0, cap), distance)
+            sensitivity = SENSITIVITY_NORMALIZED if knob in ("bass", "treble") else 10.0
+            raw_delta = math.copysign(min(abs(normalized_error) * sensitivity, cap), distance)
             # Absolute technician positions only transfer to the documented scale.
             # The measured error always determines direction, even outside the prior.
             if knob in ("bass", "treble") and request.scale.minimum == -10 and request.scale.maximum == 10:
@@ -287,13 +306,13 @@ def _adjustment(
                         min(cap, .75 * abs(raw_delta) + .25 * abs(prior_delta)), raw_delta
                     )
             # A supported step makes a small out-of-range correction actionable.
-            step_normalized = request.scale.step * 100 / (request.scale.maximum - request.scale.minimum)
+            step_normalized = scale.step * 100 / (scale.maximum - scale.minimum)
             if step_normalized <= cap:
                 raw_delta = math.copysign(max(abs(raw_delta), step_normalized), raw_delta)
     bounded_delta = _clamp(raw_delta, -cap, cap)
 
     current = getattr(request.current, knob)
-    current_normalized = request.scale.normalize(current)
+    current_normalized = scale.normalize(current)
     target_normalized = _clamp(current_normalized + bounded_delta, 0.0, 100.0)
 
     if profile.knob_preferences is not None and knob in ("bass", "treble") and bounded_delta > 0:
@@ -311,13 +330,14 @@ def _adjustment(
 
     recommended = _bounded_physical_target(
         request=request,
+        knob=knob,
         current=current,
         current_normalized=current_normalized,
         target_normalized=target_normalized,
         cap=cap,
     )
     actual_delta_normalized = round(
-        request.scale.normalize(recommended) - current_normalized,
+        scale.normalize(recommended) - current_normalized,
         12,
     )
     physical_delta = round(recommended - current, 12)

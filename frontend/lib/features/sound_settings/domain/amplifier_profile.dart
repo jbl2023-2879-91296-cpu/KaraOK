@@ -37,6 +37,7 @@ class AmplifierScale {
     required this.minimum,
     required this.maximum,
     required this.step,
+    this.unit = '',
   });
 
   factory AmplifierScale.fromJson(Map<String, dynamic> json) {
@@ -44,6 +45,7 @@ class AmplifierScale {
       'minimum',
       'maximum',
       'step',
+      'unit',
     }).isNotEmpty) {
       throw const FormatException('Amplifier scale has unsupported fields.');
     }
@@ -51,6 +53,7 @@ class AmplifierScale {
       minimum: _finiteNumber(json['minimum'], 'minimum'),
       maximum: _finiteNumber(json['maximum'], 'maximum'),
       step: _finiteNumber(json['step'], 'step'),
+      unit: json['unit'] as String? ?? '',
     );
     scale.validate();
     return scale;
@@ -59,8 +62,12 @@ class AmplifierScale {
   final double minimum;
   final double maximum;
   final double step;
+  final String unit;
 
   void validate() {
+    if (unit != '' && unit != 'dB') {
+      throw const FormatException('Use dB or plain numbers for the unit.');
+    }
     if (!minimum.isFinite || !maximum.isFinite || !step.isFinite) {
       throw const FormatException('Amplifier scale values must be finite.');
     }
@@ -106,6 +113,7 @@ class AmplifierScale {
     'minimum': minimum,
     'maximum': maximum,
     'step': step,
+    if (unit.isNotEmpty) 'unit': unit,
   };
 
   @override
@@ -114,10 +122,11 @@ class AmplifierScale {
       other is AmplifierScale &&
           minimum == other.minimum &&
           maximum == other.maximum &&
-          step == other.step;
+          step == other.step &&
+          unit == other.unit;
 
   @override
-  int get hashCode => Object.hash(minimum, maximum, step);
+  int get hashCode => Object.hash(minimum, maximum, step, unit);
 }
 
 /// A complete snapshot of the five physical amplifier controls.
@@ -129,6 +138,7 @@ class KnobSettings {
     required this.sharpness,
     required this.flatness,
     this.volumeAttenuation = false,
+    this.volumeScale,
   });
 
   factory KnobSettings.fromJson(
@@ -136,7 +146,9 @@ class KnobSettings {
     AmplifierScale? scale,
   }) {
     if (!_hasExactKeys(
-      json.keys.where((key) => key != 'volume_attenuation'),
+      json.keys.where(
+        (key) => key != 'volume_attenuation' && key != 'volume_scale',
+      ),
       amplifierKnobNames,
     )) {
       throw const FormatException(
@@ -144,7 +156,13 @@ class KnobSettings {
       );
     }
     final settings = KnobSettings(
-      volumeAttenuation: json['volume_attenuation'] == true,
+      volumeAttenuation:
+          json['volume_scale'] == null && json['volume_attenuation'] == true,
+      volumeScale: json['volume_scale'] == null
+          ? null
+          : AmplifierScale.fromJson(
+              _stringMap(json['volume_scale'], 'volume_scale'),
+            ),
       volume: _finiteNumber(json['volume'], 'volume'),
       bass: _finiteNumber(json['bass'], 'bass'),
       treble: _finiteNumber(json['treble'], 'treble'),
@@ -165,8 +183,10 @@ class KnobSettings {
   final double sharpness;
   final double flatness;
   final bool volumeAttenuation;
+  final AmplifierScale? volumeScale;
 
   AmplifierScale controlScale(String name, AmplifierScale scale) {
+    if (name == 'volume' && volumeScale != null) return volumeScale!;
     if (name == 'volume' && volumeAttenuation) {
       return const AmplifierScale(minimum: 10, maximum: 110, step: 10);
     }
@@ -186,19 +206,34 @@ class KnobSettings {
     'treble': treble,
     'sharpness': sharpness,
     'flatness': flatness,
-    if (volumeAttenuation) 'volume_attenuation': true,
+    if (volumeAttenuation && volumeScale == null) 'volume_attenuation': true,
+    if (volumeScale != null)
+      'volume_scale': {...volumeScale!.toJson(), 'unit': volumeScale!.unit},
   };
 
   void validate({AmplifierScale? scale}) {
+    volumeScale?.validate();
+    if (volumeScale case final explicit?) {
+      explicit.validatePosition(volume, 'volume');
+      final steps = (volume - explicit.minimum) / explicit.step;
+      if ((steps - steps.round()).abs() > 1e-7) {
+        throw const FormatException('Volume must use the configured step.');
+      }
+    }
     for (final entry in toJson().entries) {
-      if (entry.key == 'volume_attenuation') continue;
+      if (entry.key == 'volume_attenuation' || entry.key == 'volume_scale') {
+        continue;
+      }
       if (!entry.value.isFinite) {
         throw FormatException('${entry.key} must be a finite number.');
       }
       if (scale != null) {
         controlScale(entry.key, scale).validatePosition(entry.value, entry.key);
       }
-      if (entry.key == 'volume' && volumeAttenuation && entry.value % 10 != 0) {
+      if (entry.key == 'volume' &&
+          volumeScale == null &&
+          volumeAttenuation &&
+          entry.value % 10 != 0) {
         throw const FormatException('Choose a marked Volume position.');
       }
     }
@@ -213,11 +248,19 @@ class KnobSettings {
           treble == other.treble &&
           sharpness == other.sharpness &&
           flatness == other.flatness &&
-          volumeAttenuation == other.volumeAttenuation;
+          volumeAttenuation == other.volumeAttenuation &&
+          volumeScale == other.volumeScale;
 
   @override
-  int get hashCode =>
-      Object.hash(volume, bass, treble, sharpness, flatness, volumeAttenuation);
+  int get hashCode => Object.hash(
+    volume,
+    bass,
+    treble,
+    sharpness,
+    flatness,
+    volumeAttenuation,
+    volumeScale,
+  );
 }
 
 /// A named server-owned or device-local amplifier configuration.
@@ -263,6 +306,8 @@ class AmplifierProfile {
   final String name;
   final AmplifierScale scale;
   final KnobSettings? lastPositions;
+  AmplifierScale get volumeScale =>
+      lastPositions?.controlScale('volume', scale) ?? scale;
   final String? createdAt;
   final String? updatedAt;
 
