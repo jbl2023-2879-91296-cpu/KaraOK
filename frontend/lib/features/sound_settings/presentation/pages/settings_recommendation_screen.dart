@@ -53,6 +53,22 @@ class _SettingsRecommendationScreenState
   String? _applyError;
   bool _savingFeedback = false;
   String? _feedbackError;
+  String? _guestProfileName;
+
+  String get _profileLabel {
+    final name = (_recommendation.amplifierProfileName ?? _guestProfileName)
+        ?.trim();
+    return name == null || name.isEmpty ? 'your selected amplifier' : name;
+  }
+
+  Future<void> _loadGuestProfileName() async {
+    try {
+      final profile = await _guestStore.read();
+      if (mounted) setState(() => _guestProfileName = profile?.name);
+    } catch (_) {
+      // The note remains useful if local storage is unavailable.
+    }
+  }
 
   Future<void> _saveFeedback(String value) async {
     if (_savingFeedback || _applying) return;
@@ -98,6 +114,7 @@ class _SettingsRecommendationScreenState
     _applied =
         _recommendation.status == 'applied' ||
         _recommendation.appliedAt != null;
+    if (_isGuest) _loadGuestProfileName();
   }
 
   KnobSettings? get _recommendedSettings {
@@ -245,7 +262,7 @@ class _SettingsRecommendationScreenState
             AppSectionHeader(
               title: 'Your amplifier settings',
               subtitle:
-                  'These settings are a starting point for ${_recommendation.amplifierProfileName ?? _genreLabel(_recommendation.genre)}. Amplifiers differ, so adjust by ear and run a verification recording.',
+                  'These settings are a starting point for $_profileLabel. Amplifiers differ, so adjust by ear and run a verification recording.',
             ),
             if (_canOfferVerification)
               const Padding(

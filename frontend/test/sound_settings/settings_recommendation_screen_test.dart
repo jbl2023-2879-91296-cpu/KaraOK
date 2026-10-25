@@ -1,3 +1,5 @@
+import 'package:karaok_app/features/sound_settings/data/guest_amplifier_store.dart';
+import 'package:karaok_app/features/sound_settings/domain/amplifier_profile.dart';
 import 'package:karaok_app/features/sound_settings/data/settings_api.dart';
 import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import '../support/settle_with_storage.dart';
@@ -10,6 +12,66 @@ import 'package:karaok_app/features/sound_settings/domain/settings_recommendatio
 import 'package:karaok_app/features/sound_settings/presentation/pages/settings_recommendation_screen.dart';
 
 void main() {
+  _screenTest('missing amplifier name never presents genre as amplifier', (
+    tester,
+  ) async {
+    UserSession.instance.clear();
+    for (final name in [null, '', '  ']) {
+      final data = _sample().toJson()..['amplifier_profile_name'] = name;
+      await tester.pumpWidget(
+        _testApp(
+          SettingsRecommendationScreen(
+            key: UniqueKey(),
+            recommendation: SettingsRecommendation.fromJson(data),
+          ),
+        ),
+      );
+      expect(
+        find.textContaining(
+          'These settings are a starting point for your selected amplifier.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('starting point for Rock'), findsNothing);
+    }
+  });
+
+  _screenTest(
+    'guest note uses local amplifier name and handles missing storage',
+    (tester) async {
+      UserSession.instance.setGuest('user');
+      addTearDown(UserSession.instance.clear);
+      final sample = _sample();
+      for (final name in ['Living Room Amp', null]) {
+        await tester.pumpWidget(
+          _testApp(
+            SettingsRecommendationScreen(
+              key: UniqueKey(),
+              recommendation: sample,
+              guestStore: _NoteGuestStore(
+                name == null
+                    ? null
+                    : AmplifierProfile(
+                        name: name,
+                        scale: sample.scale,
+                        lastPositions: sample.current,
+                      ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        expect(
+          find.textContaining(
+            'These settings are a starting point for ${name ?? 'your selected amplifier'}.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('starting point for Rock'), findsNothing);
+      }
+    },
+  );
+
   for (final entry in const {
     'below_genre_range': 'more note-like',
     'above_genre_range': 'more noise-like',
@@ -457,4 +519,12 @@ class _FeedbackApi extends SettingsApi {
     });
     return saved;
   }
+}
+
+class _NoteGuestStore extends GuestAmplifierStore {
+  _NoteGuestStore(this.profile);
+  final AmplifierProfile? profile;
+
+  @override
+  Future<AmplifierProfile?> read() async => profile;
 }
