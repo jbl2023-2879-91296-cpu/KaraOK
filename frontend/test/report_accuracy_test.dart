@@ -64,7 +64,12 @@ void main() {
       });
       expect(find.text('-13.58 dBFS'), findsOneWidget);
       expect(find.text('11.74 / 100'), findsOneWidget);
-      expect(find.textContaining('An estimated distortion risk score from 0 to 100.'), findsOneWidget);
+      expect(
+        find.textContaining(
+          'An estimated distortion risk score from 0 to 100.',
+        ),
+        findsOneWidget,
+      );
       expect(find.textContaining('quiet section'), findsOneWidget);
       expect(find.byType(LinearProgressIndicator), findsNothing);
     },
@@ -193,7 +198,7 @@ void main() {
         },
       },
     });
-    expect(find.text('Empirical five-feature grading'), findsOneWidget);
+    expect(find.text('Your sound measurements'), findsOneWidget);
     expect(find.text('-10.74 LUFS'), findsOneWidget);
     expect(find.text('61.73 %'), findsOneWidget);
     expect(find.textContaining('30 analyzed'), findsOneWidget);

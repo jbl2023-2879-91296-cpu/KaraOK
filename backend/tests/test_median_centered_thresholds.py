@@ -99,3 +99,53 @@ class MedianCenteredThresholdTests(unittest.TestCase):
                 path.write_text(json.dumps(payload), encoding='utf-8')
                 with self.assertRaises(ValueError):
                     load_thresholds(path)
+
+    def test_evaluation_reports_good_target_bounds_and_inclusive_direction(self):
+        profile = load_thresholds()
+        centers = {name: metric['assessment_bounds']['center']
+                   for name, metric in profile['metrics'].items()}
+        for name, metric in profile['metrics'].items():
+            bounds = metric['assessment_bounds']
+            lower, upper = bounds['good_lower'], bounds['good_upper']
+            for value, direction in (
+                (math.nextafter(lower, -math.inf), 'below'),
+                (lower, 'within'), (centers[name], 'within'), (upper, 'within'),
+                (math.nextafter(upper, math.inf), 'above'),
+            ):
+                with self.subTest(name=name, value=value):
+                    result = evaluate_features(dict(centers, **{name: value}))['features'][name]
+                    self.assertEqual(result['target_lower'], lower)
+                    self.assertEqual(result['target_upper'], upper)
+                    self.assertEqual(result['direction'], direction)
+
+    def test_invalid_measurements_keep_target_bounds_with_unavailable_direction(self):
+        profile = load_thresholds()
+        centers = {name: metric['assessment_bounds']['center']
+                   for name, metric in profile['metrics'].items()}
+        for name in centers:
+            for invalid in (None, True, 'invalid', float('nan'), float('inf'), -float('inf')):
+                with self.subTest(name=name, invalid=invalid):
+                    result = evaluate_features(dict(centers, **{name: invalid}))
+                    feature = result['features'][name]
+                    self.assertIsNone(result['overall_score'])
+                    self.assertEqual(result['worst_features'], [name])
+                    self.assertEqual(feature['direction'], 'unavailable')
+                    self.assertIsNone(feature['value'])
+                    self.assertIsNone(feature['score'])
+                    self.assertEqual(feature['target_lower'], profile['metrics'][name]['assessment_bounds']['good_lower'])
+                    self.assertEqual(feature['target_upper'], profile['metrics'][name]['assessment_bounds']['good_upper'])
+        result = evaluate_features({})
+        self.assertTrue(all(feature['direction'] == 'unavailable' for feature in result['features'].values()))
+
+    def test_evaluation_rejects_malformed_threshold_objects(self):
+        profile = load_thresholds()
+        invalid_profiles = [{}, dict(profile, metrics=None), dict(profile, overall={})]
+        missing_metric = copy.deepcopy(profile)
+        del missing_metric['metrics']['bass']
+        invalid_profiles.append(missing_metric)
+        invalid_bounds = copy.deepcopy(profile)
+        invalid_bounds['metrics']['bass']['assessment_bounds']['good_lower'] = float('inf')
+        invalid_profiles.append(invalid_bounds)
+        for artifact in invalid_profiles:
+            with self.subTest(artifact=artifact), self.assertRaises(ValueError):
+                evaluate_features({}, artifact)

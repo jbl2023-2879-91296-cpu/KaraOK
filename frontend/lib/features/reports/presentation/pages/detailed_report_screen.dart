@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -38,8 +39,8 @@ class DetailedReportScreen extends StatefulWidget {
 
 class _DetailedReportScreenState extends State<DetailedReportScreen> {
   final AssessmentApi _api = AssessmentApi();
-  late final Future<Uint8List> _waveformImage;
-  late final Future<Uint8List> _spectrogramImage;
+  late Future<Uint8List> _waveformImage;
+  late Future<Uint8List> _spectrogramImage;
 
   @override
   void initState() {
@@ -116,11 +117,16 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
                 width: double.infinity,
                 decoration: BoxDecoration(
                   color: AppColors.mint,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(AppRadii.card),
                   border: Border.all(color: AppColors.outline, width: 1),
                 ),
                 clipBehavior: Clip.antiAlias,
-                child: _VisualizationImage(image: _waveformImage),
+                child: _VisualizationImage(
+                  image: _waveformImage,
+                  onRetry: () => setState(
+                    () => _waveformImage = _loadVisualization('waveform'),
+                  ),
+                ),
               ),
               const SizedBox(height: 20),
               // Spectrogram Analysis
@@ -137,12 +143,17 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
                 height: 220,
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(AppRadii.card),
                   color: AppColors.mint,
                   border: Border.all(color: AppColors.outline, width: 1),
                 ),
                 clipBehavior: Clip.antiAlias,
-                child: _VisualizationImage(image: _spectrogramImage),
+                child: _VisualizationImage(
+                  image: _spectrogramImage,
+                  onRetry: () => setState(
+                    () => _spectrogramImage = _loadVisualization('spectrogram'),
+                  ),
+                ),
               ),
               const SizedBox(height: 20),
               ReportMeasurements(
@@ -223,7 +234,8 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
 }
 
 class _VisualizationImage extends StatelessWidget {
-  const _VisualizationImage({required this.image});
+  const _VisualizationImage({required this.image, required this.onRetry});
+  final VoidCallback onRetry;
 
   final Future<Uint8List> image;
 
@@ -241,20 +253,14 @@ class _VisualizationImage extends StatelessWidget {
           );
         }
         if (snapshot.hasError) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'Visualization is unavailable for this analysis.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.muted, fontSize: 12),
-              ),
+          return SingleChildScrollView(
+            child: AppErrorState(
+              message: 'Visualization is unavailable for this analysis.',
+              onRetry: onRetry,
             ),
           );
         }
-        return const Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
-        );
+        return const AppLoadingSkeleton(semanticLabel: 'Loading visualization');
       },
     );
   }

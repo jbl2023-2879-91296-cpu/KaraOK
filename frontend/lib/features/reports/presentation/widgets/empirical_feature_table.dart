@@ -64,7 +64,7 @@ class EmpiricalFeatureTable extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Empirical five-feature grading',
+            'Your sound measurements',
             style: TextStyle(
               color: AppColors.ink,
               fontSize: 15,
@@ -80,6 +80,11 @@ class EmpiricalFeatureTable extends StatelessWidget {
                 : 'Reference derived from $referenceRecordingCount analyzed recordings',
             style: const TextStyle(color: AppColors.muted, fontSize: 11),
           ),
+          const SizedBox(height: 8),
+          const Text(
+            'Tap a measurement for its range and a practical tip.',
+            style: TextStyle(color: AppColors.muted, fontSize: 12),
+          ),
           const MeasurementGuide(),
           const SizedBox(height: 12),
           for (final key in _labels.keys) ...[
@@ -87,68 +92,98 @@ class EmpiricalFeatureTable extends StatelessWidget {
               builder: (context) {
                 final feature = reportMap(features[key]);
                 final value = reportNumber(feature['value']);
+                final lower = reportNumber(feature['target_lower']);
+                final upper = reportNumber(feature['target_upper']);
+                final direction =
+                    value == null ||
+                        lower == null ||
+                        upper == null ||
+                        lower > upper
+                    ? null
+                    : value < lower
+                    ? 'below'
+                    : value > upper
+                    ? 'above'
+                    : 'within';
                 final score = reportNumber(feature['score']);
                 final status = feature['status']?.toString() ?? 'not_evaluated';
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 7),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => MeasurementGuide.showMetric(
+                      context,
+                      label: _labels[key]!,
+                      feature: feature,
+                      format: (value) => _measurement(key, value),
+                      isSample: isSample,
+                    ),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 48),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Row(
                           children: [
-                            Text(
-                              _labels[key]!,
-                              style: const TextStyle(
-                                color: AppColors.ink,
-                                fontWeight: FontWeight.w600,
+                            Expanded(
+                              flex: 3,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _labels[key]!,
+                                    style: const TextStyle(
+                                      color: AppColors.ink,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  Text(
+                                    value == null
+                                        ? 'Not measured'
+                                        : _measurement(key, value),
+                                    style: const TextStyle(
+                                      color: AppColors.muted,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            Text(
-                              value == null
-                                  ? 'Not measured'
-                                  : _measurement(key, value),
-                              style: const TextStyle(
-                                color: AppColors.muted,
-                                fontSize: 11,
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                '${reportScoreLabel(score)}/100',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: _statusColor(status),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                switch (direction) {
+                                  'above' =>
+                                    '${_statusLabel(status)} — above genre range',
+                                  'below' =>
+                                    '${_statusLabel(status)} — below genre range',
+                                  'within' =>
+                                    '${_statusLabel(status)} — within genre range',
+                                  _ =>
+                                    '${_statusLabel(status)} — range unavailable',
+                                },
+                                textAlign: TextAlign.right,
+                                style: TextStyle(
+                                  color: _statusColor(status),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                           ],
                         ),
                       ),
-                      Expanded(
-                        flex: 2,
-                        child: Text(
-                          '${reportScoreLabel(score)}/100',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: _statusColor(status),
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        flex: 3,
-                        child: Text(
-                          switch (feature['direction']) {
-                            'above' =>
-                              '${_statusLabel(status)} — above genre range',
-                            'below' =>
-                              '${_statusLabel(status)} — below genre range',
-                            'within' =>
-                              '${_statusLabel(status)} — within genre range',
-                            _ => _statusLabel(status),
-                          },
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                            color: _statusColor(status),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 );
               },

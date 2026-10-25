@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:karaok_app/core/security/guest_assessment_service.dart';
 import 'package:karaok_app/features/reports/domain/sample_assessments.dart';
 import 'package:karaok_app/app/app_theme.dart';
@@ -400,7 +401,7 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
                   filled: true,
                   fillColor: AppColors.surface,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(AppRadii.control),
                     borderSide: BorderSide.none,
                   ),
                 ),
@@ -571,8 +572,9 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
 
   Widget _buildResults(List<ReportHistoryEntry> filtered, bool hasFilters) {
     if (_loading) {
-      return Center(
-        child: CircularProgressIndicator(color: widget.accentColor),
+      return const SingleChildScrollView(
+        padding: EdgeInsets.all(AppSpacing.page),
+        child: AppLoadingSkeleton(semanticLabel: 'Loading records', lines: 5),
       );
     }
     if (_loadError != null && _results.isEmpty) {
@@ -869,7 +871,7 @@ class _GuestMigrationPrompt extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.mint,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppRadii.control),
       ),
       child: Row(
         children: [

@@ -49,7 +49,7 @@ void main() {
           find.text('Illustrative feature values; no recording was analyzed.'),
           findsOneWidget,
         );
-        expect(find.text('Empirical five-feature grading'), findsOneWidget);
+        expect(find.text('Your sound measurements'), findsOneWidget);
         expect(find.text('Guest assessment complete'), findsNothing);
         expect(find.text('View Visual Report'), findsNothing);
         await tester.pageBack();

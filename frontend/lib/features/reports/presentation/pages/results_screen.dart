@@ -202,10 +202,10 @@ class _ResultsScreenState extends State<ResultsScreen> {
                       // Score card
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.all(20),
+                        padding: const EdgeInsets.all(AppSpacing.xl),
                         decoration: BoxDecoration(
                           color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(AppRadii.card),
                         ),
                         child: Column(
                           children: [
@@ -218,6 +218,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                             ),
                             const SizedBox(height: 10),
                             RichText(
+                              textScaler: MediaQuery.textScalerOf(context),
                               text: TextSpan(
                                 style: Theme.of(context).textTheme.bodyMedium,
                                 children: [
@@ -297,10 +298,12 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         ),
                         decoration: BoxDecoration(
                           color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(AppRadii.control),
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        child: Wrap(
+                          alignment: WrapAlignment.spaceBetween,
+                          spacing: 12,
+                          runSpacing: 8,
                           children: [
                             const Text(
                               'STATUS',
@@ -340,9 +343,9 @@ class _ResultsScreenState extends State<ResultsScreen> {
                       const SizedBox(height: 28),
                       // View Visual Report
                       if (!widget.isSample && widget.score != null)
-                        SizedBox(
+                        Container(
                           width: double.infinity,
-                          height: 52,
+                          constraints: const BoxConstraints(minHeight: 52),
                           child: ElevatedButton(
                             onPressed: () {
                               Navigator.push(
@@ -383,9 +386,9 @@ class _ResultsScreenState extends State<ResultsScreen> {
                       const SizedBox(height: 12),
                       // Test another audio
                       if (!widget.isSample)
-                        SizedBox(
+                        Container(
                           width: double.infinity,
-                          height: 52,
+                          constraints: const BoxConstraints(minHeight: 52),
                           child: OutlinedButton(
                             onPressed: () async {
                               if (widget.isGuest) {
@@ -453,7 +456,9 @@ class _ResultsScreenState extends State<ResultsScreen> {
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
                             color: AppColors.surface,
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(
+                              AppRadii.control,
+                            ),
                             border: Border.all(
                               color: AppColors.outline,
                               width: 1,
@@ -504,7 +509,9 @@ class _ResultsScreenState extends State<ResultsScreen> {
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: AppColors.primary,
                                     shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
+                                      borderRadius: BorderRadius.circular(
+                                        AppRadii.control,
+                                      ),
                                     ),
                                   ),
                                   child: const Text(

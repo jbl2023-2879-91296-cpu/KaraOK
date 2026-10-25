@@ -670,7 +670,12 @@ def evaluate_features(
         score = score_feature(values.get(definition.key), metric)
         if status == NOT_EVALUATED:
             invalid_features.append(definition.key)
+        _, lower, _, upper, _ = _validated_bounds(metric)
+        value = _finite_number(values.get(definition.key))
         feature_results[definition.key] = {
+            "target_lower": lower,
+            "target_upper": upper,
+            "direction": ('unavailable' if value is None else 'below' if value < lower else 'above' if value > upper else 'within'),
             "value": _finite_number(values.get(definition.key)),
             "status": status,
             "score": score,
