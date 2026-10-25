@@ -4,6 +4,38 @@ import 'package:karaok_app/features/sound_settings/domain/amplifier_profile.dart
 import 'package:karaok_app/features/sound_settings/domain/settings_recommendation.dart';
 
 void main() {
+  test('denormalize clamps to marked steps instead of an off-step maximum', () {
+    for (final entry in [
+      (const AmplifierScale(minimum: 0, maximum: 1, step: .3), .9),
+      (const AmplifierScale(minimum: 0, maximum: 1, step: .4), .8),
+      (const AmplifierScale(minimum: -1, maximum: 0, step: .4), -.2),
+      (const AmplifierScale(minimum: .1, maximum: 1.1, step: .4), .9),
+      (const AmplifierScale(minimum: 0, maximum: 1, step: .1), 1.0),
+      (const AmplifierScale(minimum: 0, maximum: .3, step: .1), .3),
+    ]) {
+      final (scale, lastPosition) = entry;
+      expect(scale.denormalize(100), closeTo(lastPosition, 1e-12));
+      expect(scale.denormalize(101), closeTo(lastPosition, 1e-12));
+      expect(scale.denormalize(-1), scale.minimum);
+      // Simulate every slider callback, then validate the next snapshot.
+      for (var percent = 0; percent <= 100; percent++) {
+        final sliderValue =
+            scale.minimum + percent * (scale.maximum - scale.minimum) / 100;
+        final position = scale.denormalize(scale.normalize(sliderValue));
+        final snapshot = KnobSettings.fromJson({
+          'volume': position,
+          'bass': 0,
+          'treble': 0,
+          'sharpness': 0,
+          'flatness': 0,
+          'volume_scale': scale.toJson(),
+        });
+        expect(snapshot.volume, position);
+        expect(position, inInclusiveRange(scale.minimum, scale.maximum));
+      }
+    }
+  });
+
   const tone = AmplifierScale(minimum: -10, maximum: 10, step: .5);
   const volume = AmplifierScale(minimum: -80, maximum: 0, step: 2, unit: 'dB');
   const positions = KnobSettings(

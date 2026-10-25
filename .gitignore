@@ -26,6 +26,7 @@ backend/uploads/
 __pycache__/
 *.py[cod]
 /build/
+/frontend/android/.kotlin/
 /dist/
 .worktrees/
 /admin/README.md

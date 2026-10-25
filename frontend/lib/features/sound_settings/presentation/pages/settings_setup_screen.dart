@@ -899,7 +899,9 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                   onChanged: _submitting
                       ? null
                       : (value) => setState(() {
-                          controller.text = _formatNumber(value);
+                          controller.text = _formatNumber(
+                            scale.denormalize(scale.normalize(value)),
+                          );
                           _positionError = null;
                         }),
                 ),

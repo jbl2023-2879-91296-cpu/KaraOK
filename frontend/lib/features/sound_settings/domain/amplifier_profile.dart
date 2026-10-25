@@ -103,7 +103,11 @@ class AmplifierScale {
     }
     final clamped = normalized.clamp(0, 100).toDouble();
     final raw = minimum + clamped * (maximum - minimum) / 100;
-    final steps = ((raw - minimum) / step).round();
+    // Clamp the step index first: the printed maximum may not be on the
+    // increment grid, so clamping a rounded value to it can create an invalid
+    // position. Tolerate floating point noise for aligned decimal endpoints.
+    final lastStep = ((maximum - minimum) / step + 1e-10).floor();
+    final steps = ((raw - minimum) / step).round().clamp(0, lastStep);
     final rounded = minimum + steps * step;
     final bounded = rounded.clamp(minimum, maximum).toDouble();
     return double.parse(bounded.toStringAsFixed(12));
