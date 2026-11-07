@@ -8,7 +8,7 @@
 <p>Understand your karaoke sound with five-feature quality assessments,<br>visual reports, and amplifier settings suggestions.</p>
 
 <p>
-  <a href="https://github.com/jbl2023-2879-91296-cpu/KaraOK/releases"><img src="https://img.shields.io/badge/version-1.10.1-4A90D9?style=flat-square" alt="Version 1.10.1"></a>
+  <a href="https://github.com/jbl2023-2879-91296-cpu/KaraOK/releases"><img src="https://img.shields.io/badge/version-1.11.0-4A90D9?style=flat-square" alt="Version 1.11.0"></a>
   <img src="https://img.shields.io/badge/platform-Android-3DDC84?style=flat-square&amp;logo=android&amp;logoColor=white" alt="Platform: Android">
   <img src="https://img.shields.io/badge/client-Flutter-02569B?style=flat-square&amp;logo=flutter&amp;logoColor=white" alt="Client: Flutter">
   <img src="https://img.shields.io/badge/API-Flask-182C39?style=flat-square&amp;logo=flask&amp;logoColor=white" alt="API: Flask">
@@ -38,8 +38,8 @@ history is stored in MySQL; guests keep their reports on the device.
 
 | Item | Value |
 | --- | --- |
-| Latest released APK | 1.10.1+16 (in `dist/`) |
-| Next release | 1.11.0+17: app-wide layout and consistency pass (see [CHANGELOG](CHANGELOG.md)) |
+| Latest released APK | 1.11.0+17 (in `dist/`), app-wide layout and consistency pass |
+| Production backend | Deployed 2026-11-07 from `main` (see [CHANGELOG](CHANGELOG.md)) |
 | Production API | `https://139.99.89.112/api` |
 | Default branch | `main` |
 

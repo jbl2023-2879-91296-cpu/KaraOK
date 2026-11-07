@@ -2,7 +2,16 @@
 
 All notable changes to KaraOK are documented here.
 
-## Unreleased (planned 1.11.0) - Consistent app layout
+## 2026-11-07 - 1.11.0+17 - Consistent app layout
+
+Backend deployed to production the same day (migrations `20261017_01`,
+`20261025_01` and `20261025_02` applied).
+
+### Fixed
+
+- The 6 dB noise-reliability boundary is compared at micro-dB precision, so an
+  exact 6.0 dB separation counts as reliable on every Python build.
+- deploy.md installs pytest and runs the two pytest-style backend suites.
 
 ### Changed
 
