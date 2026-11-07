@@ -31,7 +31,6 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    const accent = AppColors.orangeInk;
     final home = UserHomeScreen(onOpenRecords: () => _selectTab(1));
 
     return Scaffold(
@@ -42,7 +41,6 @@ class _AppShellState extends State<AppShell> {
           home,
           PreviousResultsScreen(
             title: 'Records',
-            accentColor: accent,
             refreshToken: _recordsRefreshToken,
           ),
           const ChangePasswordScreen(),

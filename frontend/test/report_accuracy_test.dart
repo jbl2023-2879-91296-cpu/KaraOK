@@ -34,7 +34,7 @@ void main() {
         'overall_status': 'good_but_needs_improvement',
       },
     });
-    expect(find.text('NEEDS IMPROVEMENT'), findsOneWidget);
+    expect(find.text('Needs Improvement'), findsOneWidget);
     expect(find.text('80'), findsNothing);
     expect(find.text('79.96'), findsOneWidget);
     expect(find.text('Recorded instrumental'), findsOneWidget);
@@ -49,7 +49,7 @@ void main() {
     expect(find.text('low'), findsNothing);
     expect(find.text('acceptable'), findsNothing);
     expect(find.byType(LinearProgressIndicator), findsNothing);
-    expect(find.text('NEEDS IMPROVEMENT'), findsOneWidget);
+    expect(find.text('Needs Improvement'), findsOneWidget);
   });
 
   testWidgets(
@@ -79,7 +79,7 @@ void main() {
   testWidgets('visual report has no demonstration defaults', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: DetailedReportScreen()));
     await tester.pumpAndSettle();
-    expect(find.text('NOT SCORED'), findsOneWidget);
+    expect(find.text('Not scored'), findsOneWidget);
     expect(find.text('82'), findsNothing);
     expect(find.textContaining('-4.8'), findsNothing);
     expect(find.text('Not measured'), findsWidgets);
@@ -115,7 +115,7 @@ void main() {
         }),
       ),
     );
-    expect(find.text('NOT SCORED'), findsWidgets);
+    expect(find.text('Not scored'), findsWidgets);
     expect(find.textContaining('NaN'), findsNothing);
     expect(find.textContaining('Infinity'), findsNothing);
   });
@@ -152,7 +152,7 @@ void main() {
         }),
       ),
     );
-    expect(find.text('NOT SCORED'), findsWidgets);
+    expect(find.text('Not scored'), findsWidgets);
     expect(find.textContaining('at least 80'), findsNothing);
     expect(find.text("We couldn't score this recording."), findsOneWidget);
   });

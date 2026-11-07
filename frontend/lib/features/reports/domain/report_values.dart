@@ -28,6 +28,15 @@ String reportGrade(num? score, String? status) {
   return 'BAD';
 }
 
+/// Display wording for [reportGrade], matching the status names used in
+/// Home and Records lists.
+String reportGradeLabel(String grade) => switch (grade) {
+  'GOOD' => 'Acceptable',
+  'NEEDS IMPROVEMENT' => 'Needs Improvement',
+  'BAD' => 'Problematic',
+  _ => 'Not scored',
+};
+
 String reportScoreLabel(num? score) {
   final number = reportNumber(score);
   if (number == null) return '--';

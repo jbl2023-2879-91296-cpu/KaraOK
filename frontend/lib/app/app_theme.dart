@@ -28,7 +28,7 @@ abstract final class AppSpacing {
   static const lg = 16.0;
   static const xl = 24.0;
   static const xxl = 32.0;
-  static const page = 24.0;
+  static const page = 20.0;
   static const touchTarget = 48.0;
   static const contentWidth = 720.0;
 }
@@ -58,64 +58,76 @@ abstract final class AppTypography {
     displayLarge: TextStyle(
       fontSize: 48,
       height: 1.15,
+      letterSpacing: 0,
       fontWeight: FontWeight.w700,
     ),
     displayMedium: TextStyle(
       fontSize: 40,
       height: 1.15,
+      letterSpacing: 0,
       fontWeight: FontWeight.w700,
     ),
     displaySmall: TextStyle(
       fontSize: 36,
       height: 1.2,
+      letterSpacing: 0,
       fontWeight: FontWeight.w700,
     ),
     headlineLarge: TextStyle(
       fontSize: 32,
       height: 1.2,
+      letterSpacing: 0,
       fontWeight: FontWeight.w700,
     ),
     headlineMedium: TextStyle(
       fontSize: 28,
       height: 1.25,
+      letterSpacing: 0,
       fontWeight: FontWeight.w700,
     ),
     headlineSmall: TextStyle(
       fontSize: 24,
       height: 1.3,
+      letterSpacing: 0,
       fontWeight: FontWeight.w700,
     ),
     titleLarge: TextStyle(
       fontSize: 22,
       height: 1.3,
+      letterSpacing: 0,
       fontWeight: FontWeight.w700,
     ),
     titleMedium: TextStyle(
       fontSize: 18,
       height: 1.4,
+      letterSpacing: 0,
       fontWeight: FontWeight.w600,
     ),
     titleSmall: TextStyle(
       fontSize: 16,
       height: 1.4,
+      letterSpacing: 0,
       fontWeight: FontWeight.w600,
     ),
-    bodyLarge: TextStyle(fontSize: 16, height: 1.5),
-    bodyMedium: TextStyle(fontSize: 14, height: 1.5),
-    bodySmall: TextStyle(fontSize: 12, height: 1.5),
+    bodyLarge: TextStyle(fontSize: 16, height: 1.5, letterSpacing: 0),
+    bodyMedium: TextStyle(fontSize: 14, height: 1.5, letterSpacing: 0),
+    bodySmall: TextStyle(fontSize: 12, height: 1.5, letterSpacing: 0),
     labelLarge: TextStyle(
       fontSize: 14,
       height: 1.4,
+      letterSpacing: 0,
       fontWeight: FontWeight.w700,
     ),
     labelMedium: TextStyle(
       fontSize: 12,
       height: 1.4,
+      letterSpacing: 0,
       fontWeight: FontWeight.w600,
     ),
     labelSmall: TextStyle(
       fontSize: 11,
       height: 1.4,
+      letterSpacing: 0,
       fontWeight: FontWeight.w600,
     ),
   );
@@ -185,6 +197,14 @@ abstract final class AppTheme {
         elevation: AppElevation.flat,
         scrolledUnderElevation: AppElevation.flat,
         centerTitle: false,
+        titleTextStyle: TextStyle(
+          fontFamily: 'Roboto',
+          fontSize: 20,
+          height: 1.3,
+          letterSpacing: 0,
+          fontWeight: FontWeight.w700,
+          color: AppColors.ink,
+        ),
         systemOverlayStyle: SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
           statusBarIconBrightness: Brightness.dark,
@@ -210,7 +230,13 @@ abstract final class AppTheme {
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(style: buttonStyle),
-      textButtonTheme: TextButtonThemeData(style: buttonStyle),
+      textButtonTheme: TextButtonThemeData(
+        style: buttonStyle.copyWith(
+          padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: AppSpacing.md),
+          ),
+        ),
+      ),
       iconButtonTheme: IconButtonThemeData(
         style: const ButtonStyle(
           minimumSize: WidgetStatePropertyAll(
@@ -302,9 +328,27 @@ abstract final class AppTheme {
           ),
         ),
       ),
-      listTileTheme: const ListTileThemeData(
+      expansionTileTheme: const ExpansionTileThemeData(
+        tilePadding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        childrenPadding: EdgeInsets.only(bottom: AppSpacing.sm),
+        backgroundColor: Colors.transparent,
+        collapsedBackgroundColor: Colors.transparent,
+        iconColor: AppColors.primary,
+        collapsedIconColor: AppColors.muted,
+        textColor: AppColors.ink,
+        collapsedTextColor: AppColors.ink,
+        shape: Border(),
+        collapsedShape: Border(),
+      ),
+      listTileTheme: ListTileThemeData(
+        titleTextStyle: AppTypography.textTheme.titleSmall?.copyWith(
+          color: AppColors.ink,
+        ),
+        subtitleTextStyle: AppTypography.textTheme.bodyMedium?.copyWith(
+          color: AppColors.muted,
+        ),
         minTileHeight: AppSpacing.touchTarget,
-        contentPadding: EdgeInsets.symmetric(
+        contentPadding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.lg,
           vertical: AppSpacing.sm,
         ),

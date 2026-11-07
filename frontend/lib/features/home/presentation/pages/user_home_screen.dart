@@ -125,8 +125,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.lg,
-                  vertical: AppSpacing.md,
+                  horizontal: AppSpacing.page,
+                  vertical: AppSpacing.lg,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -217,12 +217,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                             ? 'Sample assessments'
                             : 'Recent Analysis',
                         action: TextButton(
-                          style: TextButton.styleFrom(
-                            minimumSize: const Size(
-                              AppSpacing.touchTarget,
-                              AppSpacing.touchTarget,
-                            ),
-                          ),
                           onPressed:
                               widget.onOpenRecords ??
                               () => Navigator.push(

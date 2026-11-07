@@ -31,8 +31,6 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _error;
   final _feedback = FormFeedback();
 
-  static const _accentColor = AppColors.primary;
-
   @override
   void initState() {
     super.initState();
@@ -146,8 +144,17 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return AppPageScaffold(
-      title: 'Account',
+      title: 'Sign in',
       automaticallyImplyLeading: false,
+      leading: IconButton(
+        tooltip: 'Back',
+        icon: const Icon(Icons.arrow_back),
+        onPressed: () async {
+          if (!await Navigator.maybePop(context) && mounted) {
+            _navigateHome();
+          }
+        },
+      ),
       child: Form(
         key: _formKey,
         child: Column(
@@ -158,26 +165,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 message: _error!,
                 onRetry: _loading ? null : _login,
               ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: IconButton(
-                tooltip: 'Back',
-                icon: const Icon(Icons.chevron_left),
-                onPressed: () async {
-                  if (!await Navigator.maybePop(context) && mounted) {
-                    _navigateHome();
-                  }
-                },
-              ),
-            ),
             const AppSectionHeader(
               title: 'Welcome back',
               subtitle: 'Sign in to continue',
             ),
-            const SizedBox(height: 36),
-            _FieldLabel('Email'),
-            const SizedBox(height: 6),
             _AuthField(
+              label: 'Email',
               fieldKey: _feedback.key('email'),
               focusNode: _feedback.focus('email'),
               errorText: _feedback.errors['email'],
@@ -199,11 +192,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   : null,
               validator: validateEmail,
             ),
-            const SizedBox(height: 18),
-            // Password
-            _FieldLabel('Password'),
-            const SizedBox(height: 6),
+            const SizedBox(height: 16),
             _AuthField(
+              label: 'Password',
               fieldKey: _feedback.key('password'),
               focusNode: _feedback.focus('password'),
               errorText: _feedback.errors['password'],
@@ -236,14 +227,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     builder: (_) => const ForgotPasswordScreen(),
                   ),
                 ),
-                child: Text(
-                  'Forgot password?',
-                  style: TextStyle(color: _accentColor),
-                ),
+                child: const Text('Forgot password?'),
               ),
             ),
-            const SizedBox(height: 2),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.sm),
             // Login button
             SizedBox(
               width: double.infinity,
@@ -255,43 +242,22 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             const SizedBox(height: 16),
             // Sign up redirect
-            Wrap(
-              alignment: WrapAlignment.center,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                const Text(
-                  "Don't have an account? ",
-                  style: TextStyle(color: AppColors.muted, fontSize: 14),
-                ),
-                TextButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const SignUpScreen()),
-                    );
-                  },
-                  child: Text(
-                    'Sign Up',
-                    style: TextStyle(
-                      color: _accentColor,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
+            AppPromptLink(
+              prompt: "Don't have an account?",
+              action: 'Sign Up',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SignUpScreen()),
+              ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: AppSpacing.xl),
             // Divider
             Row(
               children: [
                 const Expanded(child: Divider(color: AppColors.outline)),
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Text(
-                    'or',
-                    style: TextStyle(color: AppColors.muted, fontSize: 13),
-                  ),
+                  child: Text('or', style: TextStyle(color: AppColors.muted)),
                 ),
                 const Expanded(child: Divider(color: AppColors.outline)),
               ],
@@ -305,15 +271,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 onPressed: _loading ? null : _continueAsGuest,
               ),
             ),
-            const SizedBox(height: 12),
-            const Text(
+            const SizedBox(height: AppSpacing.md),
+            Text(
               'Guest mode allows three audio evaluations on this device. Guest reports stay on this device and remain separate from account history.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: AppColors.muted,
-                fontSize: 11,
-                height: 1.5,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppColors.muted),
             ),
             const SizedBox(height: 24),
           ],
@@ -325,23 +289,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
 // ── Shared small widgets ──────────────────────────────────────────────────────
 
-class _FieldLabel extends StatelessWidget {
-  const _FieldLabel(this.text);
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Text(
-    text,
-    style: const TextStyle(
-      color: AppColors.muted,
-      fontSize: 13,
-      fontWeight: FontWeight.w600,
-    ),
-  );
-}
-
 class _AuthField extends StatelessWidget {
   const _AuthField({
+    required this.label,
     required this.controller,
     required this.hint,
     this.obscure = false,
@@ -356,6 +306,7 @@ class _AuthField extends StatelessWidget {
     this.textInputAction = TextInputAction.next,
   });
 
+  final String label;
   final TextEditingController controller;
   final String hint;
   final GlobalKey<FormFieldState<String>>? fieldKey;
@@ -375,6 +326,7 @@ class _AuthField extends StatelessWidget {
       fieldKey: fieldKey,
       focusNode: focusNode,
       controller: controller,
+      label: label,
       hint: hint,
       errorText: errorText,
       validator: validator,

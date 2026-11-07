@@ -35,7 +35,12 @@ class _GlossaryScreenState extends State<GlossaryScreen> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.page,
+                AppSpacing.sm,
+                AppSpacing.page,
+                AppSpacing.lg,
+              ),
               child: TextField(
                 decoration: const InputDecoration(
                   labelText: 'Search terms',
@@ -49,19 +54,32 @@ class _GlossaryScreenState extends State<GlossaryScreen> {
                   ? const Center(
                       child: Text('No matching terms. Try another word.'),
                     )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.page,
+                        0,
+                        AppSpacing.page,
+                        AppSpacing.xl,
+                      ),
                       itemCount: entries.length,
+                      separatorBuilder: (_, _) =>
+                          const SizedBox(height: AppSpacing.sm),
                       itemBuilder: (context, index) {
                         final entry = entries[index];
                         return Card(
                           key: ValueKey(entry.term),
+                          clipBehavior: Clip.antiAlias,
                           child: ExpansionTile(
                             title: Text(entry.term),
                             subtitle: Text(entry.definition),
                             expandedCrossAxisAlignment:
                                 CrossAxisAlignment.start,
-                            childrenPadding: const EdgeInsets.all(16),
+                            childrenPadding: const EdgeInsets.fromLTRB(
+                              AppSpacing.lg,
+                              0,
+                              AppSpacing.lg,
+                              AppSpacing.lg,
+                            ),
                             children: [
                               Text('Why it matters for karaoke: ${entry.why}'),
                               const SizedBox(height: 12),

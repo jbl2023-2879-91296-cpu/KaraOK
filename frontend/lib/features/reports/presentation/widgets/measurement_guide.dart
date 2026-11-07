@@ -215,11 +215,14 @@ class MeasurementGuide extends StatelessWidget {
   Widget build(BuildContext context) => Material(
     color: Colors.transparent,
     child: ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: EdgeInsets.zero,
       title: const Text('Understand these measurements'),
       subtitle: const Text('Tap a feature for its meaning and limitations'),
       children: [
         for (final entry in explanations.entries)
           ListTile(
+            contentPadding: EdgeInsets.zero,
             minVerticalPadding: 12,
             minTileHeight: 48,
             title: Text(entry.key),
@@ -243,6 +246,7 @@ class MeasurementGuide extends StatelessWidget {
             ),
           ),
         ListTile(
+          contentPadding: EdgeInsets.zero,
           title: const Text('Glossary of terms'),
           subtitle: const Text('Look up sound terms and what to aim for'),
           trailing: const Icon(Icons.arrow_forward),

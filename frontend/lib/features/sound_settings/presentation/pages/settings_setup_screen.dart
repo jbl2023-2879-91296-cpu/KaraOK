@@ -532,62 +532,6 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _sectionTitle('Volume scale'),
-                const Text(
-                  'Use the numbers printed beside your Volume knob. Higher numbers must mean louder sound.',
-                ),
-                SwitchListTile(
-                  title: const Text('Use a separate Volume scale'),
-                  subtitle: const Text(
-                    'Existing profiles keep their saved scale until you change it.',
-                  ),
-                  value: _separateVolumeScale,
-                  onChanged: _submitting
-                      ? null
-                      : (value) => setState(() {
-                          _separateVolumeScale = value;
-                          if (value) {
-                            _volumeAttenuation = false;
-                            _positionControllers['volume']!.clear();
-                          }
-                        }),
-                ),
-                if (_separateVolumeScale) ...[
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      for (final entry in {
-                        'Minimum': _volumeMinController,
-                        'Maximum': _volumeMaxController,
-                        'Step': _volumeStepController,
-                      }.entries)
-                        SizedBox(
-                          width: 130,
-                          child: _signedNumberField(
-                            key: Key('volume-${entry.key.toLowerCase()}'),
-                            controller: entry.value,
-                            label: entry.key,
-                            onChanged: (_) =>
-                                setState(() => _positionError = null),
-                          ),
-                        ),
-                    ],
-                  ),
-                  DropdownButtonFormField<String>(
-                    isExpanded: true,
-                    initialValue: _volumeUnit,
-                    decoration: const InputDecoration(labelText: 'Volume unit'),
-                    items: const [
-                      DropdownMenuItem(value: '', child: Text('Plain numbers')),
-                      DropdownMenuItem(value: 'dB', child: Text('dB')),
-                    ],
-                    onChanged: _submitting
-                        ? null
-                        : (value) => setState(() => _volumeUnit = value ?? ''),
-                  ),
-                  const SizedBox(height: 24),
-                ],
                 if (_featureDisabled)
                   const AppEmptyState(
                     icon: Icons.block,
@@ -617,9 +561,76 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                     context,
                   ).textTheme.bodyLarge?.copyWith(color: AppColors.muted),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: AppSpacing.xl),
+                _sectionTitle('Volume scale'),
+                Text(
+                  'Use the numbers printed beside your Volume knob. Higher numbers must mean louder sound.',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Use a separate Volume scale'),
+                  subtitle: const Text(
+                    'Existing profiles keep their saved scale until you change it.',
+                  ),
+                  value: _separateVolumeScale,
+                  onChanged: _submitting
+                      ? null
+                      : (value) => setState(() {
+                          _separateVolumeScale = value;
+                          if (value) {
+                            _volumeAttenuation = false;
+                            _positionControllers['volume']!.clear();
+                          }
+                        }),
+                ),
+                if (_separateVolumeScale) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  Row(
+                    children: [
+                      for (final entry in {
+                        'Minimum': _volumeMinController,
+                        'Maximum': _volumeMaxController,
+                        'Step': _volumeStepController,
+                      }.entries) ...[
+                        if (entry.key != 'Minimum')
+                          const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: _signedNumberField(
+                            key: Key('volume-${entry.key.toLowerCase()}'),
+                            controller: entry.value,
+                            label: entry.key,
+                            onChanged: (_) =>
+                                setState(() => _positionError = null),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    initialValue: _volumeUnit,
+                    decoration: const InputDecoration(labelText: 'Volume unit'),
+                    items: const [
+                      DropdownMenuItem(value: '', child: Text('Plain numbers')),
+                      DropdownMenuItem(value: 'dB', child: Text('dB')),
+                    ],
+                    onChanged: _submitting
+                        ? null
+                        : (value) => setState(() => _volumeUnit = value ?? ''),
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                ],
                 _sectionTitle('1. Amplifier'),
-                const Text("Enter your amplifier's knob ranges"),
+                Text(
+                  "Enter your amplifier's knob ranges",
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+                ),
                 const SizedBox(height: 12),
                 if (!_isGuest && _profiles.isNotEmpty)
                   DropdownButtonFormField<int>(
@@ -871,7 +882,6 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                   min: scale.minimum,
                   max: scale.maximum,
                   divisions: divisions,
-                  activeColor: AppColors.orangeInk,
                   onChanged: _submitting
                       ? null
                       : (value) => setState(() {
@@ -882,8 +892,9 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
                         }),
                 ),
               ),
+              const SizedBox(width: AppSpacing.sm),
               SizedBox(
-                width: 92,
+                width: 112,
                 child: _signedNumberField(
                   key: Key('knob-$name'),
                   controller: controller,
@@ -921,20 +932,9 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
 
   Widget _sectionTitle(String text) => AppSectionHeader(title: text);
 
-  InputDecoration _decoration(String label) => InputDecoration(
-    labelText: label,
-    labelStyle: const TextStyle(color: AppColors.muted),
-    filled: true,
-    fillColor: AppColors.surface,
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(10),
-      borderSide: const BorderSide(color: AppColors.outline),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(10),
-      borderSide: const BorderSide(color: AppColors.orangeInk),
-    ),
-  );
+  // Inherits the app-wide input theme so every field shares one shape.
+  InputDecoration _decoration(String label) =>
+      InputDecoration(labelText: label);
 
   Widget _errorText(String text) => Padding(
     padding: const EdgeInsets.only(top: 8),

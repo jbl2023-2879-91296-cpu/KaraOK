@@ -33,9 +33,8 @@ class EmpiricalFeatureTable extends StatelessWidget {
   };
 
   String _measurement(String key, num value) {
-    final decimals = key == 'sharpness' || key == 'flatness' ? 6 : 2;
     final unit = _units[key]!;
-    return '${value.toDouble().toStringAsFixed(decimals)}${unit.isEmpty ? '' : ' $unit'}';
+    return '${value.toDouble().toStringAsFixed(2)}${unit.isEmpty ? '' : ' $unit'}';
   }
 
   Color _statusColor(String status) => switch (status) {
@@ -47,40 +46,34 @@ class EmpiricalFeatureTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadii.card),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Your sound measurements',
-            style: TextStyle(
-              color: AppColors.ink,
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
+          Text('Your sound measurements', style: text.titleMedium),
+          const SizedBox(height: AppSpacing.xs),
           Text(
             isSample
                 ? 'Illustrative feature values; no recording was analyzed.'
                 : referenceRecordingCount == null
                 ? 'Reference size unavailable for this saved assessment'
                 : 'Reference derived from $referenceRecordingCount analyzed recordings',
-            style: const TextStyle(color: AppColors.muted, fontSize: 11),
+            style: text.bodySmall?.copyWith(color: AppColors.muted),
           ),
-          const SizedBox(height: 8),
-          const Text(
+          Text(
             'Tap a measurement for its range and a practical tip.',
-            style: TextStyle(color: AppColors.muted, fontSize: 12),
+            style: text.bodySmall?.copyWith(color: AppColors.muted),
           ),
+          const SizedBox(height: AppSpacing.sm),
           const MeasurementGuide(),
-          const SizedBox(height: 12),
+          const Divider(height: 1, color: AppColors.outline),
           for (final key in _labels.keys) ...[
             Builder(
               builder: (context) {
@@ -89,85 +82,76 @@ class EmpiricalFeatureTable extends StatelessWidget {
                 final direction = measurementDirection(feature);
                 final score = reportNumber(feature['score']);
                 final status = feature['status']?.toString() ?? 'not_evaluated';
-                return Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(8),
-                    onTap: () => MeasurementGuide.showMetric(
-                      context,
-                      label: _labels[key]!,
-                      feature: feature,
-                      format: (value) => _measurement(key, value),
-                      isSample: isSample,
+                final directionLabel = switch (direction) {
+                  'above' => 'Too high',
+                  'below' => 'Too low',
+                  'within' => 'Good',
+                  _ => 'Unavailable',
+                };
+                final color = _statusColor(status);
+                return InkWell(
+                  borderRadius: BorderRadius.circular(AppRadii.sm),
+                  onTap: () => MeasurementGuide.showMetric(
+                    context,
+                    label: _labels[key]!,
+                    feature: feature,
+                    format: (value) => _measurement(key, value),
+                    isSample: isSample,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: AppSpacing.md,
                     ),
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: 48),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
                           children: [
                             Expanded(
-                              flex: 3,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _labels[key]!,
-                                    style: const TextStyle(
-                                      color: AppColors.ink,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  Text(
-                                    glossaryEntry(_labels[key]!).definition,
-                                    style: const TextStyle(
-                                      color: AppColors.muted,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                  Text(
-                                    value == null
-                                        ? 'Not measured'
-                                        : _measurement(key, value),
-                                    style: const TextStyle(
-                                      color: AppColors.muted,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ],
+                              child: Text(
+                                _labels[key]!,
+                                style: text.titleSmall,
                               ),
                             ),
+                            Text(
+                              '${reportScoreLabel(score)}/100',
+                              style: text.titleSmall?.copyWith(color: color),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: AppSpacing.xs),
+                        Text(
+                          glossaryEntry(_labels[key]!).definition,
+                          style: text.bodySmall?.copyWith(
+                            color: AppColors.muted,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.xs),
+                        Row(
+                          children: [
                             Expanded(
-                              flex: 2,
                               child: Text(
-                                '${reportScoreLabel(score)}/100',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: _statusColor(status),
-                                  fontWeight: FontWeight.w700,
+                                value == null
+                                    ? 'Not measured'
+                                    : _measurement(key, value),
+                                style: text.labelMedium?.copyWith(
+                                  color: AppColors.ink,
                                 ),
                               ),
                             ),
-                            Expanded(
-                              flex: 3,
-                              child: Text(
-                                switch (direction) {
-                                  'above' => 'Too high',
-                                  'below' => 'Too low',
-                                  'within' => 'Good',
-                                  _ => 'Unavailable',
-                                },
-                                textAlign: TextAlign.right,
-                                style: TextStyle(
-                                  color: _statusColor(status),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                            Text(
+                              directionLabel,
+                              style: text.labelMedium?.copyWith(
+                                color: direction == null
+                                    ? AppColors.muted
+                                    : color,
                               ),
                             ),
                           ],
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 );

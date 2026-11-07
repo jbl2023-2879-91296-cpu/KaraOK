@@ -17,6 +17,7 @@ final List<Map<String, dynamic>> sampleAssessments = List.unmodifiable([
     'good',
     91,
     [-14.2, 24.5, 18.3, 0.42, 0.08],
+    [93, 90, 92, 89, 91],
     -52,
     0.01,
   ),
@@ -26,6 +27,7 @@ final List<Map<String, dynamic>> sampleAssessments = List.unmodifiable([
     'good_but_needs_improvement',
     67,
     [-22.4, 38.1, 9.2, 0.28, 0.19],
+    [62, 66, 70, 72, 65],
     -35,
     0.06,
   ),
@@ -35,6 +37,7 @@ final List<Map<String, dynamic>> sampleAssessments = List.unmodifiable([
     'bad',
     38,
     [-29.6, 52.6, 4.8, 0.16, 0.41],
+    [31, 35, 42, 46, 36],
     -22,
     0.18,
   ),
@@ -46,10 +49,19 @@ Map<String, dynamic> _sample(
   String status,
   int score,
   List<double> values,
+  List<int> featureScores,
   double noise,
   double distortion,
 ) {
   const names = ['loudness', 'bass', 'treble', 'sharpness', 'flatness'];
+  // Illustrative reference ranges so sample rows can say high, low or good.
+  const ranges = [
+    [-18.0, -12.0],
+    [20.0, 35.0],
+    [12.0, 25.0],
+    [0.30, 0.50],
+    [0.05, 0.15],
+  ];
   return Map.unmodifiable({
     'is_sample': true,
     'test_name': 'Sample: $name',
@@ -65,8 +77,10 @@ Map<String, dynamic> _sample(
         for (var i = 0; i < names.length; i++)
           names[i]: Map.unmodifiable({
             'value': values[i],
-            'score': score,
+            'score': featureScores[i],
             'status': status,
+            'target_lower': ranges[i][0],
+            'target_upper': ranges[i][1],
           }),
       }),
     }),

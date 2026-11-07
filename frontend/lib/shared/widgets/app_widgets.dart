@@ -16,6 +16,7 @@ class AppPageScaffold extends StatelessWidget {
     this.bottomNavigationBar,
     this.floatingActionButton,
     this.automaticallyImplyLeading = true,
+    this.leading,
   });
 
   final String title;
@@ -25,10 +26,12 @@ class AppPageScaffold extends StatelessWidget {
   final Widget? bottomNavigationBar;
   final Widget? floatingActionButton;
   final bool automaticallyImplyLeading;
+  final Widget? leading;
 
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
+      leading: leading,
       title: Text(title),
       actions: actions,
       automaticallyImplyLeading: automaticallyImplyLeading,
@@ -87,9 +90,23 @@ class AppSectionHeader extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Semantics(
-          header: true,
-          child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Semantics(
+                header: true,
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+            ),
+            if (action != null) ...[
+              const SizedBox(width: AppSpacing.sm),
+              action!,
+            ],
+          ],
         ),
         if (subtitle != null) ...[
           const SizedBox(height: AppSpacing.xs),
@@ -100,7 +117,6 @@ class AppSectionHeader extends StatelessWidget {
             ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
           ),
         ],
-        if (action != null) ...[const SizedBox(height: AppSpacing.sm), action!],
       ],
     ),
   );
@@ -406,5 +422,41 @@ class AppLoadingSkeleton extends StatelessWidget {
         ),
       ),
     ),
+  );
+}
+
+/// "Prompt? Action" row used under auth forms, with the link baseline-aligned
+/// to its prompt and no extra button padding pushing it away.
+class AppPromptLink extends StatelessWidget {
+  const AppPromptLink({
+    super.key,
+    required this.prompt,
+    required this.action,
+    required this.onPressed,
+  });
+  final String prompt;
+  final String action;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Flexible(
+        child: Text(
+          prompt,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+        ),
+      ),
+      TextButton(
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+        ),
+        onPressed: onPressed,
+        child: Text(action),
+      ),
+    ],
   );
 }

@@ -808,33 +808,68 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   Widget _guestSettings() => AppPageScaffold(
     title: 'Settings',
     automaticallyImplyLeading: false,
-    child: AppEmptyState(
-      title: 'You are using KaraOK as a guest',
-      message:
-          'Create an account to save future records and continue evaluating audio after your guest attempts. Existing guest-only reports stay on this device and remain separate from your account history.',
-      icon: Icons.person_outline,
-      action: Column(
-        children: [
-          _glossaryLink(),
-          AppPrimaryButton(
-            label: 'Create Account',
-            icon: Icons.person_add_alt_1,
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SignUpScreen()),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    const CircleAvatar(
+                      radius: 20,
+                      backgroundColor: AppColors.mint,
+                      child: Icon(
+                        Icons.person_outline,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Text(
+                        'You are using KaraOK as a guest',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  'Create an account to save future records and keep evaluating after your guest attempts. Guest reports stay on this device, separate from your account history.',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                AppPrimaryButton(
+                  label: 'Create Account',
+                  icon: Icons.person_add_alt_1,
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SignUpScreen()),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                AppSecondaryButton(
+                  label: 'Log In',
+                  icon: Icons.login,
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 12),
-          AppSecondaryButton(
-            label: 'Log In',
-            icon: Icons.login,
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const LoginScreen()),
-            ),
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        Text('Help', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: AppSpacing.sm),
+        Card(clipBehavior: Clip.antiAlias, child: _glossaryLink()),
+      ],
     ),
   );
 

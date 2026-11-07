@@ -666,7 +666,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
             padding: const EdgeInsets.all(AppSpacing.lg),
             decoration: BoxDecoration(
               color: AppColors.surface,
-              borderRadius: BorderRadius.circular(AppRadii.control),
+              borderRadius: BorderRadius.circular(AppRadii.card),
             ),
             child: Row(
               children: [
@@ -678,22 +678,24 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
                       widget.purpose == AudioAnalysisPurpose.qualityEvaluation
                       ? AppColors.primary
                       : AppColors.orangeInk,
-                  size: 30,
+                  size: 28,
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Text(
                     widget.purpose.description,
-                    style: const TextStyle(
-                      color: AppColors.muted,
-                      height: 1.35,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
                   ),
                 ),
               ],
             ),
           ),
-          if (!recording && !_busy) const RecordingChecklist(),
+          if (!recording && !_busy) ...[
+            const SizedBox(height: AppSpacing.md),
+            const RecordingChecklist(),
+          ],
           const SizedBox(height: AppSpacing.xl),
           Text(
             '${_time(_elapsed)} / 05:00',
@@ -701,9 +703,12 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
             style: Theme.of(context).textTheme.headlineLarge,
           ),
           const SizedBox(height: AppSpacing.lg),
-          const Text(
+          Text(
             'Minimum 10 seconds, maximum 5 minutes. For better results, record 20–30 seconds of continuous music.',
             textAlign: TextAlign.center,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
           ),
           const SizedBox(height: AppSpacing.lg),
           if (recording) ...[
@@ -748,7 +753,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
               icon: Icons.mic,
               label: 'Record Audio',
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: AppSpacing.md),
             AppSecondaryButton(
               onPressed: _busy ? null : _selectFile,
               icon: Icons.audio_file,

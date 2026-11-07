@@ -82,14 +82,7 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.background,
         elevation: 0,
-        title: const Text(
-          'Detailed Report with Visual',
-          style: TextStyle(
-            color: AppColors.primary,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+        title: const Text('Detailed report'),
         actions: [
           IconButton(
             tooltip: 'Glossary of terms',
@@ -97,11 +90,13 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
             onPressed: () => GlossaryScreen.open(context),
           ),
         ],
-        centerTitle: true,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.page,
+            vertical: AppSpacing.lg,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -226,13 +221,10 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      _grade,
-                      style: TextStyle(
-                        color: _gradeColor,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 2,
-                      ),
+                      reportGradeLabel(_grade),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.titleMedium?.copyWith(color: _gradeColor),
                     ),
                     const SizedBox(height: 10),
                     Text(

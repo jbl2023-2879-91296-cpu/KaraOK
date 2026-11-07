@@ -5,6 +5,7 @@ class RecordingChecklist extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const Card(
+    clipBehavior: Clip.antiAlias,
     child: ExpansionTile(
       title: Text('Before you record'),
       subtitle: Text('Keep comparisons consistent'),

@@ -11,6 +11,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/reports/presentation/pages/previous_results_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/results_screen.dart';
+import 'package:karaok_app/features/reports/domain/sample_assessments.dart';
 
 void main() {
   setUp(() async {
@@ -44,7 +45,7 @@ void main() {
         await tester.tap(find.text('Sample: Balanced audio'));
         await tester.pumpAndSettle();
         expect(find.byType(ResultsScreen), findsOneWidget);
-        expect(find.text('Sample assessment'), findsOneWidget);
+        expect(find.text(sampleAssessmentExplanation), findsWidgets);
         expect(
           find.text('Illustrative feature values; no recording was analyzed.'),
           findsOneWidget,

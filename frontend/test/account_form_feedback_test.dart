@@ -225,7 +225,7 @@ void main() {
     UserSession.instance.setGuest('user');
     await show(tester, const ChangePasswordScreen());
     expect(find.byType(AppPageScaffold), findsOneWidget);
-    expect(find.byType(AppEmptyState), findsOneWidget);
+    expect(find.text('You are using KaraOK as a guest'), findsOneWidget);
     expect(
       find.widgetWithText(AppPrimaryButton, 'Create Account'),
       findsOneWidget,

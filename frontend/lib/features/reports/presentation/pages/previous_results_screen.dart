@@ -364,15 +364,24 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
         backgroundColor: AppColors.background,
         elevation: 0,
         title: Text(widget.title),
-        centerTitle: true,
       ),
       body: SafeArea(
         child: Column(
           children: [
             if (_showingSamples)
-              const Padding(
-                padding: EdgeInsets.all(12),
-                child: Text(sampleAssessmentExplanation),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.page,
+                  AppSpacing.sm,
+                  AppSpacing.page,
+                  0,
+                ),
+                child: Text(
+                  sampleAssessmentExplanation,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+                ),
               ),
             if (UserSession.instance.isGuest &&
                 _results.isNotEmpty &&
@@ -407,11 +416,12 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
                 ),
               ),
             ),
-            SizedBox(
-              height: 42,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: 0,
                 children: [
                   _StatusChip(
                     label: 'All',
@@ -430,7 +440,7 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 6, 12, 6),
+              padding: const EdgeInsets.fromLTRB(20, 4, 8, 4),
               child: Row(
                 children: [
                   Expanded(
@@ -450,7 +460,7 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
                       onPressed: _clearFilters,
                       child: const Text('Clear'),
                     ),
-                  OutlinedButton.icon(
+                  TextButton.icon(
                     key: const Key('historyFiltersButton'),
                     onPressed: _showFilters,
                     icon: const Icon(Icons.tune, size: 18),
@@ -471,13 +481,14 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
                         child: Text('Oldest first'),
                       ),
                     ],
-                    child: Padding(
-                      padding: const EdgeInsets.all(10),
+                    child: SizedBox.square(
+                      dimension: AppSpacing.touchTarget,
                       child: Icon(
                         _sortOrder == ReportHistorySort.newest
-                            ? Icons.south
-                            : Icons.north,
-                        color: AppColors.muted,
+                            ? Icons.arrow_downward
+                            : Icons.arrow_upward,
+                        size: 20,
+                        color: AppColors.primary,
                       ),
                     ),
                   ),
@@ -642,21 +653,17 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        label: Text(label),
-        selected: selected,
-        onSelected: (_) => onSelected(),
-        selectedColor: accentColor,
-        backgroundColor: AppColors.surface,
-        labelStyle: TextStyle(
-          color: selected ? AppColors.onPrimary : AppColors.muted,
-          fontSize: 12,
-        ),
-        side: BorderSide.none,
-        showCheckmark: false,
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => onSelected(),
+      selectedColor: accentColor,
+      backgroundColor: AppColors.surface,
+      labelStyle: Theme.of(context).textTheme.labelMedium?.copyWith(
+        color: selected ? AppColors.onPrimary : AppColors.muted,
       ),
+      side: BorderSide(color: selected ? accentColor : AppColors.outline),
+      showCheckmark: false,
     );
   }
 }

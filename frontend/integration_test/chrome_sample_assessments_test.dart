@@ -78,7 +78,7 @@ void main() {
     await tester.tap(find.text('Sign in'));
     await tester.pumpAndSettle();
     expect(find.byType(LoginScreen), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.chevron_left));
+    await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Create Account'));
     await tester.pumpAndSettle();

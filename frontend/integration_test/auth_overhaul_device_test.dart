@@ -225,7 +225,7 @@ void main() {
     final auth = _NoAuth();
     await tester.pumpWidget(_app(LoginScreen(authApi: auth)));
     await _checkFrame(tester);
-    await tester.tap(find.byIcon(Icons.chevron_left));
+    await tester.tap(find.byTooltip('Back'));
     await _checkFrame(tester);
     expect(find.byType(AppShell), findsOneWidget);
     expect(find.byType(UserHomeScreen), findsOneWidget);

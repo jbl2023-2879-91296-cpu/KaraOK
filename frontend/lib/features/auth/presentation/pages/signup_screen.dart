@@ -1,5 +1,4 @@
 import 'package:karaok_app/shared/widgets/app_widgets.dart';
-import 'package:karaok_app/app/app_theme.dart';
 import 'package:karaok_app/shared/widgets/form_feedback.dart';
 import 'package:karaok_app/features/auth/presentation/pages/forgot_password_screen.dart';
 
@@ -96,7 +95,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   Widget build(BuildContext context) {
     return AppPageScaffold(
-      title: 'Account',
+      title: 'Create account',
       child: Form(
         key: _formKey,
         child: Column(
@@ -108,7 +107,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 onRetry: _loading ? null : _signUp,
               ),
             const AppSectionHeader(
-              title: 'Create Account',
+              title: 'Get started',
               subtitle:
                   'Verify your email, then add personal details after login.',
             ),
@@ -200,21 +199,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            Wrap(
-              alignment: WrapAlignment.center,
-              children: [
-                const Text(
-                  'Already have an account? ',
-                  style: TextStyle(color: AppColors.muted),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  ),
-                  child: const Text('Log In'),
-                ),
-              ],
+            AppPromptLink(
+              prompt: 'Already have an account?',
+              action: 'Log In',
+              onPressed: () => Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              ),
             ),
           ],
         ),

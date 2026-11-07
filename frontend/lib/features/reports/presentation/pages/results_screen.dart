@@ -156,14 +156,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
           ),
           backgroundColor: AppColors.background,
           elevation: 0,
-          title: const Text(
-            'Results',
-            style: TextStyle(
-              color: AppColors.primary,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          title: const Text('Results'),
           actions: [
             IconButton(
               tooltip: 'Glossary of terms',
@@ -171,7 +164,6 @@ class _ResultsScreenState extends State<ResultsScreen> {
               onPressed: () => GlossaryScreen.open(context),
             ),
           ],
-          centerTitle: true,
         ),
         body: SafeArea(
           child: Column(
@@ -182,22 +174,31 @@ class _ResultsScreenState extends State<ResultsScreen> {
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 12,
+                    horizontal: AppSpacing.page,
+                    vertical: AppSpacing.lg,
                   ),
                   child: Column(
                     children: [
                       if (widget.isSample) ...[
-                        const Text(
-                          'Sample assessment',
-                          style: TextStyle(fontWeight: FontWeight.w700),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              Icons.info_outline,
+                              size: 18,
+                              color: AppColors.muted,
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: Text(
+                                sampleAssessmentExplanation,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: AppColors.muted),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          sampleAssessmentExplanation,
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: AppSpacing.md),
                       ],
                       // Score card
                       Container(
@@ -210,13 +211,16 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         child: Column(
                           children: [
                             Text(
-                              'Audio Quality Score : ${widget.testName}',
-                              style: const TextStyle(
-                                color: AppColors.muted,
-                                fontSize: 13,
-                              ),
+                              widget.testName,
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.titleSmall,
                             ),
-                            const SizedBox(height: 10),
+                            Text(
+                              'Audio quality score',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: AppColors.muted),
+                            ),
+                            const SizedBox(height: AppSpacing.sm),
                             RichText(
                               textScaler: MediaQuery.textScalerOf(context),
                               text: TextSpan(
@@ -227,7 +231,9 @@ class _ResultsScreenState extends State<ResultsScreen> {
                                     style: TextStyle(
                                       color: _gradeColor,
                                       fontSize: 56,
-                                      fontWeight: FontWeight.w900,
+                                      height: 1.1,
+                                      letterSpacing: 0,
+                                      fontWeight: FontWeight.w800,
                                     ),
                                   ),
                                   TextSpan(
@@ -241,36 +247,30 @@ class _ResultsScreenState extends State<ResultsScreen> {
                                 ],
                               ),
                             ),
+                            const SizedBox(height: AppSpacing.sm),
                             Text(
-                              _grade,
-                              style: TextStyle(
-                                color: _gradeColor,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 2,
-                              ),
+                              reportGradeLabel(_grade),
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(color: _gradeColor),
                             ),
-                            const SizedBox(height: 10),
+                            const SizedBox(height: AppSpacing.sm),
                             Text(
                               widget.isSample
-                                  ? "Example quality score. These are not measurements of your audio."
+                                  ? 'Example quality score. These are not measurements of your audio.'
                                   : _interpretation,
                               textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: AppColors.muted,
-                                fontSize: 13,
-                                height: 1.5,
-                              ),
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(color: AppColors.muted),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: AppSpacing.lg),
                       WhatThisMeansCard(
                         features: widget.featureResults,
                         isSample: widget.isSample,
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: AppSpacing.lg),
                       if (widget.featureResults.isNotEmpty ||
                           widget.referenceRecordingCount != null)
                         EmpiricalFeatureTable(
@@ -281,13 +281,13 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         ),
                       if (widget.featureResults.isNotEmpty ||
                           widget.referenceRecordingCount != null)
-                        const SizedBox(height: 20),
+                        const SizedBox(height: AppSpacing.lg),
                       ReportMeasurements(
                         noiseLevelDb: widget.noiseLevelDb,
                         noiseReliable: widget.noiseReliable,
                         distortionLevel: widget.distortionLevel,
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: AppSpacing.lg),
                       // Status row
                       if (widget.settingsRecord != null) ...[
                         OutlinedButton.icon(
@@ -295,58 +295,9 @@ class _ResultsScreenState extends State<ResultsScreen> {
                           icon: const Icon(Icons.tune),
                           label: const Text('Generate Audio Settings'),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: AppSpacing.lg),
                       ],
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(AppRadii.control),
-                        ),
-                        child: Wrap(
-                          alignment: WrapAlignment.spaceBetween,
-                          spacing: 12,
-                          runSpacing: 8,
-                          children: [
-                            const Text(
-                              'STATUS',
-                              style: TextStyle(
-                                color: AppColors.muted,
-                                fontSize: 13,
-                                letterSpacing: 1.5,
-                              ),
-                            ),
-                            Row(
-                              children: [
-                                Text(
-                                  _grade,
-                                  style: TextStyle(
-                                    color: _gradeColor,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Icon(
-                                  widget.score == null
-                                      ? Icons.help
-                                      : _grade == 'GOOD'
-                                      ? Icons.check_circle
-                                      : _grade == 'NEEDS IMPROVEMENT'
-                                      ? Icons.warning
-                                      : Icons.cancel,
-                                  color: _gradeColor,
-                                  size: 20,
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 28),
+
                       // View Visual Report
                       if (!widget.isSample && widget.score != null)
                         Container(
@@ -458,7 +409,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         ),
                       // Guest sign-in nudge
                       if (widget.isGuest && !widget.isSample) ...[
-                        const SizedBox(height: 20),
+                        const SizedBox(height: AppSpacing.lg),
                         Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
