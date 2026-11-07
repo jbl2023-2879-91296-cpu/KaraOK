@@ -105,6 +105,32 @@ git log -1 --oneline
 
 The pull must fast-forward successfully and the final status must be empty.
 
+## 4a. Apply pending database migrations
+
+Releases from 1.9.0 onward need three additive columns. Run the files in order
+after the backup in section 3 has passed; each one is safe to repeat and keeps
+existing data.
+
+```bash
+cd /opt/karaok/app
+
+sudo mysql < database/migrations/20261017_01_deferred_profile.sql
+sudo mysql < database/migrations/20261025_01_recommendation_feedback.sql
+sudo mysql < database/migrations/20261025_02_noise_reliable.sql
+
+sudo mysql -D karaok_db -e "
+SELECT table_name, column_name, is_nullable
+FROM information_schema.columns
+WHERE table_schema = 'karaok_db'
+  AND ((table_name = 'user' AND column_name = 'first_name')
+    OR (table_name = 'settings_recommendation' AND column_name = 'feedback')
+    OR (table_name = 'audio_analysis_result' AND column_name = 'noise_reliable'));
+"
+```
+
+Expect three rows, with `first_name` nullable (`YES`). The API health check
+returns HTTP 503 with `missing_required_columns` if any of these is missing.
+
 ## 5. Prepare the backend environment
 
 ```bash

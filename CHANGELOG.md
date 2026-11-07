@@ -2,6 +2,52 @@
 
 All notable changes to KaraOK are documented here.
 
+## Unreleased (planned 1.11.0) - Consistent app layout
+
+### Changed
+
+- One app-bar style on every screen: left-aligned dark titles. Sign in no longer
+  shows a second header and back chevron.
+- The guest banner is a single row with Create Account and Sign in inline.
+- Section actions such as **View all** sit on the same row as their heading.
+- Results measurement rows show each feature's own score, a full-width
+  description, two-decimal values, and Good, Too high or Too low.
+- The Results grade uses the same words as Home and Records (Acceptable, Needs
+  Improvement, Problematic); the duplicate STATUS strip is gone.
+- Sample assessments carry per-feature scores and reference ranges.
+- Amplifier setup shows load errors first and lays Minimum, Maximum and Step
+  out evenly on one row; all inputs share the app input style.
+- Records filter chips wrap instead of running off screen; lighter Filter and
+  sort controls.
+- Sign in uses the same floating-label fields as Create account, and both share
+  one aligned "prompt + link" row.
+- Theme: no extra letter spacing, shared expansion and list tile styles,
+  compact text buttons, spaced Glossary cards.
+
+## 2026-10-25 - UAT releases 1.9.0 to 1.10.1
+
+### Added
+
+- Email-only sign-up with inline field errors; the profile is completed later
+  from Settings after a one-time prompt (needs migration
+  `20261017_01_deferred_profile.sql`).
+- Plain-language explanations for grades, each measurement, and the noise and
+  distortion estimates, using the actual reference ranges.
+- Searchable Glossary of terms shared by reports and settings.
+- Settings suggestions: independent Volume scale, sliders that snap to physical
+  knob steps, explained recommendations, and listener feedback (Better, Same,
+  Worse; migration `20261025_01_recommendation_feedback.sql`).
+- Startup check that required database columns exist (`/api/health` returns 503
+  when they do not).
+
+### Fixed
+
+- Noise is labeled only when the estimate is reliable; reliability is stored
+  per result (migration `20261025_02_noise_reliable.sql`).
+- Long audio files are rejected before decoding, and recording stops at five
+  minutes.
+- Release builds refuse a dirty working tree and record their source commit.
+
 ## 2026-09-18 - Median-centered assessment profile
 
 - New backend assessments default to the approved KaraOK Median PDF boundaries,

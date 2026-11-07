@@ -47,7 +47,10 @@ analysis and tests, builds, and copies versioned artifacts to
 builds. `build-manifest.json` records artifact hashes and the effective API URL.
 The original artifacts remain in `frontend/build/app/outputs/`.
 
-Set versions in `frontend/pubspec.yaml` or pass `-VersionName 1.1.0 -BuildNumber 2`.
+Set versions in `frontend/pubspec.yaml` or pass `-VersionName 1.11.0 -BuildNumber 17`.
+Choose the next version from the highest one already in `dist/` (including debug
+builds) and always increase the build number; `dist/` wins when it differs from
+`pubspec.yaml`.
 Use `-SplitPerAbi` for separate APK architectures, `-Clean` for a clean build,
 and `-OutputDirectory` to change packaging location. `-SkipChecks` bypasses the
 Flutter verification and should not be used for release validation.

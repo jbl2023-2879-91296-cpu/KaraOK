@@ -44,20 +44,19 @@ SHOW CREATE TABLE settings_recommendation;
 ## Account model
 
 Public registration creates only the `user` role. The `admin` role remains for
-internal provisioning. A user profile requires:
+internal provisioning. Sign-up needs only a verified email and a password; the
+account then exists with an empty profile.
 
-- unique username and verified email
-- first and last name
-- street, city, province/state, postal/area code, and country
-- derived two-letter country code
-- unique phone number and birthday
+- unique username and verified email are required at sign-up
+- first and last name, address fields, country, phone number and birthday are
+  nullable and are completed later from Settings (the app prompts once)
 - optional profile image up to 5 MB in JPEG, PNG, WebP, GIF, HEIC/HEIF, AVIF,
   or BMP format
 
-New and temporary passwords are validated by the application as exactly eight
-characters with uppercase, lowercase, number, and symbol characters. The
-database stores only their Argon2id hashes. OTP codes and refresh tokens are
-also stored only as one-way hashes.
+User-chosen passwords are 8 to 128 characters; generated temporary passwords are
+exactly eight. Both need uppercase, lowercase, number, and symbol characters.
+The database stores only Argon2id hashes. OTP codes and refresh tokens are also
+stored only as one-way hashes.
 
 ## Assessment ownership
 
@@ -108,6 +107,28 @@ Several null values are intentional:
 - Back up MySQL and saved analysis images on a coordinated schedule.
 - Test restoration regularly.
 - Never store database credentials in this public README or in `schema.sql`.
+
+## Migrations for an existing database
+
+`schema.sql` already contains every column below, so a fresh install needs
+none of these. A populated database must have them applied, in order, before the
+matching backend is deployed. Each file is safe to run more than once.
+
+| File | Adds | Needed by |
+| --- | --- | --- |
+| `migrations/20261017_01_deferred_profile.sql` | Nullable profile fields on `user` | Email-only sign-up |
+| `migrations/20261025_01_recommendation_feedback.sql` | `settings_recommendation.feedback` | Listener feedback on suggestions |
+| `migrations/20261025_02_noise_reliable.sql` | `audio_analysis_result.noise_reliable` | Noise reliability labels |
+
+```bash
+sudo mysql < database/migrations/20261017_01_deferred_profile.sql
+sudo mysql < database/migrations/20261025_01_recommendation_feedback.sql
+sudo mysql < database/migrations/20261025_02_noise_reliable.sql
+```
+
+The backend health check (`/api/health`) returns HTTP 503 with
+`"schema": "missing_required_columns"` when a required column is absent, so a
+skipped migration shows up immediately after a restart.
 
 ## Existing server compatibility
 

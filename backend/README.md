@@ -107,6 +107,9 @@ The module provides:
   `analysis_purpose=settings_suggestion`
 
 After deployment, `/api/health` must return `{"db":"connected","status":"ok"}`.
+It returns HTTP 503 with `"schema": "missing_required_columns"` when a column
+added by a [database migration](../database/README.md#migrations-for-an-existing-database)
+has not been applied.
 Inspect audit logs for `amplifier_profile_created`,
 `amplifier_profile_updated`, `amplifier_profile_deleted`,
 `audio_upload_analyzed` with `purpose=settings_suggestion`, and
