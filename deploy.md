@@ -140,6 +140,8 @@ test -x backend/.venv/bin/python || python3 -m venv backend/.venv
 
 backend/.venv/bin/python -m pip install --upgrade pip
 backend/.venv/bin/python -m pip install -r backend/requirements.txt
+# Some backend test files use pytest; install it so section 7b can run them.
+backend/.venv/bin/python -m pip install pytest
 KARAOK_COMPILE_CACHE="$(sudo -u karaok mktemp -d /tmp/karaok-compile.XXXXXX)"
 sudo -u karaok env PYTHONPYCACHEPREFIX="$KARAOK_COMPILE_CACHE" \
   backend/.venv/bin/python -m compileall backend/karaok backend/scripts
@@ -252,6 +254,13 @@ sudo -u karaok env \
   MPLCONFIGDIR="$CACHE_ROOT/matplotlib" \
   XDG_CACHE_HOME="$CACHE_ROOT/xdg" \
   ./.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+```
+
+`tests/test_health_schema.py` and `tests/test_noise_reliability.py` are
+pytest-style and are not collected by `unittest`. Run them as well:
+
+```bash
+sudo -u karaok env   PYTHONDONTWRITEBYTECODE=1   TMPDIR="$KARAOK_TEST_TMP"   NUMBA_CACHE_DIR="$CACHE_ROOT/numba"   MPLCONFIGDIR="$CACHE_ROOT/matplotlib"   XDG_CACHE_HOME="$CACHE_ROOT/xdg"   ./.venv/bin/python -m pytest -q -p no:cacheprovider   tests/test_health_schema.py tests/test_noise_reliability.py
 ```
 
 The command must exit with status zero and end in `OK`. The reported test count

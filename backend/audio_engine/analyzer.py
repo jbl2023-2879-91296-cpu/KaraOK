@@ -982,10 +982,13 @@ def estimate_noise(context: AnalysisContext) -> dict[str, Any]:
     estimated_snr_db = 20.0 * math.log10(max(signal_rms, EPSILON) / max(noise_rms, EPSILON))
 
     separation_db = 20.0 * math.log10(max(signal_rms, EPSILON) / max(cutoff, EPSILON))
+    # Compare at micro-dB precision so the 6 dB boundary does not depend on
+    # floating-point differences between Python/NumPy builds.
+    reliable = round(separation_db, 6) >= NOISE_RELIABILITY_MIN_SEPARATION_DB
     warning = (
         "The recording has little level separation between typical and quiet frames; "
         "it may contain no true quiet section, so this noise estimate is unreliable."
-        if separation_db < NOISE_RELIABILITY_MIN_SEPARATION_DB
+        if not reliable
         else "Low-energy frames may contain wanted audio; treat this no-reference noise estimate cautiously."
     )
     return {
@@ -993,7 +996,7 @@ def estimate_noise(context: AnalysisContext) -> dict[str, Any]:
         "noise_dbfs": float(noise_dbfs),
         "estimated_snr_db": float(estimated_snr_db),
         "signal_to_quiet_frame_separation_db": float(separation_db),
-        "reliable": bool(separation_db >= NOISE_RELIABILITY_MIN_SEPARATION_DB),
+        "reliable": bool(reliable),
         "threshold_use": "advisory_only",
         "low_energy_percentile": float(context.config.noise_percentile),
         "quiet_frame_count": int(quiet_frames.size),
