@@ -51,9 +51,11 @@ history is stored in MySQL; guests keep their reports on the device.
   result shows a 0 to 100 score, a grade (Acceptable, Needs Improvement,
   Problematic), each measurement with Good / Too high / Too low, noise and
   distortion estimates, and visual reports.
-- **Settings suggestions**: describe the amplifier's knob scale and current
-  positions, record, and get five bounded knob positions with reasons and a
-  verification recording. Controlled by `SETTINGS_RECOMMENDATIONS_ENABLED`.
+- **Adjusted amplifier settings**: describe the amplifier's knob scale and
+  current positions, record, and get five bounded knob positions with reasons.
+  After applying them, **Record Again to Verify** checks the result. KaraOK
+  never controls the amplifier. Controlled by `SETTINGS_RECOMMENDATIONS_ENABLED`
+  (off in production until the trial gate in [deploy.md](deploy.md) passes).
 - **Records**: search, filters, sorting, and two-report comparison.
 - **Glossary** of every sound term, available from Settings and reports.
 - **Admin Console**: a local PHP console for analytics and policy-limited record
