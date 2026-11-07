@@ -9,7 +9,7 @@ from audio_engine.analyzer import analyze_audio
 
 
 def main():
-    destination = ROOT / "artifacts" / "uat-noise-samples.csv"
+    destination = ROOT / "docs" / "uat-noise-samples.csv"
     destination.parent.mkdir(exist_ok=True)
     with destination.open("w", newline="", encoding="utf-8") as output:
         fields = ["set", "file", "noise_dbfs", "separation_db", "reliable", "distortion", "warning", "error"]

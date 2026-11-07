@@ -10,6 +10,8 @@ Run commands from the repository root in PowerShell.
 | `./tools/run-affected-tests.ps1 -All` | Run full backend and Flutter suites, Flutter analysis, and every `tools/tests/*.tests.ps1` suite |
 | `./tools/run-affected-tests.ps1 -All -ListOnly` | Preview release test groups without running them |
 | `./tools/run-settings-integration.ps1` | Run opt-in real-service settings integration using isolated database `karaok_settings_e2e` and port 5100 |
+| `python tools/analyze_bad_samples.py` | Re-analyze the local `audio sample(good)` / `audio sample(bad)` folders into `sample/` (add `--dry-run` to preview) |
+| `python tools/check_uat_noise_bands.py` | Regenerate `docs/uat-noise-samples.csv`, the noise-band evidence for UAT |
 | `python tools/security/generate_secrets.py` | Print freshly generated database, JWT, and keystore secrets; store securely and do not capture in shared logs |
 
 `lib/` contains shared PowerShell helpers for command resolution and build API

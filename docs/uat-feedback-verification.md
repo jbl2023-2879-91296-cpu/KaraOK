@@ -39,7 +39,7 @@ All 75 completed without errors. No files were trimmed, normalized or modified.
 Reproduce with the backend Python environment and
 `python tools/check_uat_noise_bands.py` from the repository root. Per-file noise,
 quiet-frame separation, boolean `reliable`, distortion and reliability warnings are saved in
-`artifacts/uat-noise-samples.csv`.
+`docs/uat-noise-samples.csv`.
 
 | Set | Files | Lowest noise estimate | Median | Highest | Show a band | Show fallback |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
