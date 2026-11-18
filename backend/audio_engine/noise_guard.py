@@ -25,7 +25,7 @@ class NoiseGuardConfig:
     usable_warn_percentage: float = 60.0
     usable_fail_percentage: float = 30.0
     mnr_warn_db: float = 10.0
-    mnr_low_db: float = 5.0
+    mnr_low_db: float = 6.0
 
 
 @dataclass

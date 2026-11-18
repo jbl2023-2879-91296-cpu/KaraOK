@@ -57,7 +57,7 @@
     "usable_warn_percentage": 60.0,
     "usable_fail_percentage": 30.0,
     "mnr_warn_db": 10.0,
-    "mnr_low_db": 5.0
+    "mnr_low_db": 6.0
   },
   "phone_recording": {
     "test_tone_frequency_hz": 1000.0,
