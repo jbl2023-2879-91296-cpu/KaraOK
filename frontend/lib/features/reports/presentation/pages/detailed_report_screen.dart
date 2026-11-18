@@ -9,6 +9,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/features/reports/domain/report_values.dart';
 import 'package:karaok_app/features/reports/presentation/widgets/empirical_feature_table.dart';
+import 'package:karaok_app/features/reports/presentation/widgets/noise_guard_card.dart';
 import 'package:karaok_app/features/reports/presentation/widgets/report_measurements.dart';
 import 'package:karaok_app/features/assessments/data/assessment_api.dart';
 
@@ -19,6 +20,10 @@ class DetailedReportScreen extends StatefulWidget {
     this.score,
     this.noiseLevelDb,
     this.noiseReliable,
+    this.noiseGuardUsablePercentage,
+    this.noiseGuardConfidence,
+    this.prerollNoiseDbfs,
+    this.noiseGuardWarnings = const [],
     this.distortionLevel,
     this.assessmentId,
     this.empiricalStatus,
@@ -31,6 +36,10 @@ class DetailedReportScreen extends StatefulWidget {
   final num? score;
   final num? noiseLevelDb;
   final bool? noiseReliable;
+  final double? noiseGuardUsablePercentage;
+  final String? noiseGuardConfidence;
+  final double? prerollNoiseDbfs;
+  final List<String> noiseGuardWarnings;
   final num? distortionLevel;
   final int? assessmentId;
   final String? empiricalStatus;
@@ -167,6 +176,12 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
                 noiseLevelDb: widget.noiseLevelDb,
                 noiseReliable: widget.noiseReliable,
                 distortionLevel: widget.distortionLevel,
+              ),
+              NoiseGuardCard(
+                usablePercentage: widget.noiseGuardUsablePercentage,
+                confidence: widget.noiseGuardConfidence,
+                prerollNoiseDbfs: widget.prerollNoiseDbfs,
+                warnings: widget.noiseGuardWarnings,
               ),
               const SizedBox(height: 20),
               if (widget.featureResults.isNotEmpty ||

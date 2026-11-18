@@ -66,7 +66,7 @@ void main() {
         expect(find.byType(BottomSheet), findsOneWidget);
         expect(
           find.textContaining(
-            'We only judge background noise when there are enough quiet moments',
+            'Background noise can affect the result.',
           ),
           findsOneWidget,
         );

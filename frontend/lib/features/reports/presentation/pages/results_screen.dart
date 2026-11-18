@@ -22,6 +22,10 @@ class ResultsScreen extends StatefulWidget {
     this.score,
     this.noiseLevelDb,
     this.noiseReliable,
+    this.noiseGuardUsablePercentage,
+    this.noiseGuardConfidence,
+    this.prerollNoiseDbfs,
+    this.noiseGuardWarnings = const [],
     this.distortionLevel,
     this.empiricalStatus,
     this.referenceRecordingCount,
@@ -40,6 +44,8 @@ class ResultsScreen extends StatefulWidget {
     final empirical = reportMap(record['empirical_quality']);
     final features = reportMap(empirical['features']);
     final visualizationValues = reportMap(record['visualizations']);
+    final confidence = record['noise_guard_confidence'];
+    final warnings = record['noise_guard_warnings'];
     return ResultsScreen(
       testName: (record['test_name'] ?? record['file_name'] ?? 'Audio test')
           .toString(),
@@ -48,6 +54,14 @@ class ResultsScreen extends StatefulWidget {
           reportNumber(record['score']),
       noiseLevelDb: reportNumber(record['noise_level']),
       noiseReliable: reportBool(record['noise_reliable']),
+      noiseGuardUsablePercentage: reportNumber(
+        record['noise_guard_usable_percentage'],
+      )?.toDouble(),
+      noiseGuardConfidence: confidence is String ? confidence : null,
+      prerollNoiseDbfs: reportNumber(record['preroll_noise_dbfs'])?.toDouble(),
+      noiseGuardWarnings: warnings is List
+          ? warnings.whereType<String>().toList()
+          : const [],
       distortionLevel: reportNumber(record['distortion_level']),
       empiricalStatus: empirical['overall_status']?.toString(),
       referenceRecordingCount: reportReferenceCount(
@@ -75,6 +89,10 @@ class ResultsScreen extends StatefulWidget {
   final num? score;
   final num? noiseLevelDb;
   final bool? noiseReliable;
+  final double? noiseGuardUsablePercentage;
+  final String? noiseGuardConfidence;
+  final double? prerollNoiseDbfs;
+  final List<String> noiseGuardWarnings;
   final num? distortionLevel;
   final String? empiricalStatus;
   final int? referenceRecordingCount;
@@ -317,6 +335,13 @@ class _ResultsScreenState extends State<ResultsScreen> {
                                         widget.referenceRecordingCount,
                                     noiseLevelDb: widget.noiseLevelDb,
                                     noiseReliable: widget.noiseReliable,
+                                    noiseGuardUsablePercentage:
+                                        widget.noiseGuardUsablePercentage,
+                                    noiseGuardConfidence:
+                                        widget.noiseGuardConfidence,
+                                    prerollNoiseDbfs: widget.prerollNoiseDbfs,
+                                    noiseGuardWarnings:
+                                        widget.noiseGuardWarnings,
                                     distortionLevel: widget.distortionLevel,
                                     assessmentId: widget.assessmentId,
                                     visualizationImages:

@@ -1,4 +1,4 @@
-/// Advisory bands only. Neither estimate changes the saved quality score.
+/// Advisory labels for the background-noise estimate.
 String noiseBand(num value) => value <= -60
     ? 'Quiet background'
     : value <= -45
@@ -12,10 +12,10 @@ String distortionBand(num value) => value < 20
     : 'High risk — the sound may be clipping. Try lowering the volume or microphone gain.';
 
 const noiseImplication =
-    "This is about the room and the recording, not your score. Background noise doesn't change the quality score.";
+    'A usable noise check helps KaraOK measure background noise before the song and reduce it where possible.';
 
 const noiseCaution =
-    'More negative numbers mean quieter sound. Music in the quiet parts can raise this estimate, so listen for noise before changing your setup.';
+    'More negative numbers mean quieter sound. If KaraOK estimates noise from the quieter parts of the recording, music in those parts can raise the estimate.';
 
 const noiseUncertain =
     'Not enough quiet moments to judge background noise. To check, record a few seconds of silence before the song starts.';
