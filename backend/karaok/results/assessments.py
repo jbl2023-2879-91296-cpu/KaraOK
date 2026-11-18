@@ -56,6 +56,8 @@ def get_audio_tests():
     cursor.execute(
         f"""SELECT a.assessment_id AS id, a.test_name,
                   r.quality_score AS score, r.noise_level, r.noise_reliable,
+                  r.noise_guard_usable_pct AS noise_guard_usable_percentage,
+                  r.noise_guard_confidence, r.preroll_noise_dbfs,
                   r.distortion_level, r.bass, r.treble, r.loudness,
                   r.sharpness, r.flatness, r.empirical_status,
                   r.worst_feature_status, r.worst_features,
@@ -93,6 +95,8 @@ def get_audio_test(test_id: int):
     cursor.execute(
         f"""SELECT a.assessment_id AS id, a.test_name,
                   r.quality_score AS score, r.noise_level, r.noise_reliable,
+                  r.noise_guard_usable_pct AS noise_guard_usable_percentage,
+                  r.noise_guard_confidence, r.preroll_noise_dbfs,
                   r.distortion_level, r.bass, r.treble, r.loudness,
                   r.sharpness, r.flatness, r.empirical_status,
                   r.worst_feature_status, r.worst_features,
@@ -235,7 +239,9 @@ def get_audio_analysis_dump(upload_id: int):
     cursor.execute(
         f"""SELECT au.assessment_id, au.file_name,
                   a.analysis_purpose, a.assessment_status, a.result_status,
-                  r.quality_score, r.noise_level, r.noise_reliable, r.distortion_level,
+                  r.quality_score, r.noise_level, r.noise_reliable,
+                  r.noise_guard_usable_pct AS noise_guard_usable_percentage,
+                  r.noise_guard_confidence, r.preroll_noise_dbfs, r.distortion_level,
                   r.bass, r.treble, r.loudness, r.sharpness, r.flatness,
                   r.empirical_status, r.worst_feature_status,
                   r.worst_features, r.empirical_details,
@@ -297,6 +303,11 @@ def get_audio_analysis_dump(upload_id: int):
             "original_file_name": upload_record["file_name"],
         },
         "analysis": {
+            "noise_guard": {
+                "usable_percentage": upload_record.get("noise_guard_usable_percentage"),
+                "confidence": upload_record.get("noise_guard_confidence"),
+                "preroll_noise_dbfs": upload_record.get("preroll_noise_dbfs"),
+            },
             "noise": {
                 "noise_dbfs": upload_record["noise_level"],
                 "reliable": (

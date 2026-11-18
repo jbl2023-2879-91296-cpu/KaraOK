@@ -6,6 +6,9 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+import wave
+
+import numpy as np
 from unittest.mock import MagicMock, PropertyMock, patch
 
 os.environ.setdefault("JWT_SECRET", "test-only-secret-that-is-at-least-32-characters")
@@ -165,6 +168,93 @@ class AudioPipelineTests(unittest.TestCase):
         ):
             result = api.create_guest_audio_analysis.__wrapped__()
         return result, upload_root
+
+    def _post_noise_guard_wav(self, seconds, preroll=None):
+        sample_rate = 16000
+        t = np.arange(seconds * sample_rate) / sample_rate
+        signal = 0.3 * np.sin(2 * np.pi * 440 * t)
+        signal[t < 3] *= 0.001
+        audio = BytesIO()
+        with wave.open(audio, "wb") as wav:
+            wav.setparams((1, 2, sample_rate, 0, "NONE", "not compressed"))
+            wav.writeframes((signal * 32767).astype("<i2").tobytes())
+        audio.seek(0)
+        data = {"audio": (audio, "song.wav"), "duration_seconds": str(seconds)}
+        if preroll is not None:
+            data["noise_preroll_seconds"] = preroll
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with api.app.test_request_context(method="POST", data=data), patch.object(
+                api, "AUDIO_UPLOAD_DIR", str(root / "uploads")
+            ), patch.object(api, "ANALYSIS_OUTPUT_DIR", str(root / "analysis")):
+                return api.create_guest_audio_analysis.__wrapped__()
+
+    def test_guest_upload_passes_preroll_to_analyzer(self):
+        with patch.object(api, "run_audio_analyzer", return_value={"analysis": _analyzer_result()}) as run:
+            self._post_noise_guard_wav(13, "3")
+        self.assertEqual(run.call_args.kwargs["noise_preroll_seconds"], 3.0)
+
+    def test_preroll_out_of_range_rejected(self):
+        with patch.object(api, "run_audio_analyzer") as run:
+            for value in ("7", "abc", "-1", "nan", "inf", ""):
+                with self.subTest(value=value):
+                    response, status = self._post_noise_guard_wav(13, value)
+                    self.assertEqual(status, 400)
+                    self.assertEqual(response.json["error"], "noise_preroll_seconds must be between 0 and 5")
+            run.assert_not_called()
+
+    def test_missing_preroll_defaults_to_zero(self):
+        response, status = self._post_noise_guard_wav(13)
+        self.assertEqual(status, 201)
+        report = response.json["analysis_dump"]["analysis"]["noise_guard"]
+        self.assertEqual(report["preroll_seconds"], 0.0)
+        self.assertIn(response.json["noise_guard_confidence"], ("low", "medium"))
+        self.assertIsNone(response.json["preroll_noise_dbfs"])
+
+    def test_short_song_after_preroll_rejected(self):
+        response, status = self._post_noise_guard_wav(12, "3")
+        self.assertEqual(status, 422)
+        self.assertEqual(response.json["error"], "Record at least 10 seconds of song after the noise check.")
+
+    def test_ten_second_song_after_preroll_accepted(self):
+        response, status = self._post_noise_guard_wav(13, "3")
+        self.assertEqual(status, 201)
+        self.assertEqual(response.json["status"], "Completed", response.json["analysis_dump"].get("error"))
+        report = response.json["analysis_dump"]["analysis"]["noise_guard"]
+        self.assertEqual(report["preroll_seconds"], 3.0)
+        self.assertEqual(response.json["noise_guard_usable_percentage"], report["usable_percentage"])
+        self.assertEqual(response.json["noise_guard_warnings"], report["warnings"])
+
+    def test_summary_exposes_noise_guard_fields(self):
+        guard = {"usable_percentage": 83.5, "confidence": "medium", "preroll_noise_dbfs": -44.0,
+                 "warnings": ["Ambient noise"]}
+        summary = api.summarize_audio_analysis({"analysis": {**_analyzer_result(), "noise_guard": guard}})
+        self.assertEqual(summary["noise_guard_usable_percentage"], 83.5)
+        self.assertEqual(summary["noise_guard_confidence"], "medium")
+        self.assertEqual(summary["preroll_noise_dbfs"], -44.0)
+        self.assertEqual(summary["noise_guard_warnings"], ["Ambient noise"])
+
+    def test_records_persist_noise_guard_columns(self):
+        connection = MagicMock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.return_value = (4,)
+        guard = {"usable_percentage": 83.5, "confidence": "medium", "preroll_noise_dbfs": -44.0}
+        with patch.object(api, "get_db", return_value=connection):
+            api.persist_audio_analysis(11, 13, {
+                "analysis": {**_analyzer_result(), "noise_guard": guard},
+                "visualizations": {
+                    "waveform": "7/11/test_waveform.png",
+                    "spectrogram": "7/11/test_spectrogram.png",
+                },
+            })
+        statement, values = next(call.args for call in cursor.execute.call_args_list
+                                 if "INSERT INTO audio_analysis_result" in call.args[0])
+        columns = statement.split("(", 1)[1].split(")", 1)[0].split(",")
+        row = dict(zip((column.strip() for column in columns), values, strict=True))
+        self.assertEqual(row["noise_guard_usable_pct"], 83.5)
+        self.assertEqual(row["noise_guard_confidence"], "medium")
+        self.assertEqual(row["preroll_noise_dbfs"], -44.0)
+        self.assertNotIn("noise_guard_warnings", row)
 
     def _run_with_fake_process(self, return_code: int, result_status: str = "passed"):
         temporary = tempfile.TemporaryDirectory()
@@ -351,7 +441,7 @@ class AudioPipelineTests(unittest.TestCase):
                 30,
                 "7/11/test_waveform.png",
                 "7/11/test_spectrogram.png",
-                None,
+                None, None, None, None,
             ),
         )
         statements = "\n".join(call.args[0] for call in cursor.execute.call_args_list)
@@ -595,7 +685,8 @@ class AudioPipelineTests(unittest.TestCase):
             method="POST",
             data={
                 "audio": (BytesIO(b"RIFF-test"), "recording.wav"),
-                "duration_seconds": "2",
+                "duration_seconds": "13",
+                "noise_preroll_seconds": "2.5",
                 "analysis_purpose": "settings_suggestion",
                 "genre": "rock",
                 "amplifier_profile_id": "12",
@@ -611,10 +702,10 @@ class AudioPipelineTests(unittest.TestCase):
             "parse_suggestion_form",
             return_value=context,
         ), patch.object(
-            api, "audio_duration_seconds", return_value=2
+            api, "audio_duration_seconds", return_value=13
         ), patch.object(
             api, "run_audio_analyzer", return_value=dump
-        ), patch.object(
+        ) as run, patch.object(
             api,
             "get_db",
             side_effect=[pending_connection, result_connection],
@@ -623,6 +714,9 @@ class AudioPipelineTests(unittest.TestCase):
             response, status_code = api.create_audio_upload.__wrapped__()
 
         payload = response.get_json()
+        self.assertEqual(run.call_args.kwargs["noise_preroll_seconds"], 2.5)
+        self.assertIsNone(payload["noise_guard_confidence"])
+        self.assertEqual(payload["noise_guard_warnings"], [])
         self.assertEqual(status_code, 201)
         self.assertEqual(payload["settings_recommendation"]["id"], 41)
         self.assertTrue(payload["settings_recommendation"]["persisted"])
@@ -1326,6 +1420,9 @@ class AudioPipelineTests(unittest.TestCase):
                     self.assertNotIn(raw_field, payload)
                 statement = cursor.execute.call_args.args[0]
                 for column in (
+                    "r.noise_guard_usable_pct AS noise_guard_usable_percentage",
+                    "r.noise_guard_confidence",
+                    "r.preroll_noise_dbfs",
                     "r.empirical_status",
                     "r.worst_feature_status",
                     "r.worst_features",
@@ -1395,6 +1492,9 @@ class AudioPipelineTests(unittest.TestCase):
 
         payload = response.get_json()
         self.assertEqual(payload["analysis_status"], "completed")
+        self.assertEqual(payload["analysis"]["noise_guard"], {
+            "confidence": None, "usable_percentage": None, "preroll_noise_dbfs": None,
+        })
         self.assertIsNone(payload["analysis"]["noise"]["reliable"])
         self.assertEqual(payload["analysis"]["bass"]["energy_percentage"], 40.0)
         self.assertEqual(payload["empirical_quality"]["overall_score"], 91.5)

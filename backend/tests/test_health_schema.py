@@ -10,6 +10,15 @@ from karaok.modules.system.routes import blueprint
 from karaok.system import health
 
 
+EXPECTED_COLUMNS = [
+    ("settings_recommendation", "feedback"),
+    ("audio_analysis_result", "noise_reliable"),
+    ("audio_analysis_result", "noise_guard_usable_pct"),
+    ("audio_analysis_result", "noise_guard_confidence"),
+    ("audio_analysis_result", "preroll_noise_dbfs"),
+]
+
+
 @pytest.fixture
 def health_client():
     app = Flask(__name__)
@@ -20,30 +29,26 @@ def health_client():
 def test_health_checks_required_column_in_active_database(health_client):
     connection = Mock()
     cursor = connection.cursor.return_value
-    cursor.fetchone.side_effect = [(1,), (1,), (1,)]
+    cursor.fetchone.side_effect = [(1,)] * (1 + len(EXPECTED_COLUMNS))
     with patch.object(health, "get_db", return_value=connection):
         response = health_client.get("/api/health")
     assert response.status_code == 200
     assert response.json == {"status": "ok", "db": "connected"}
     column_calls = cursor.execute.call_args_list[1:]
-    assert [call.args[1] for call in column_calls] == [
-        ("settings_recommendation", "feedback"),
-        ("audio_analysis_result", "noise_reliable"),
-    ]
+    assert [call.args[1] for call in column_calls] == EXPECTED_COLUMNS
     assert all("table_schema = DATABASE()" in call.args[0] for call in column_calls)
     cursor.close.assert_called_once()
     connection.close.assert_called_once()
 
 
 @pytest.mark.parametrize("missing", [
-    "settings_recommendation.feedback", "audio_analysis_result.noise_reliable",
+    ".".join(column) for column in EXPECTED_COLUMNS
 ])
 def test_missing_column_marks_health_unready_and_logs_fix(health_client, caplog, missing):
     connection = Mock()
     connection.cursor.return_value.fetchone.side_effect = [
         (1,),
-        None if missing.startswith("settings_recommendation.") else (1,),
-        None if missing.startswith("audio_analysis_result.") else (1,),
+        *(None if missing == ".".join(column) else (1,) for column in EXPECTED_COLUMNS),
     ]
     with patch.object(health, "get_db", return_value=connection):
         response = health_client.get("/api/health")
@@ -78,7 +83,8 @@ def test_database_errors_fail_health_and_release_open_resources(health_client, f
 def test_health_recovers_after_migration(health_client):
     connection = Mock()
     connection.cursor.return_value.fetchone.side_effect = [
-        (1,), None, None, (1,), (1,), (1,),
+        (1,), *([None] * len(EXPECTED_COLUMNS)),
+        (1,), *([(1,)] * len(EXPECTED_COLUMNS)),
     ]
     with patch.object(health, "get_db", return_value=connection):
         assert health_client.get("/api/health").status_code == 503

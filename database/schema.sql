@@ -100,6 +100,9 @@ CREATE TABLE IF NOT EXISTS audio_analysis_result (
 
     noise_level FLOAT,
     noise_reliable BOOLEAN NULL DEFAULT NULL,
+    noise_guard_usable_pct FLOAT NULL,
+    noise_guard_confidence VARCHAR(10) NULL,
+    preroll_noise_dbfs FLOAT NULL,
 
     distortion_level FLOAT,
 

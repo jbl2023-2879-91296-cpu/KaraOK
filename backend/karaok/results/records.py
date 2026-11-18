@@ -186,9 +186,11 @@ def save_audio_analysis(
                 worst_feature_status, worst_features, empirical_details,
                 scoring_algorithm_version, quality_profile_version,
                 quality_profile_checksum, reference_recording_count,
-                waveform_path, spectrogram_path, noise_reliable)
+                waveform_path, spectrogram_path, noise_guard_usable_pct,
+                noise_guard_confidence, preroll_noise_dbfs, noise_reliable)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                       %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                       %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                       %s, %s, %s)""",
             (
                 assessment_id,
                 quality_score,
@@ -209,6 +211,9 @@ def save_audio_analysis(
                 reference_recording_count,
                 waveform_path,
                 spectrogram_path,
+                summary.get("noise_guard_usable_percentage"),
+                summary.get("noise_guard_confidence"),
+                summary.get("preroll_noise_dbfs"),
                 summary.get("noise_reliable"),
             ),
         )

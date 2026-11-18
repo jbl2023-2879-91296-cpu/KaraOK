@@ -26,6 +26,9 @@ import sys
 import time
 
 
+SHORT_SONG_MESSAGE = "Record at least 10 seconds of song after the noise check."
+
+
 class AudioAnalyzerExecutionError(RuntimeError):
     def __init__(self, message: str, dump: dict[str, Any]):
         super().__init__(message)
@@ -93,6 +96,7 @@ def _run_audio_analyzer(
     assessment_id: int,
     original_name: str,
     analysis_purpose: str,
+    noise_preroll_seconds: float = 0.0,
 ) -> dict[str, Any]:
     """Run the standalone analyzer and return its transient structured output."""
     if analysis_purpose not in ALLOWED_ANALYSIS_PURPOSES:
@@ -113,6 +117,8 @@ def _run_audio_analyzer(
         AUDIO_ANALYZER_SETTINGS_PATH,
         "--no-save-csv",
     ]
+    if noise_preroll_seconds > 0:
+        command.extend(["--noise-preroll-seconds", str(noise_preroll_seconds)])
     started_at = datetime.now(timezone.utc)
     started_clock = time.monotonic()
     environment = os.environ.copy()
@@ -166,6 +172,8 @@ def _run_audio_analyzer(
                 process_error = f"Analyzer JSON could not be read: {error}"
         else:
             process_error = "Analyzer completed without producing a JSON result."
+    elif exit_code == 2 and f"Audio analysis error: {SHORT_SONG_MESSAGE}" in stderr.splitlines():
+        process_error = SHORT_SONG_MESSAGE
     elif process_error is None:
         process_error = f"Audio analyzer exited with code {exit_code}."
 
@@ -223,6 +231,7 @@ def run_audio_analyzer(
     assessment_id: int,
     original_name: str,
     analysis_purpose: str,
+    noise_preroll_seconds: float = 0.0,
 ) -> dict[str, Any]:
     """Analyze an upload and retain only its two report visualizations."""
     dump: dict[str, Any] | None = None
@@ -233,6 +242,7 @@ def run_audio_analyzer(
             assessment_id=assessment_id,
             original_name=original_name,
             analysis_purpose=analysis_purpose,
+            noise_preroll_seconds=noise_preroll_seconds,
         )
         return dump
     finally:

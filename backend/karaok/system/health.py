@@ -11,6 +11,9 @@ from mysql.connector import Error
 REQUIRED_COLUMNS = (
     ("settings_recommendation", "feedback"),
     ("audio_analysis_result", "noise_reliable"),
+    ("audio_analysis_result", "noise_guard_usable_pct"),
+    ("audio_analysis_result", "noise_guard_confidence"),
+    ("audio_analysis_result", "preroll_noise_dbfs"),
 )
 
 
