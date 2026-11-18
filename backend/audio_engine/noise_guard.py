@@ -24,8 +24,9 @@ class NoiseGuardConfig:
     transient_pad_frames: int = 2
     usable_warn_percentage: float = 60.0
     usable_fail_percentage: float = 30.0
-    mnr_warn_db: float = 10.0
-    mnr_low_db: float = 6.0
+    mnr_warn_db: float = 19.4
+    mnr_low_db: float = 15.1
+    mnr_high_db: float = 29.0
 
 
 @dataclass
@@ -180,7 +181,7 @@ def apply_noise_guard(
         music_to_noise_db is not None and music_to_noise_db < config.mnr_low_db
     ):
         confidence = "low"
-    elif music_to_noise_db is not None and music_to_noise_db >= config.mnr_warn_db:
+    elif music_to_noise_db is not None and music_to_noise_db >= config.mnr_high_db:
         confidence = "high"
 
     return NoiseGuardResult(song, keep, {

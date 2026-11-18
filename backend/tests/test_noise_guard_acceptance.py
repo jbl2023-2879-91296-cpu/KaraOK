@@ -80,3 +80,45 @@ class NoiseGuardCliTests(unittest.TestCase):
     def test_grid_orders_observed_categories(self):
         ordered = self.cli["grid_categories"](["transient", "babble", "steady", "custom"])
         self.assertEqual(ordered, ["steady", "transient", "babble", "custom"])
+
+    def test_quiet_room_floor_matches_in_preroll_and_song(self):
+        sr = 8000
+        clean = np.full(2 * sr, 0.125, dtype=np.float32)
+        recording = self.cli["quiet_recording"](clean, sr)
+        preroll = recording[:3 * sr]
+        added_noise = recording[3 * sr:] - clean
+        for segment in (preroll, added_noise):
+            self.assertAlmostEqual(10 * np.log10(np.mean(segment ** 2)), -70, places=3)
+
+    def test_flagging_requires_both_confidence_and_warning(self):
+        flagged = self.cli["is_flagged"]
+        self.assertTrue(flagged(dict(confidence="medium", warnings=["Noise warning"])))
+        self.assertFalse(flagged(dict(confidence="medium", warnings=[])))
+        self.assertFalse(flagged(dict(confidence="high", warnings=["Noise warning"])))
+
+    def test_street_mix_aligns_sources_and_gives_each_equal_rms(self):
+        recordings = []
+        sources = (
+            ("jeep.mp3", 80, 2000, 1, 0.01),
+            ("chicken.mp3", 120, 4000, 2, 0.1),
+            ("motorcycle.mp3", 160, 4000, 2, 0.3),
+            ("Human talk.mp3", 200, 4000, 2, 0.6),
+        )
+        for name, frequency, rate, seconds, amplitude in sources:
+            times = np.arange(rate * seconds) / rate
+            audio = amplitude * np.sin(2 * np.pi * frequency * times)
+            recordings.append((Path(name), "custom", audio, rate))
+
+        path, category, audio, rate = self.cli["build_street_mix"](recordings)
+
+        self.assertEqual((path.name, category, rate), ("street_mix", "street_mix", 4000))
+        self.assertEqual(len(audio), 4000)
+        magnitudes = np.abs(np.fft.rfft(audio))
+        contributions = [magnitudes[frequency] for _, frequency, *_ in sources]
+        np.testing.assert_allclose(contributions, [contributions[0]] * 4, rtol=0.002)
+        self.assertNotIn(category, self.cli["MUST_PASS_MNR"])
+
+    def test_street_mix_requires_all_four_named_recordings(self):
+        recordings = [(Path("jeep.mp3"), "steady", np.ones(4), 4)]
+
+        self.assertIsNone(self.cli["build_street_mix"](recordings))

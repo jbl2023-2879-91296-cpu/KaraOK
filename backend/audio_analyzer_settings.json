@@ -56,8 +56,9 @@
     "transient_pad_frames": 2,
     "usable_warn_percentage": 60.0,
     "usable_fail_percentage": 30.0,
-    "mnr_warn_db": 10.0,
-    "mnr_low_db": 6.0
+    "mnr_warn_db": 19.4,
+    "mnr_low_db": 15.1,
+    "mnr_high_db": 29.0
   },
   "phone_recording": {
     "test_tone_frequency_hz": 1000.0,

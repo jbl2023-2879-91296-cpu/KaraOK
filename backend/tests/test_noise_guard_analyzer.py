@@ -69,7 +69,8 @@ class NoiseGuardAnalyzerTests(unittest.TestCase):
             ("subtraction_floor", -0.1),
             ("transient_pad_frames", 1.5),
             ("transient_pad_frames", -1),
-            ("mnr_low_db", 11),
+            ("mnr_low_db", 20),
+            ("mnr_high_db", 19),
         ]:
             with self.subTest(name=name, value=value):
                 with self.assertRaisesRegex(AudioAnalysisError, name):

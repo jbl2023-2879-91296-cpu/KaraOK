@@ -279,6 +279,7 @@ def _validate_noise_guard(config: NoiseGuardConfig) -> None:
             "requires 0 <= usable_fail_percentage < usable_warn_percentage <= 100",
         ),
         (config.mnr_low_db <= config.mnr_warn_db, "mnr_low_db must not exceed mnr_warn_db"),
+        (config.mnr_high_db >= config.mnr_warn_db, "mnr_high_db must not be below mnr_warn_db"),
     )
     for valid, message in constraints:
         if not valid:
