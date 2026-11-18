@@ -22,9 +22,13 @@ import 'package:karaok_app/features/reports/presentation/pages/results_screen.da
 import 'package:karaok_app/features/sound_settings/domain/settings_recommendation.dart';
 import 'package:karaok_app/features/sound_settings/presentation/pages/settings_recommendation_screen.dart';
 
+const kNoisePreroll = Duration(seconds: 3);
+const kNoisyPrerollDbfs = -45.0;
+
 enum AudioInputState {
   idle,
   requestingPermission,
+  noiseCheck,
   recording,
   paused,
   processing,
@@ -129,7 +133,13 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   late final StreamSubscription<PlayerState> _playerStateSubscription;
   late final StreamSubscription<Duration> _positionSubscription;
   late final StreamSubscription<Duration?> _durationSubscription;
+  late final _recordingClock = WidgetsBinding.instance.samplingClock
+      .stopwatch();
   Timer? _timer;
+  Timer? _noiseCheckTimer;
+  Timer? _limitTimer;
+  StreamSubscription<Amplitude>? _amplitudes;
+  bool _noisy = false;
   String? _message;
   String? _recordingFileName;
   bool _guestLimitDialogVisible = false;
@@ -214,6 +224,9 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _noiseCheckTimer?.cancel();
+    _limitTimer?.cancel();
+    _amplitudes?.cancel();
     _playerStateSubscription.cancel();
     _positionSubscription.cancel();
     _durationSubscription.cancel();
@@ -225,6 +238,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   Future<void> _start() async {
     if (!await _guestCanAssess()) return;
     if (_busy ||
+        _state == AudioInputState.noiseCheck ||
         _state == AudioInputState.recording ||
         _state == AudioInputState.paused) {
       return;
@@ -262,17 +276,41 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
           encoder: AudioEncoder.wav,
           sampleRate: 44100,
           numChannels: 1,
+          autoGain: false,
+          echoCancel: false,
+          noiseSuppress: false,
         ),
         path: path,
       );
+      if (!mounted) return;
       _elapsed = Duration.zero;
-      _timer?.cancel();
-      _timer = Timer.periodic(const Duration(seconds: 1), (_) async {
-        if (!mounted || _state != AudioInputState.recording) return;
-        setState(() => _elapsed += const Duration(seconds: 1));
-        if (_elapsed >= _limit) await _stop(atLimit: true);
+      _noisy = false;
+      setState(() => _state = AudioInputState.noiseCheck);
+      var levelSum = 0.0;
+      var samples = 0;
+      _amplitudes = _recorder
+          .onAmplitudeChanged(const Duration(milliseconds: 100))
+          .listen((amplitude) {
+            if (_state == AudioInputState.noiseCheck &&
+                amplitude.current.isFinite) {
+              levelSum += amplitude.current;
+              samples++;
+            }
+          });
+      _recordingClock
+        ..reset()
+        ..start();
+      _noiseCheckTimer = Timer(kNoisePreroll, () {
+        if (!mounted || _state != AudioInputState.noiseCheck) return;
+        _amplitudes?.cancel();
+        _amplitudes = null;
+        setState(() {
+          _noisy = samples > 0 && levelSum / samples > kNoisyPrerollDbfs;
+          _state = AudioInputState.recording;
+          _message = 'Start the song now.';
+        });
       });
-      if (mounted) setState(() => _state = AudioInputState.recording);
+      _scheduleRecordingTimers();
     } catch (e, st) {
       developer.log(
         'Recording initialization failed',
@@ -288,13 +326,35 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
     }
   }
 
+  void _scheduleRecordingTimers() {
+    _limitTimer = Timer(
+      _limit - _recordingClock.elapsed,
+      () => _stop(atLimit: true),
+    );
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _elapsed = _recordingClock.elapsed);
+    });
+  }
+
+  void _freezeRecordingTime() {
+    _recordingClock.stop();
+    _elapsed = _recordingClock.elapsed;
+    _timer?.cancel();
+    _limitTimer?.cancel();
+  }
+
   Future<void> _pauseResume() async {
     try {
       if (_state == AudioInputState.recording) {
         await _recorder.pause();
+        if (!mounted || _state != AudioInputState.recording) return;
+        _freezeRecordingTime();
         setState(() => _state = AudioInputState.paused);
       } else if (_state == AudioInputState.paused) {
         await _recorder.resume();
+        if (!mounted || _state != AudioInputState.paused) return;
+        _recordingClock.start();
+        _scheduleRecordingTimers();
         setState(() => _state = AudioInputState.recording);
       }
     } catch (e, st) {
@@ -305,10 +365,17 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
 
   Future<void> _stop({bool atLimit = false}) async {
     if (_state != AudioInputState.recording &&
-        _state != AudioInputState.paused) {
+        _state != AudioInputState.paused &&
+        _state != AudioInputState.noiseCheck) {
       return;
     }
-    _timer?.cancel();
+    if (_recordingClock.elapsed <
+        AudioStagingService.minDuration + kNoisePreroll) {
+      setState(() => _message = AudioStagingService.tooShortMessage);
+      return;
+    }
+    _freezeRecordingTime();
+    _noiseCheckTimer?.cancel();
     setState(() => _state = AudioInputState.processing);
     try {
       final path = await _recorder.stop();
@@ -321,12 +388,14 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
         await _staging.stageBrowserRecording(
           path,
           _recordingFileName ?? 'recording.wav',
+          noisePrerollSeconds: kNoisePreroll.inSeconds.toDouble(),
         );
       } else {
         await _staging.stagePath(
           path,
           AudioSourceType.recording,
           temporary: true,
+          noisePrerollSeconds: kNoisePreroll.inSeconds.toDouble(),
         );
       }
       _recordingFileName = null;
@@ -356,13 +425,17 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   }
 
   Future<void> _cancelRecording() async {
-    if (_state != AudioInputState.recording &&
+    if (_state != AudioInputState.noiseCheck &&
+        _state != AudioInputState.recording &&
         _state != AudioInputState.paused) {
       return;
     }
-    _timer?.cancel();
+    _freezeRecordingTime();
+    _noiseCheckTimer?.cancel();
     setState(() => _state = AudioInputState.processing);
     try {
+      await _amplitudes?.cancel();
+      _amplitudes = null;
       await _recorder.cancel();
     } finally {
       _recordingFileName = null;
@@ -405,6 +478,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   Future<void> _selectFile() async {
     if (!await _guestCanAssess()) return;
     if (_busy ||
+        _state == AudioInputState.noiseCheck ||
         _state == AudioInputState.recording ||
         _state == AudioInputState.paused ||
         !await _confirmReplace()) {
@@ -519,12 +593,16 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
     final item = _staging.current;
     if (item == null ||
         _busy ||
+        _state == AudioInputState.noiseCheck ||
         _state == AudioInputState.recording ||
         _state == AudioInputState.paused) {
       return;
     }
     try {
-      AudioStagingService.validateDuration(item.duration);
+      AudioStagingService.validateDuration(
+        item.duration,
+        noisePrerollSeconds: item.noisePrerollSeconds,
+      );
     } on AudioStagingException catch (error) {
       setState(() => _message = error.message);
       return;
@@ -549,6 +627,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
         fileName: item.fileName,
         fileBytes: item.bytes,
         durationSeconds: item.duration.inSeconds,
+        noisePrerollSeconds: item.noisePrerollSeconds,
         genre: widget.settingsSuggestion?.genre ?? widget.genre,
         analysisPurpose: widget.purpose.requestValue,
         guest: isGuest,
@@ -656,7 +735,9 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   Widget build(BuildContext context) {
     final item = _staging.current;
     final recording =
-        _state == AudioInputState.recording || _state == AudioInputState.paused;
+        _state == AudioInputState.noiseCheck ||
+        _state == AudioInputState.recording ||
+        _state == AudioInputState.paused;
     return AppPageScaffold(
       title: widget.purpose.pageTitle,
       child: Column(
@@ -704,7 +785,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
           ),
           const SizedBox(height: AppSpacing.lg),
           Text(
-            'Minimum 10 seconds, maximum 5 minutes. For better results, record 20–30 seconds of continuous music.',
+            'Record at least 10 seconds of music after the 3-second noise check. Maximum 5 minutes total. For better results, record 20–30 seconds of continuous music.',
             textAlign: TextAlign.center,
             style: Theme.of(
               context,
@@ -712,6 +793,14 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
           ),
           const SizedBox(height: AppSpacing.lg),
           if (recording) ...[
+            if (_state == AudioInputState.noiseCheck)
+              const Text(
+                "Stay quiet, checking background noise. Don't start the song yet.",
+              ),
+            if (_noisy)
+              const Text(
+                "It's noisy here. Hold the phone about 30 cm (1 ft) from the speaker, pointed at it.",
+              ),
             LinearProgressIndicator(
               value: _elapsed.inSeconds / _limit.inSeconds,
               color: AppColors.orangeInk,
@@ -721,7 +810,9 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _pauseResume,
+                    onPressed: _state == AudioInputState.noiseCheck
+                        ? null
+                        : _pauseResume,
                     icon: Icon(
                       _state == AudioInputState.paused
                           ? Icons.play_arrow

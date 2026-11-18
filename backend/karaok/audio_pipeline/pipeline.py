@@ -154,7 +154,7 @@ def create_guest_audio_analysis():
     size = os.path.getsize(stored_path)
     if size == 0 or size > MAX_AUDIO_BYTES:
         os.remove(stored_path)
-        return jsonify({"error": "Audio file is empty or exceeds the 25 MB limit"}), 413
+        return jsonify({"error": f"Audio file is empty or exceeds the {MAX_AUDIO_BYTES / (1024 * 1024):g} MiB limit"}), 413
     try:
         duration = audio_duration_seconds(stored_path)
     except AudioDurationError as error:
@@ -337,7 +337,7 @@ def create_audio_upload():
     size = os.path.getsize(stored_path)
     if size == 0 or size > MAX_AUDIO_BYTES:
         os.remove(stored_path)
-        return jsonify({"error": "Audio file is empty or exceeds the 25 MB limit"}), 413
+        return jsonify({"error": f"Audio file is empty or exceeds the {MAX_AUDIO_BYTES / (1024 * 1024):g} MiB limit"}), 413
     try:
         duration = audio_duration_seconds(stored_path)
     except AudioDurationError as error:

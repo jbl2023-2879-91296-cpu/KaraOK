@@ -23,6 +23,7 @@ class StagedAudio {
     required this.source,
     required this.temporary,
     this.bytes,
+    this.noisePrerollSeconds = 0,
   });
   final String fileName;
   final String path;
@@ -31,6 +32,7 @@ class StagedAudio {
   final String format;
   final AudioSourceType source;
   final bool temporary;
+  final double noisePrerollSeconds;
   final Uint8List? bytes;
 
   bool get isMemoryBacked => bytes != null;
@@ -47,7 +49,9 @@ class AudioStagingService {
   static const androidPicker = MethodChannel('karaok/audio_picker');
   static const durationLimitMessage =
       'This audio is longer than 5 minutes. Trim it to a 10-second to 5-minute section and try again.';
-  static const maxBytes = 25 * 1024 * 1024;
+  static const maxBytes = 26 * 1024 * 1024;
+  static const tooShortMessage =
+      'Audio must be at least 10 seconds. Record again or choose a longer file.';
   static const minDuration = Duration(seconds: 10);
   static const maxDuration = Duration(minutes: 5);
   static const supportedExtensions = {
@@ -91,16 +95,21 @@ class AudioStagingService {
     }
   }
 
-  static void validateDuration(Duration? duration) {
+  static void validateDuration(
+    Duration? duration, {
+    double noisePrerollSeconds = 0,
+  }) {
     if (duration == null) {
       throw const AudioStagingException(
         'Could not determine the audio duration.',
       );
     }
-    if (duration < minDuration) {
-      throw const AudioStagingException(
-        'Audio must be at least 10 seconds. Record again or choose a longer file.',
-      );
+    final preroll = Duration(
+      microseconds: (noisePrerollSeconds * Duration.microsecondsPerSecond)
+          .round(),
+    );
+    if (duration < minDuration + preroll) {
+      throw const AudioStagingException(tooShortMessage);
     }
     if (duration > maxDuration) {
       throw const AudioStagingException(durationLimitMessage);
@@ -128,7 +137,7 @@ class AudioStagingService {
         final size = selected['size'] as int;
         if (size > maxBytes) {
           throw const AudioStagingException(
-            'The audio file exceeds the 25 MB limit.',
+            'The audio file exceeds the 26 MiB limit.',
           );
         }
         return await _stagePath(
@@ -164,20 +173,32 @@ class AudioStagingService {
     );
   }
 
-  Future<StagedAudio> stageBrowserRecording(String blobUrl, String fileName) =>
-      _stageBrowserFile(
-        XFile(blobUrl, name: fileName, mimeType: 'audio/wav'),
-        source: AudioSourceType.recording,
-      );
+  Future<StagedAudio> stageBrowserRecording(
+    String blobUrl,
+    String fileName, {
+    double noisePrerollSeconds = 0,
+  }) => _stageBrowserFile(
+    XFile(blobUrl, name: fileName, mimeType: 'audio/wav'),
+    source: AudioSourceType.recording,
+    noisePrerollSeconds: noisePrerollSeconds,
+  );
 
   Future<StagedAudio> _stageBrowserFile(
     XFile selectedFile, {
     required AudioSourceType source,
-  }) => _guard(() => _readBrowserFile(selectedFile, source: source));
+    double noisePrerollSeconds = 0,
+  }) => _guard(
+    () => _readBrowserFile(
+      selectedFile,
+      source: source,
+      noisePrerollSeconds: noisePrerollSeconds,
+    ),
+  );
 
   Future<StagedAudio> _readBrowserFile(
     XFile selectedFile, {
     required AudioSourceType source,
+    double noisePrerollSeconds = 0,
   }) async {
     final fileName = selectedFile.name;
     final extension = p.extension(fileName).replaceFirst('.', '').toLowerCase();
@@ -193,17 +214,17 @@ class AudioStagingService {
     }
     if (size > maxBytes) {
       throw const AudioStagingException(
-        'The audio file exceeds the 25 MB limit.',
+        'The audio file exceeds the 26 MiB limit.',
       );
     }
 
     final duration = await _playerDuration(selectedFile.path, browser: true);
-    validateDuration(duration);
+    validateDuration(duration, noisePrerollSeconds: noisePrerollSeconds);
 
     final bytes = await selectedFile.readAsBytes().timeout(operationTimeout);
     if (bytes.length > maxBytes) {
       throw const AudioStagingException(
-        'The audio file exceeds the 25 MB limit.',
+        'The audio file exceeds the 26 MiB limit.',
       );
     }
     if (bytes.isEmpty) {
@@ -217,6 +238,7 @@ class AudioStagingService {
       duration: duration!,
       format: extension.toUpperCase(),
       source: source,
+      noisePrerollSeconds: noisePrerollSeconds,
       temporary: false,
       bytes: bytes,
     );
@@ -227,12 +249,21 @@ class AudioStagingService {
     String path,
     AudioSourceType source, {
     required bool temporary,
-  }) => _guard(() => _stagePath(path, source, temporary: temporary));
+    double noisePrerollSeconds = 0,
+  }) => _guard(
+    () => _stagePath(
+      path,
+      source,
+      temporary: temporary,
+      noisePrerollSeconds: noisePrerollSeconds,
+    ),
+  );
 
   Future<StagedAudio> _stagePath(
     String path,
     AudioSourceType source, {
     required bool temporary,
+    double noisePrerollSeconds = 0,
     String? fileName,
   }) async {
     final file = File(path);
@@ -245,7 +276,7 @@ class AudioStagingService {
     }
     if (size > maxBytes) {
       throw const AudioStagingException(
-        'The audio file exceeds the 25 MB limit.',
+        'The audio file exceeds the 26 MiB limit.',
       );
     }
     final extension = p.extension(path).replaceFirst('.', '').toLowerCase();
@@ -270,7 +301,7 @@ class AudioStagingService {
       }
     }
     duration ??= await _playerDuration(path);
-    validateDuration(duration);
+    validateDuration(duration, noisePrerollSeconds: noisePrerollSeconds);
     await discard();
     current = StagedAudio(
       fileName: fileName ?? p.basename(path),
@@ -279,6 +310,7 @@ class AudioStagingService {
       duration: duration!,
       format: extension.toUpperCase(),
       source: source,
+      noisePrerollSeconds: noisePrerollSeconds,
       temporary: temporary,
     );
     return current!;

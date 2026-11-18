@@ -61,7 +61,7 @@ EXPOSE_REGISTRATION_OTP = (
     os.getenv("EXPOSE_REGISTRATION_OTP", "false").lower() == "true"
 )
 
-MAX_AUDIO_BYTES = int(os.getenv("MAX_AUDIO_BYTES", str(25 * 1024 * 1024)))
+MAX_AUDIO_BYTES = int(os.getenv("MAX_AUDIO_BYTES", str(26 * 1024 * 1024)))
 MAX_PROFILE_IMAGE_BYTES = int(
     os.getenv("MAX_PROFILE_IMAGE_BYTES", str(5 * 1024 * 1024))
 )

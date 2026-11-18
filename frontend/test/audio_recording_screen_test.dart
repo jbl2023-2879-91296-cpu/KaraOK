@@ -12,9 +12,25 @@ import 'package:path/path.dart' as p;
 import 'support/audio_platform_stub.dart';
 
 void main() {
-  for (final outcome in ['cancel', 'denied', 'short', 'valid', 'limit']) {
+  const checks = {
+    'quiet': 'recording starts with a 3-second noise check',
+    'noisy': 'noisy noise check shows the placement warning',
+    'pause': 'pause is disabled during the noise check',
+    'config': 'recorder config disables phone processing',
+    'fractional': 'pause excludes fractional seconds from the minimum',
+    'minimum': 'stop is blocked until 13 s when a noise check was recorded',
+  };
+  for (final outcome in [
+    ...checks.keys,
+    'cancel',
+    'denied',
+    'short',
+    'valid',
+    'limit',
+  ]) {
     testWidgets(
-      'Record Again uses microphone and handles $outcome replacement',
+      checks[outcome] ??
+          'Record Again uses microphone and handles $outcome replacement',
       (tester) async {
         tester.view.physicalSize = const Size(900, 2200);
         tester.view.devicePixelRatio = 1;
@@ -43,6 +59,7 @@ void main() {
         var granted = true;
         var starts = 0;
         var stops = 0;
+        Map? config;
         String? path;
         messenger.setMockMethodCallHandler(
           const MethodChannel('flutter.baseflow.com/permissions/methods'),
@@ -61,9 +78,15 @@ void main() {
               );
             }
             if (call.method == 'start') {
+              config = args;
               starts++;
               path = args['path'] as String;
               File(path!).writeAsBytesSync([1, 2, 3]);
+            }
+            if (call.method == 'isRecording') return true;
+            if (call.method == 'getAmplitude') {
+              final level = outcome == 'noisy' ? -30.0 : -60.0;
+              return {'current': level, 'max': level};
             }
             if (call.method == 'stop') {
               stops++;
@@ -80,6 +103,79 @@ void main() {
           'Record Audio',
           () => find.text('Cancel recording').evaluate().isNotEmpty,
         );
+        if (outcome == 'quiet') {
+          expect(
+            find.text(
+              "Stay quiet, checking background noise. Don't start the song yet.",
+            ),
+            findsOneWidget,
+          );
+          await tester.pump(const Duration(seconds: 3));
+          expect(find.text('Start the song now.'), findsOneWidget);
+          expect(
+            tester
+                .widget<OutlinedButton>(
+                  find.widgetWithText(OutlinedButton, 'Pause'),
+                )
+                .onPressed,
+            isNotNull,
+          );
+        } else if (outcome == 'noisy') {
+          await tester.pump(const Duration(milliseconds: 150));
+          await tester.pump(const Duration(milliseconds: 2850));
+          expect(
+            find.text(
+              "It's noisy here. Hold the phone about 30 cm (1 ft) from the speaker, pointed at it.",
+            ),
+            findsOneWidget,
+          );
+        } else if (outcome == 'pause') {
+          expect(
+            tester
+                .widget<OutlinedButton>(
+                  find.widgetWithText(OutlinedButton, 'Pause'),
+                )
+                .onPressed,
+            isNull,
+          );
+        } else if (outcome == 'config') {
+          for (final option in ['autoGain', 'echoCancel', 'noiseSuppress']) {
+            expect(config![option], isFalse, reason: option);
+          }
+        } else if (outcome == 'fractional') {
+          await tester.pump(const Duration(milliseconds: 12050));
+          await tester.tap(find.text('Pause'));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 880));
+          await tester.tap(find.text('Resume'));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 120));
+          await tester.tap(find.text('Stop'));
+          await tester.pump();
+          expect(stops, 0);
+          await tester.pump(const Duration(milliseconds: 850));
+          await _tapAndWait(tester, 'Stop', () => staging.current != null);
+          expect(stops, 1);
+        } else if (outcome == 'minimum') {
+          await tester.pump(const Duration(seconds: 12));
+          await tester.tap(find.text('Stop'));
+          await tester.pump();
+          expect(stops, 0);
+          expect(
+            find.textContaining('Audio must be at least 10 seconds'),
+            findsOneWidget,
+          );
+          await tester.pump(const Duration(seconds: 1));
+          await _tapAndWait(tester, 'Stop', () => staging.current != null);
+          expect(stops, 1);
+          expect(staging.current!.noisePrerollSeconds, 3);
+        }
+        if (checks.containsKey(outcome)) {
+          await tester.pumpWidget(const SizedBox());
+          await tester.pump();
+          return;
+        }
+        await tester.pump(const Duration(seconds: 13));
         await _tapAndWait(
           tester,
           'Stop',
@@ -130,6 +226,7 @@ void main() {
             () => find.text('Remove').evaluate().isNotEmpty,
           );
         } else if (outcome == 'short' || outcome == 'valid') {
+          await tester.pump(const Duration(seconds: 13));
           audio.duration = Duration(seconds: outcome == 'short' ? 1 : 20);
           await _tapAndWait(
             tester,
@@ -196,8 +293,12 @@ class _RecordingStaging extends AudioStagingService {
     String path,
     AudioSourceType source, {
     required bool temporary,
+    double noisePrerollSeconds = 0,
   }) async {
-    AudioStagingService.validateDuration(audio.duration);
+    AudioStagingService.validateDuration(
+      audio.duration,
+      noisePrerollSeconds: noisePrerollSeconds,
+    );
     await discard();
     return current = StagedAudio(
       fileName: p.basename(path),
@@ -207,6 +308,7 @@ class _RecordingStaging extends AudioStagingService {
       format: 'WAV',
       source: source,
       temporary: temporary,
+      noisePrerollSeconds: noisePrerollSeconds,
     );
   }
 }

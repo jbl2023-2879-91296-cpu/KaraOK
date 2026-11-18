@@ -10,6 +10,21 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 class ConfigTests(unittest.TestCase):
+    def test_default_upload_cap_fits_five_minute_pcm_recording(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            environment_file = Path(temporary_directory) / "empty.env"
+            environment_file.touch()
+            environment = os.environ.copy()
+            environment.pop("MAX_AUDIO_BYTES", None)
+            environment["KARAOK_ENV_FILE"] = str(environment_file)
+            result = subprocess.run(
+                [sys.executable, "-c", "from karaok.config import MAX_AUDIO_BYTES; print(MAX_AUDIO_BYTES)"],
+                cwd=BACKEND_ROOT, env=environment, capture_output=True, text=True, check=True,
+            )
+        limit = int(result.stdout)
+        self.assertGreaterEqual(limit, 44 + 300 * 44100 * 2)
+        self.assertEqual(limit, 26 * 1024 * 1024)
+
     def test_explicit_environment_file_is_loaded_instead_of_local_dotenv(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             environment_file = Path(temporary_directory) / "integration.env"

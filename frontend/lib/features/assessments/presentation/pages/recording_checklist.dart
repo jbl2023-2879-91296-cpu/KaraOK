@@ -18,6 +18,13 @@ class RecordingChecklist extends StatelessWidget {
           ),
         ),
         ListTile(
+          leading: Icon(Icons.speaker),
+          title: Text('Hold the phone close to the speaker'),
+          subtitle: Text(
+            'About 30 cm (1 ft) away, pointed at the speaker. Being closer cuts background noise more than any filter.',
+          ),
+        ),
+        ListTile(
           leading: Icon(Icons.mic),
           title: Text('Keep the recording setup consistent'),
           subtitle: Text(
