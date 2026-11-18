@@ -44,6 +44,21 @@
     "record_technical_failures_in_csv": true,
     "cleanup_incomplete_outputs": true
   },
+  "noise_guard": {
+    "enabled": true,
+    "preroll_min_usable_seconds": 1.0,
+    "preroll_silence_dbfs": -90.0,
+    "subtraction_floor": 0.1,
+    "music_in_preroll_margin_db": 6.0,
+    "transient_window_seconds": 1.5,
+    "transient_band_db": 6.0,
+    "transient_band_fraction": 0.3,
+    "transient_pad_frames": 2,
+    "usable_warn_percentage": 60.0,
+    "usable_fail_percentage": 30.0,
+    "mnr_warn_db": 10.0,
+    "mnr_low_db": 5.0
+  },
   "phone_recording": {
     "test_tone_frequency_hz": 1000.0,
     "analysis_minimum_frequency_hz": 20.0,
