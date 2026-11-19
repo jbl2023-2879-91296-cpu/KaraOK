@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "sample" / "good"
 OUTPUT = ROOT / "output" / "good-boundary-reassessment"
 METRICS = (

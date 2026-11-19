@@ -37,9 +37,9 @@ Ran the current full analyzer, with its default configuration, on **every file**
 in `audio sample(good)/` and `audio sample(bad)/`: 30 good MP3s and 45 altered WAVs.
 All 75 completed without errors. No files were trimmed, normalized or modified.
 Reproduce with the backend Python environment and
-`python tools/check_uat_noise_bands.py` from the repository root. Per-file noise,
+`python tools/audio_samples/check_uat_noise_bands.py` from the repository root. Per-file noise,
 quiet-frame separation, boolean `reliable`, distortion and reliability warnings are saved in
-`docs/uat-noise-samples.csv`.
+`docs/findings/uat-noise-samples.csv`.
 
 | Set | Files | Lowest noise estimate | Median | Highest | Show a band | Show fallback |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |

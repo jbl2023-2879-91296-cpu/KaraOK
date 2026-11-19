@@ -3,6 +3,7 @@ import 'package:karaok_app/features/account/presentation/pages/change_password_s
 import 'package:karaok_app/core/security/guest_assessment_service.dart';
 import 'package:karaok_app/core/storage/guest_assessment_store.dart';
 import 'package:karaok_app/features/reports/domain/sample_assessments.dart';
+import 'package:karaok_app/features/reports/domain/report_values.dart';
 import 'package:karaok_app/shared/widgets/brand_logo.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
@@ -349,7 +350,8 @@ class _AnalysisListItem extends StatelessWidget {
     final date = isSampleAssessment(test)
         ? 'Illustrative sample'
         : (test['created_at'] ?? '').toString();
-    final score = test['score'] as num?;
+    final failed = reportQualityFailures(test).isNotEmpty;
+    final score = reportNumber(test['score']);
     final status = (test['status'] ?? 'Pending').toString();
     final color = status == 'Acceptable'
         ? AppColors.success
@@ -399,19 +401,22 @@ class _AnalysisListItem extends StatelessWidget {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     AppStatusChip(
-                      label: status,
-                      status: status == 'Acceptable'
+                      label: failed ? 'Check failed' : status,
+                      status: failed
+                          ? AppStatus.neutral
+                          : status == 'Acceptable'
                           ? AppStatus.success
                           : status == 'Needs Improvement'
                           ? AppStatus.warning
                           : AppStatus.error,
                     ),
-                    Text(
-                      score == null ? '--/100' : '${score.round()}/100',
-                      style: Theme.of(
-                        context,
-                      ).textTheme.titleSmall?.copyWith(color: color),
-                    ),
+                    if (!failed)
+                      Text(
+                        score == null ? '--/100' : '${score.round()}/100',
+                        style: Theme.of(
+                          context,
+                        ).textTheme.titleSmall?.copyWith(color: color),
+                      ),
                   ],
                 ),
               ],

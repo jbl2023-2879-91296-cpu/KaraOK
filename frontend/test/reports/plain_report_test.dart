@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:karaok_app/app/app_theme.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/reports/domain/measurement_glossary.dart';
 import 'package:karaok_app/features/reports/presentation/pages/results_screen.dart';
@@ -8,6 +9,7 @@ import 'package:karaok_app/features/reports/presentation/pages/detailed_report_s
 import 'package:karaok_app/features/reports/presentation/widgets/what_this_means_card.dart';
 import 'package:karaok_app/features/reports/presentation/widgets/empirical_feature_table.dart';
 import 'package:karaok_app/features/reports/presentation/widgets/measurement_guide.dart';
+import 'package:karaok_app/features/reports/presentation/widgets/noise_guard_card.dart';
 import 'package:karaok_app/features/reports/presentation/widgets/report_measurements.dart';
 
 Map<String, dynamic> features({bool high = false}) => {
@@ -34,6 +36,119 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
     UserSession.instance.clear();
   });
+  testWidgets(
+    'results and details explain unreliable flatness without blaming it',
+    (tester) async {
+      const note = 'Background noise may affect this measurement.';
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ResultsScreen.fromRecord({
+            'score': 85,
+            'flatness_reliable': false,
+            'flatness_reliability_note': note,
+            'empirical_quality': {
+              'features': {
+                ...features(),
+                'flatness': {
+                  ...features(high: true)['flatness'] as Map<String, dynamic>,
+                  'score': 0,
+                  'status': 'bad',
+                },
+              },
+            },
+          }, isGuest: true),
+        ),
+      );
+      void checkFlatness() {
+        expect(find.text(note), findsOneWidget);
+        expect(find.text('Unreliable'), findsOneWidget);
+        expect(
+          tester.widget<Text>(find.text('0.0/100')).style?.color,
+          AppColors.muted,
+        );
+        expect(find.text('Too high'), findsNothing);
+        expect(find.textContaining('Flatness:'), findsNothing);
+        expect(
+          find.textContaining('Some comparisons are unavailable'),
+          findsOneWidget,
+        );
+      }
+
+      checkFlatness();
+      await tester.ensureVisible(find.text('View Visual Report'));
+      await tester.tap(find.text('View Visual Report'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DetailedReportScreen), findsOneWidget);
+      checkFlatness();
+    },
+  );
+  for (final fromHistory in [false, true]) {
+    testWidgets(
+      'both reports show quality failure and advice, history=$fromHistory',
+      (tester) async {
+        const failure =
+            'Background noise was too loud for a reliable result. Move closer to the speaker or record somewhere quieter.';
+        const warning =
+            '42% of the recording had sudden noises and was skipped.';
+        final assessment = {
+          'status': 'failed',
+          'failures': [failure],
+        };
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ResultsScreen.fromRecord({
+              'score': 11.32,
+              'noise_level': -34,
+              'noise_reliable': true,
+              'distortion_level': 5,
+              'noise_guard_usable_percentage': 58,
+              'noise_guard_confidence': 'low',
+              'noise_guard_warnings': [warning],
+              'empirical_quality': {
+                'overall_status': 'bad',
+                'features': features(),
+              },
+              if (fromHistory)
+                'quality_assessment': assessment
+              else
+                'analysis_dump': {
+                  'analysis': {'quality_assessment': assessment},
+                },
+            }),
+          ),
+        );
+        void checkFailure() {
+          expect(find.text('Audio quality check failed'), findsOneWidget);
+          expect(find.text(failure), findsOneWidget);
+          expect(find.text('Problematic'), findsNothing);
+          expect(find.text('Audio quality score'), findsNothing);
+          expect(find.text('Overall Audio Quality Score'), findsNothing);
+          expect(find.text('What this means'), findsNothing);
+        }
+
+        checkFailure();
+        expect(find.text(warning), findsNothing);
+        await tester.tap(find.text('View Detailed Report'));
+        await tester.pumpAndSettle();
+        expect(find.byType(DetailedReportScreen), findsOneWidget);
+        checkFailure();
+        expect(find.text('Waveform Analysis'), findsOneWidget);
+        expect(find.text('Spectrogram Analysis'), findsOneWidget);
+        expect(find.text('Estimated noise level'), findsOneWidget);
+        expect(find.text('Estimated distortion risk'), findsOneWidget);
+        expect(find.text('Noise guard: Low confidence'), findsOneWidget);
+        expect(find.text('58% of the recording was used'), findsOneWidget);
+        expect(find.byType(EmpiricalFeatureTable), findsNothing);
+        final warningText = find.descendant(
+          of: find.byType(NoiseGuardCard),
+          matching: find.text(warning),
+        );
+        await tester.ensureVisible(warningText);
+        await tester.pumpAndSettle();
+        expect(warningText.hitTestable(), findsOneWidget);
+      },
+    );
+  }
   for (final sample in [
     (
       name: 'reliable quiet',

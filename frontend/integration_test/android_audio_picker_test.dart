@@ -67,7 +67,7 @@ void main() {
                   (error) => error.message,
                   'rejection message',
                   scenario.sizeRejected
-                      ? 'The audio file exceeds the 25 MB limit.'
+                      ? 'The audio file exceeds the 26 MiB limit.'
                       : AudioStagingService.durationLimitMessage,
                 ),
               ),
@@ -127,7 +127,7 @@ Future<void> _fixture(File file, int seconds, {required bool mp3}) async {
       }
       return;
     }
-    // Mono PCM at 8 kHz: an hour exceeds 25 MB; shorter cases do not.
+    // Mono PCM at 8 kHz: an hour exceeds 26 MiB; shorter cases do not.
     final dataBytes = seconds * 16000;
     final header = ByteData(44);
     void text(int offset, String value) {

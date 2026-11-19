@@ -43,6 +43,7 @@ class ReportTests(unittest.TestCase):
         self.db.create_function('WEEKDAY',1,lambda v: date.fromisoformat(v[:10]).weekday())
         self.db.create_function('CONCAT',-1,lambda *args: ''.join(str(a) for a in args))
         self.db.create_function('SUBSTRING_INDEX',3,lambda s,sep,n:s.split(sep)[-1])
+        self.db.create_function('FIELD', -1, lambda value, *choices: choices.index(value) + 1 if value in choices else 0)
         self.db.executescript('''
         CREATE TABLE user(user_id INTEGER PRIMARY KEY,username TEXT,first_name TEXT,last_name TEXT,email TEXT,phone_number TEXT,birthday TEXT,country TEXT,city TEXT,created_at TEXT,role TEXT,is_active INTEGER,email_verified_at TEXT);
         CREATE TABLE assessment(assessment_id INTEGER PRIMARY KEY,user_id INTEGER,assessment_date TEXT,assessment_status TEXT,processing_time REAL,duration_seconds INTEGER,analysis_purpose TEXT);
@@ -64,6 +65,10 @@ class ReportTests(unittest.TestCase):
         INSERT INTO audio_upload VALUES(1,'Pop'),(2,'Pop'),(3,'Rock'),(4,NULL),(5,'Pop');
         ''')
         for field in ['noise_level','distortion_level','bass','treble','loudness','sharpness','flatness','empirical_status','worst_feature_status','worst_features','empirical_details','scoring_algorithm_version','quality_profile_version','reference_recording_count']:
+            self.db.execute('ALTER TABLE audio_analysis_result ADD COLUMN '+field)
+        for field in ('noise_reliable INTEGER', 'noise_guard_usable_pct REAL',
+                      'noise_guard_confidence TEXT', 'preroll_noise_dbfs REAL',
+                      'flatness_reliable INTEGER', 'flatness_reliability_note TEXT'):
             self.db.execute('ALTER TABLE audio_analysis_result ADD COLUMN '+field)
         self.db.execute('ALTER TABLE assessment ADD COLUMN result_status TEXT')
         self.db.executescript('''CREATE TABLE amplifier_profile(amplifier_profile_id INTEGER,user_id INTEGER,name TEXT,scale_min REAL,scale_max REAL,scale_step REAL,last_positions TEXT,created_at TEXT,updated_at TEXT);
@@ -138,6 +143,39 @@ class ReportTests(unittest.TestCase):
         data=reports.report('quality',self.query)
         self.assertEqual({r['score_band']:r['assessments'] for r in data['scores']},{'0–19':1,'80–100':1,'Not scored':1})
 
+    def test_quality_noise_guard_uses_completed_non_admin_assessments_in_window(self):
+        self.db.executemany(
+            "INSERT INTO assessment (assessment_id, user_id, assessment_date, assessment_status,"
+            " processing_time, duration_seconds, analysis_purpose)"
+            " VALUES (?,1,?,'Completed',2,20,'quality_evaluation')",
+            [(7, '2026-09-03'), (8, '2026-09-04'), (9, '2026-09-07')],
+        )
+        self.db.executemany(
+            "INSERT INTO audio_analysis_result (assessment_id, noise_guard_confidence, noise_guard_usable_pct,"
+            " preroll_noise_dbfs, noise_reliable, flatness_reliable) VALUES (?,?,?,?,?,?)",
+            [(4, 'high', 0, 0, 0, 0), (7, 'high', 91.2, -40.8, 1, 0),
+             (8, 'medium', 70, -35, 0, 1), (9, 'low', 0, None, 0, None)],
+        )
+        self.db.execute("""UPDATE audio_analysis_result SET noise_guard_confidence='high',
+            noise_guard_usable_pct=0, preroll_noise_dbfs=0, noise_reliable=0, flatness_reliable=0
+            WHERE assessment_id IN (1,5,6)""")
+        self.db.execute("""UPDATE audio_analysis_result SET noise_guard_confidence='high',
+            noise_guard_usable_pct=90, preroll_noise_dbfs=-40, noise_reliable=0, flatness_reliable=1
+            WHERE assessment_id=3""")
+        data = reports.report('quality', self.query)['noise_guard']
+        self.assertEqual(
+            [(r['confidence'], r['assessments'], r['mean_usable_pct'], r['mean_noise_check_dbfs'],
+              r['noise_unreliable'], r['flatness_unreliable']) for r in data],
+            [('high', 2, 90.6, -40.4, 1, 1), ('medium', 1, 70, -35, 1, 0),
+             ('low', 1, 0, None, 1, None), ('Not collected', 1, None, None, None, None)],
+        )
+
+    def test_operations_reports_configured_log_retention(self):
+        with patch.object(reports.config, 'REQUEST_LOG_RETENTION_DAYS', 27), \
+             patch.object(reports.config, 'AUDIT_LOG_RETENTION_DAYS', 0):
+            data = reports.report('operations', self.query)
+        self.assertEqual(data['retention'], {'request_log_days': 27, 'audit_log_days': 0})
+
     def test_invalid_parameters_rejected(self):
         for changes in [{'sort':'password'},{'page':'0'},{'direction':'DROP'},{'age_min':'-1'},{'status':'admin'},{'search':'x'*101}]:
             with self.subTest(changes=changes),self.assertRaises(ValueError): reports.directory('users',dict(self.query,**changes))
@@ -159,6 +197,19 @@ class ReportTests(unittest.TestCase):
         data=reports.detail('users','1',self.query)
         self.assertNotIn('birthday',data['profile'])
         self.assertNotIn('password',data['profile'])
+
+    def test_assessment_detail_preserves_noise_guard_fields_and_legacy_nulls(self):
+        captured = {
+            'noise_reliable': 0, 'noise_guard_usable_pct': 87.5, 'noise_guard_confidence': 'medium',
+            'preroll_noise_dbfs': -44.2, 'flatness_reliable': 1, 'flatness_reliability_note': 'Recorded note',
+        }
+        self.db.execute("""UPDATE audio_analysis_result SET noise_reliable=?, noise_guard_usable_pct=?,
+            noise_guard_confidence=?, preroll_noise_dbfs=?, flatness_reliable=?, flatness_reliability_note=?
+            WHERE assessment_id=3""", tuple(captured.values()))
+        current = reports.detail('assessments', '3', self.query)['profile']
+        legacy = reports.detail('assessments', '2', self.query)['profile']
+        self.assertEqual({key: current[key] for key in captured}, captured)
+        self.assertEqual({key: legacy[key] for key in captured}, dict.fromkeys(captured))
 
     def test_feature_disabled_returns_no_recommendation_data(self):
         with patch.object(reports,'SETTINGS_RECOMMENDATIONS_ENABLED',False):

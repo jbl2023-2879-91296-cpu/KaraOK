@@ -83,7 +83,7 @@ rows.
 
 Quality thresholds, genre targets, and starting controls live in versioned JSON
 artifacts under `backend/audio_thresholds/`. The retired lookup tables and result
-foreign keys are absent from the fresh schema. See [profile sources](../docs/settings-profile-sources.md).
+foreign keys are absent from the fresh schema. See [profile sources](../docs/design/settings-profile-sources.md).
 
 ## Nullable fields
 
@@ -119,11 +119,17 @@ matching backend is deployed. Each file is safe to run more than once.
 | `migrations/20261017_01_deferred_profile.sql` | Nullable profile fields on `user` | Email-only sign-up |
 | `migrations/20261025_01_recommendation_feedback.sql` | `settings_recommendation.feedback` | Listener feedback on suggestions |
 | `migrations/20261025_02_noise_reliable.sql` | `audio_analysis_result.noise_reliable` | Noise reliability labels |
+| `migrations/20261118_01_noise_guard.sql` | Noise Guard columns on `audio_analysis_result` (`noise_guard_usable_pct`, `noise_guard_confidence`, `preroll_noise_dbfs`) | Noise check before recording |
+| `migrations/20261119_01_flatness_reliability.sql` | `audio_analysis_result.flatness_reliable`, `flatness_reliability_note` | Flatness reliability labels |
+| `migrations/20261119_02_retention_indexes.sql` | Date and expiry indexes on `user`, `assessment`, `settings_recommendation` and the token tables | Fast admin reports and the nightly retention cleanup (optional, no column changes) |
 
 ```bash
 sudo mysql < database/migrations/20261017_01_deferred_profile.sql
 sudo mysql < database/migrations/20261025_01_recommendation_feedback.sql
 sudo mysql < database/migrations/20261025_02_noise_reliable.sql
+sudo mysql < database/migrations/20261118_01_noise_guard.sql
+sudo mysql < database/migrations/20261119_01_flatness_reliability.sql
+sudo mysql < database/migrations/20261119_02_retention_indexes.sql
 ```
 
 The backend health check (`/api/health`) returns HTTP 503 with
@@ -136,3 +142,34 @@ See [the compatibility migration](migrations/20260908_01_server_compatibility.md
 for the specific legacy server schema. It preserves retired structures and
 expects 14 tables, unlike the 11-table fresh install. Validate against a
 disposable MySQL copy before use; it is not a generic or repeatable migration.
+
+## Retention cleanup
+
+`backend/scripts/purge_old_records.py` keeps the fast-growing tables bounded. It
+deletes in batches of 5,000 rows, and it never touches users, assessments,
+scores or analysis details.
+
+| Data | Kept for | Setting in `backend/.env` |
+| --- | --- | --- |
+| `api_request_log` rows | 90 days | `REQUEST_LOG_RETENTION_DAYS` |
+| `audit_log` rows | 365 days | `AUDIT_LOG_RETENTION_DAYS` |
+| Waveform and spectrogram PNGs (~1.1 MB per recording) | forever | `VISUALIZATION_RETENTION_DAYS` (0 = keep) |
+| Expired `refresh_token`, `revoked_access_token`, `registration_otp` | 1 day after expiry | always on |
+
+Set any window to `0` to keep that data forever. When images are removed, their
+paths are cleared and the report shows "Visualization is unavailable" for that
+recording; the score and details remain.
+
+Server install (runs daily at 04:00, after the 03:15 backup):
+
+```bash
+cd /opt/karaok/app/backend && sudo -u karaok .venv/bin/python scripts/purge_old_records.py --dry-run
+sudo install -m 0644 deploy/ovh/karaok-retention.service deploy/ovh/karaok-retention.timer /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now karaok-retention.timer
+```
+
+The app's MySQL user needs `DELETE` on `api_request_log`, `audit_log`,
+`refresh_token`, `revoked_access_token` and `registration_otp`, and `UPDATE` on
+`audio_analysis_result` (check with `SHOW GRANTS`). Admin queries should filter
+on the flat result columns (`quality_score`, `noise_level`, ...) rather than
+`JSON_EXTRACT` on `empirical_details`, which cannot use an index.

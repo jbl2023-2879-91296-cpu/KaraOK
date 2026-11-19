@@ -69,8 +69,12 @@ def save_audio_analysis(
         ensure_ascii=False,
         allow_nan=False,
     )
+    stored_details = dict(empirical)
+    for field in ("quality_assessment", "noise_guard_warnings"):
+        if summary.get(field):
+            stored_details[field] = summary[field]
     empirical_details_json = json.dumps(
-        empirical,
+        stored_details,
         ensure_ascii=False,
         allow_nan=False,
     )
@@ -186,9 +190,12 @@ def save_audio_analysis(
                 worst_feature_status, worst_features, empirical_details,
                 scoring_algorithm_version, quality_profile_version,
                 quality_profile_checksum, reference_recording_count,
-                waveform_path, spectrogram_path, noise_reliable)
+                waveform_path, spectrogram_path, noise_guard_usable_pct,
+                noise_guard_confidence, preroll_noise_dbfs, flatness_reliable,
+                flatness_reliability_note, noise_reliable)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                       %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                       %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                       %s, %s, %s, %s, %s)""",
             (
                 assessment_id,
                 quality_score,
@@ -209,6 +216,11 @@ def save_audio_analysis(
                 reference_recording_count,
                 waveform_path,
                 spectrogram_path,
+                summary.get("noise_guard_usable_percentage"),
+                summary.get("noise_guard_confidence"),
+                summary.get("preroll_noise_dbfs"),
+                summary.get("flatness_reliable"),
+                summary.get("flatness_reliability_note"),
                 summary.get("noise_reliable"),
             ),
         )

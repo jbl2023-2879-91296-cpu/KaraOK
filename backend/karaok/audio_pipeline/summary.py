@@ -94,6 +94,8 @@ def summarize_audio_analysis(dump: dict[str, Any]) -> dict[str, Any]:
     noise_reliable = noise.get("reliable") if isinstance(noise, dict) else None
     if not isinstance(noise_reliable, bool):
         noise_reliable = None
+    guard = analysis.get("noise_guard")
+    guard = guard if isinstance(guard, dict) else {}
     distortion_level = _nested_number(analysis, "distortion", "estimated_score")
     bass = _nested_number(analysis, "bass", "energy_percentage")
     treble = _nested_number(analysis, "treble", "energy_percentage")
@@ -102,17 +104,36 @@ def summarize_audio_analysis(dump: dict[str, Any]) -> dict[str, Any]:
         loudness = _nested_number(analysis, "loudness", "mean_dbfs")
     sharpness = _nested_number(analysis, "sharpness", "normalized_score")
     flatness = _nested_number(analysis, "flatness", "mean")
+    flatness_report = analysis.get("flatness")
+    flatness_report = flatness_report if isinstance(flatness_report, dict) else {}
+    flatness_reliable = flatness_report.get("reliable")
+    quality = analysis.get("quality_assessment")
+    failures = quality.get("failures") if isinstance(quality, dict) else None
+    quality_failures = (
+        [message.strip() for message in failures if isinstance(message, str) and message.strip()]
+        if isinstance(failures, list)
+        else []
+    )
     return {
         "score": quality_score,
         "status": result_status,
         "noise_level": noise_level,
         "noise_reliable": noise_reliable,
+        "noise_guard_usable_percentage": _nested_number(guard, "usable_percentage"),
+        "noise_guard_confidence": guard.get("confidence"),
+        "preroll_noise_dbfs": _nested_number(guard, "preroll_noise_dbfs"),
+        "noise_guard_warnings": guard.get("warnings", []),
         "distortion_level": distortion_level,
         "bass": bass,
         "treble": treble,
         "loudness": loudness,
         "sharpness": sharpness,
         "flatness": flatness,
+        "flatness_reliable": flatness_reliable if isinstance(flatness_reliable, bool) else None,
+        "flatness_reliability_note": flatness_report.get("reliability_note") if flatness_reliable is False else None,
         "empirical_quality": empirical,
+        "quality_assessment": {"status": "failed", "failures": quality_failures}
+        if quality_failures
+        else None,
         "safety_signals": _analysis_safety_signals(analysis),
     }

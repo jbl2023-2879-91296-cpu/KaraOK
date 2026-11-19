@@ -12,6 +12,7 @@ import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/reports/presentation/pages/previous_results_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/results_screen.dart';
 import 'package:karaok_app/features/reports/domain/sample_assessments.dart';
+import 'package:karaok_app/shared/widgets/app_widgets.dart';
 
 void main() {
   setUp(() async {
@@ -136,7 +137,7 @@ void main() {
     expect(find.byType(LoginScreen), findsOneWidget);
   });
   testWidgets(
-    'guest saved assessment replaces samples on Home and Records without restarting',
+    'guest saved failure replaces samples and hides the score on Home and Records',
     (tester) async {
       await tester.pumpWidget(const MaterialApp(home: AppShell()));
       await settleWithStorage(tester);
@@ -144,8 +145,12 @@ void main() {
       await tester.runAsync(
         () => GuestAssessmentStore.instance.saveCompleted({
           'test_name': 'Recorded for real.wav',
-          'score': 87,
-          'status': 'Acceptable',
+          'score': 11.32,
+          'status': 'Problematic',
+          'quality_assessment': {
+            'status': 'failed',
+            'failures': ['Background noise was too loud.'],
+          },
           'visualizations': {
             'waveform': base64Encode([1, 2, 3]),
             'spectrogram': base64Encode([4, 5, 6]),
@@ -156,10 +161,12 @@ void main() {
       await settleWithStorage(tester);
       expect(find.text('Recorded for real.wav'), findsOneWidget);
       expect(find.textContaining('Sample:'), findsNothing);
+      _expectCheckFailedBadge('Recorded for real.wav');
       await tester.tap(find.text('Records'));
       await settleWithStorage(tester);
       expect(find.text('Recorded for real.wav'), findsOneWidget);
       expect(find.textContaining('Sample:'), findsNothing);
+      _expectCheckFailedBadge('Recorded for real.wav');
       expect(
         (await tester.runAsync(
           GuestAssessmentStore.instance.guestHistory,
@@ -168,6 +175,43 @@ void main() {
       );
     },
   );
+
+  testWidgets('signed-in history failures hide the score on Home and Records', (
+    tester,
+  ) async {
+    UserSession.instance.setUser(
+      id: 7,
+      name: 'Singer',
+      email: 'singer@example.com',
+      userType: 'user',
+    );
+    Future<List<dynamic>> loadRecords() async => [
+      {
+        'id': 19,
+        'test_name': 'Noisy recording.wav',
+        'score': 11.32,
+        'status': 'Problematic',
+        'quality_assessment': {
+          'status': 'failed',
+          'failures': ['Background noise was too loud.'],
+        },
+      },
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(home: UserHomeScreen(resultsLoader: loadRecords)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Noisy recording.wav'), findsOneWidget);
+    _expectCheckFailedBadge('Noisy recording.wav');
+
+    await tester.pumpWidget(
+      MaterialApp(home: PreviousResultsScreen(resultsLoader: loadRecords)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Noisy recording.wav'), findsOneWidget);
+    _expectCheckFailedBadge('Noisy recording.wav');
+  });
 
   testWidgets(
     'Home account with no history gets samples and failed refresh hides them',
@@ -227,4 +271,30 @@ void main() {
     expect(find.textContaining('Sample:'), findsNothing);
     expect(find.text('Retry'), findsOneWidget);
   });
+}
+
+void _expectCheckFailedBadge(String recordingName) {
+  final card = find.widgetWithText(Card, recordingName);
+  expect(card, findsOneWidget);
+  final badge = find.descendant(
+    of: card,
+    matching: find.widgetWithText(AppStatusChip, 'Check failed'),
+  );
+  expect(badge, findsOneWidget);
+  expect(
+    badge.evaluate().single.widget,
+    isA<AppStatusChip>().having(
+      (chip) => chip.status,
+      'status',
+      AppStatus.neutral,
+    ),
+  );
+  expect(
+    find.descendant(of: card, matching: find.text('Problematic')),
+    findsNothing,
+  );
+  expect(
+    find.descendant(of: card, matching: find.textContaining('/100')),
+    findsNothing,
+  );
 }

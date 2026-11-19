@@ -1,4 +1,4 @@
-"""Run with: python tools/analyze_bad_samples.py
+"""Run with: python tools/audio_samples/analyze_bad_samples.py
 
 Uses backend/.venv when available, otherwise the current Python environment.
 Dependencies can be installed with: python -m pip install -r backend/requirements.txt
@@ -17,7 +17,7 @@ import subprocess
 import sys
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg"}
 
 

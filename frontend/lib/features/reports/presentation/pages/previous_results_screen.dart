@@ -684,6 +684,7 @@ class _ReportCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final failed = reportQualityFailures(entry.raw).isNotEmpty;
     final status = entry.status;
     final color = switch (status) {
       'Acceptable' => AppColors.success,
@@ -736,30 +737,36 @@ class _ReportCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    status ?? 'Status unavailable',
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
+              if (failed)
+                const AppStatusChip(
+                  label: 'Check failed',
+                  status: AppStatus.neutral,
+                )
+              else
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      status ?? 'Status unavailable',
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    entry.score == null
-                        ? 'Score unavailable'
-                        : '${reportScoreLabel(entry.score)}/100',
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
+                    const SizedBox(height: 2),
+                    Text(
+                      entry.score == null
+                          ? 'Score unavailable'
+                          : '${reportScoreLabel(entry.score)}/100',
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
               const SizedBox(width: 6),
               const Icon(Icons.chevron_right, color: AppColors.muted, size: 20),
             ],

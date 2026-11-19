@@ -92,7 +92,7 @@ Expected checksum:
 ```
 
 The licensed recording manifest, selection rules, source attribution, disabled
-genres, and quartiles are documented in `../docs/settings-profile-sources.md`.
+genres, and quartiles are documented in `../docs/design/settings-profile-sources.md`.
 Do not hand-edit the generated JSON or enable a genre without a compatible,
 licensed cohort that passes the derivation tests.
 
@@ -114,6 +114,29 @@ Inspect audit logs for `amplifier_profile_created`,
 `amplifier_profile_updated`, `amplifier_profile_deleted`,
 `audio_upload_analyzed` with `purpose=settings_suggestion`, and
 `settings_recommendation_applied`.
+
+## Noise Guard
+
+Recorded uploads send `noise_preroll_seconds` (0 to 5; the app uses 3.0). The
+analyzer measures the room noise in that pre-roll, evaluates the song after it
+(at least 10 seconds is required), and stores per analysis in
+`audio_analysis_result`: `noise_guard_usable_pct`, `noise_guard_confidence`
+(`high`/`medium`/`low`), `preroll_noise_dbfs`, `noise_reliable`,
+`flatness_reliable` and `flatness_reliability_note`. User-facing warnings are kept
+in `empirical_details.noise_guard_warnings`. The columns come from migrations
+`20261118_01_noise_guard.sql` and `20261119_01_flatness_reliability.sql`, and the
+health check requires them. Rows saved before Noise Guard keep NULL values.
+
+## Retention cleanup
+
+`scripts/purge_old_records.py` (`--dry-run` to count only) bounds the growing
+tables: `api_request_log` (`REQUEST_LOG_RETENTION_DAYS`, default 90),
+`audit_log` (`AUDIT_LOG_RETENTION_DAYS`, default 365), and expired tokens and
+sign-up codes one day after expiry. `VISUALIZATION_RETENTION_DAYS` (default 0,
+keep) optionally removes old waveform/spectrogram PNGs. Uploaded audio itself is
+deleted right after analysis. On the server it runs nightly through
+`karaok-retention.timer`; see [deploy.md](../deploy.md#10a-enable-the-nightly-retention-cleanup)
+and [database/README.md](../database/README.md#retention-cleanup).
 
 ## Controlled-trial release gate
 

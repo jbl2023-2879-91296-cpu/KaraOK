@@ -28,7 +28,7 @@ class MainActivity : FlutterActivity() {
     private var audioPick: AudioPick? = null
     private val audioWorker = Executors.newCachedThreadPool()
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val maxAudioBytes = 25L * 1024 * 1024
+    private val maxAudioBytes = 26L * 1024 * 1024
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -180,7 +180,7 @@ class MainActivity : FlutterActivity() {
             } catch (error: Exception) {
                 pick.copy?.delete()
                 val message = when (error) {
-                    is AudioTooLarge -> "The audio file exceeds the 25 MB limit."
+                    is AudioTooLarge -> "The audio file exceeds the 26 MiB limit."
                     is IllegalArgumentException -> error.message ?: "Could not read the audio file."
                     else -> "Could not read the audio file. Please try another file."
                 }

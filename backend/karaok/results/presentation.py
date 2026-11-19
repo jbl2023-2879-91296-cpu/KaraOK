@@ -71,6 +71,13 @@ def _stored_empirical_result(row: dict[str, Any]) -> dict[str, Any]:
     """Reconstruct one historical empirical snapshot from typed DB fields."""
 
     empirical = _decoded_object(row.get("empirical_details"))
+    quality = _decoded_object(empirical.pop("quality_assessment", None))
+    failures = _decoded_string_list(quality.get("failures"))
+    if failures:
+        row["quality_assessment"] = {"status": "failed", "failures": failures}
+    warnings = _decoded_string_list(empirical.pop("noise_guard_warnings", None))
+    if warnings:
+        row["noise_guard_warnings"] = warnings
     stored_score = _finite_stored_number(row.get("score"))
     if stored_score is not None:
         empirical["overall_score"] = stored_score
@@ -151,6 +158,8 @@ def _enrich_audio_test_row(row: dict[str, Any]) -> dict[str, Any]:
     row["noise_reliable"] = (
         bool(row["noise_reliable"]) if row.get("noise_reliable") is not None else None
     )
+    if row.get("flatness_reliable") is not None:
+        row["flatness_reliable"] = bool(row["flatness_reliable"])
     stored_empirical_fields = (
         "empirical_status",
         "worst_feature_status",

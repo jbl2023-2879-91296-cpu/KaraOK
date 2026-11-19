@@ -56,8 +56,10 @@ def get_audio_tests():
     cursor.execute(
         f"""SELECT a.assessment_id AS id, a.test_name,
                   r.quality_score AS score, r.noise_level, r.noise_reliable,
+                  r.noise_guard_usable_pct AS noise_guard_usable_percentage,
+                  r.noise_guard_confidence, r.preroll_noise_dbfs,
                   r.distortion_level, r.bass, r.treble, r.loudness,
-                  r.sharpness, r.flatness, r.empirical_status,
+                  r.sharpness, r.flatness, r.flatness_reliable, r.flatness_reliability_note, r.empirical_status,
                   r.worst_feature_status, r.worst_features,
                   r.empirical_details, r.scoring_algorithm_version,
                   r.quality_profile_version, r.quality_profile_checksum,
@@ -93,8 +95,10 @@ def get_audio_test(test_id: int):
     cursor.execute(
         f"""SELECT a.assessment_id AS id, a.test_name,
                   r.quality_score AS score, r.noise_level, r.noise_reliable,
+                  r.noise_guard_usable_pct AS noise_guard_usable_percentage,
+                  r.noise_guard_confidence, r.preroll_noise_dbfs,
                   r.distortion_level, r.bass, r.treble, r.loudness,
-                  r.sharpness, r.flatness, r.empirical_status,
+                  r.sharpness, r.flatness, r.flatness_reliable, r.flatness_reliability_note, r.empirical_status,
                   r.worst_feature_status, r.worst_features,
                   r.empirical_details, r.scoring_algorithm_version,
                   r.quality_profile_version, r.quality_profile_checksum,
@@ -235,8 +239,11 @@ def get_audio_analysis_dump(upload_id: int):
     cursor.execute(
         f"""SELECT au.assessment_id, au.file_name,
                   a.analysis_purpose, a.assessment_status, a.result_status,
-                  r.quality_score, r.noise_level, r.noise_reliable, r.distortion_level,
+                  r.quality_score, r.noise_level, r.noise_reliable,
+                  r.noise_guard_usable_pct AS noise_guard_usable_percentage,
+                  r.noise_guard_confidence, r.preroll_noise_dbfs, r.distortion_level,
                   r.bass, r.treble, r.loudness, r.sharpness, r.flatness,
+                  r.flatness_reliable, r.flatness_reliability_note,
                   r.empirical_status, r.worst_feature_status,
                   r.worst_features, r.empirical_details,
                   r.scoring_algorithm_version, r.quality_profile_version,
@@ -297,6 +304,12 @@ def get_audio_analysis_dump(upload_id: int):
             "original_file_name": upload_record["file_name"],
         },
         "analysis": {
+            "noise_guard": {
+                "usable_percentage": upload_record.get("noise_guard_usable_percentage"),
+                "confidence": upload_record.get("noise_guard_confidence"),
+                "preroll_noise_dbfs": upload_record.get("preroll_noise_dbfs"),
+                "warnings": stored_quality.get("noise_guard_warnings", []),
+            },
             "noise": {
                 "noise_dbfs": upload_record["noise_level"],
                 "reliable": (
@@ -311,12 +324,18 @@ def get_audio_analysis_dump(upload_id: int):
             "treble": {"energy_percentage": upload_record["treble"]},
             "loudness": {"integrated_lufs": upload_record["loudness"]},
             "sharpness": {"normalized_score": upload_record["sharpness"]},
-            "flatness": {"mean": upload_record["flatness"]},
+            "flatness": {
+                "mean": upload_record["flatness"],
+                "reliable": bool(upload_record["flatness_reliable"])
+                if upload_record.get("flatness_reliable") is not None else None,
+                "reliability_note": upload_record.get("flatness_reliability_note"),
+            },
             "quality_assessment": {
                 "status": stored_quality["status"],
                 "empirical_status": empirical.get("overall_status"),
                 "worst_feature_status": empirical.get("worst_feature_status"),
                 "worst_features": empirical["worst_features"],
+                **stored_quality.get("quality_assessment", {}),
             },
         },
         "empirical_quality": empirical,

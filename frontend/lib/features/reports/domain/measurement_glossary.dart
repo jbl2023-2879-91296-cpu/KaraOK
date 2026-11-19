@@ -57,8 +57,8 @@ const measurementGlossary = [
   GlossaryEntry(
     'Noise level',
     'An estimate of background sound in the recording.',
-    'We only judge background noise when there are enough quiet moments; otherwise, record a few seconds of silence before the song starts. Background noise does not change the quality score.',
-    'When the estimate is reliable: at or below -60 dBFS is quiet background; above -60 through -45 dBFS is some background noise; above -45 dBFS is noisy background. Without enough quiet moments, the number alone cannot tell you whether the background is noisy.',
+    'Background noise can affect the result. KaraOK uses the noise check before the song when available. Otherwise, it estimates noise from quieter parts of the recording.',
+    'When the estimate is reliable: at or below -60 dBFS is quiet background; above -60 through -45 dBFS is some background noise; above -45 dBFS is noisy background. Readings marked uncertain need a new recording with a usable noise check.',
   ),
   GlossaryEntry(
     'Distortion risk',

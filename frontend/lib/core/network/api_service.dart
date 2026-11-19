@@ -469,12 +469,15 @@ class ApiService {
 
   Future<Map<String, dynamic>> createAudioUpload({
     required String fileName,
+    double noisePrerollSeconds = 0,
     String? genre,
     int? score,
     String status = 'Acceptable',
   }) async => Map<String, dynamic>.from(
     await _post('/audio-uploads', {
           'file_name': fileName,
+          if (noisePrerollSeconds > 0)
+            'noise_preroll_seconds': noisePrerollSeconds.toStringAsFixed(1),
           'genre': genre,
           'score': score,
           'status': status,
@@ -485,6 +488,7 @@ class ApiService {
   Future<Map<String, dynamic>> submitAudio({
     required String filePath,
     required String fileName,
+    double noisePrerollSeconds = 0,
     Uint8List? fileBytes,
     required int durationSeconds,
     String? genre,
@@ -505,6 +509,10 @@ class ApiService {
     request.headers.addAll(headers);
     request.fields['duration_seconds'] =
         (durationSeconds < 1 ? 1 : durationSeconds).toString();
+    if (noisePrerollSeconds > 0) {
+      request.fields['noise_preroll_seconds'] = noisePrerollSeconds
+          .toStringAsFixed(1);
+    }
     request.fields['analysis_purpose'] = analysisPurpose;
     if (analysisPurpose == 'settings_suggestion') {
       request.fields.addAll(settingsSuggestionFields!);

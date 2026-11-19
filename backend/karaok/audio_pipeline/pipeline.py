@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from . import recommendations as settings_recommendation_service
-from .execution import AudioAnalyzerExecutionError
+from .execution import SHORT_SONG_MESSAGE, AudioAnalyzerExecutionError
 from .execution import _execute_analyzer_command
 from .execution import _process_text
 from .execution import _run_audio_analyzer
@@ -48,12 +48,34 @@ from karaok.core.values import _nested_number
 from karaok.results.records import create_audio_upload_records
 from karaok.results.records import mark_audio_analysis_failed
 from karaok.results.records import save_audio_analysis
+from collections.abc import Mapping
 from typing import Any
 from werkzeug.utils import secure_filename
 import mimetypes
 import os
 import secrets
 import uuid
+
+
+def _parse_noise_preroll(form: Mapping[str, str]) -> float:
+    message = "noise_preroll_seconds must be between 0 and 5"
+    try:
+        seconds = float(form.get("noise_preroll_seconds", "0"))
+    except ValueError as error:
+        raise ValueError(message) from error
+    if not 0 <= seconds <= 5:
+        raise ValueError(message)
+    return seconds
+
+
+def _noise_guard_response(summary: dict[str, Any] | None) -> dict[str, Any]:
+    summary = summary or {}
+    return {
+        "noise_guard_usable_percentage": summary.get("noise_guard_usable_percentage"),
+        "noise_guard_confidence": summary.get("noise_guard_confidence"),
+        "preroll_noise_dbfs": summary.get("preroll_noise_dbfs"),
+        "noise_guard_warnings": summary.get("noise_guard_warnings", []),
+    }
 
 
 def persist_audio_analysis(
@@ -100,6 +122,10 @@ def create_guest_audio_analysis():
         client_duration = int(request.form.get("duration_seconds", "0"))
     except ValueError:
         return jsonify({"error": "duration_seconds must be an integer"}), 400
+    try:
+        noise_preroll_seconds = _parse_noise_preroll(request.form)
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
     if client_duration < 1:
         return jsonify({"error": "duration_seconds is required"}), 400
     analysis_purpose = request.form.get("analysis_purpose", "quality_evaluation")
@@ -128,7 +154,7 @@ def create_guest_audio_analysis():
     size = os.path.getsize(stored_path)
     if size == 0 or size > MAX_AUDIO_BYTES:
         os.remove(stored_path)
-        return jsonify({"error": "Audio file is empty or exceeds the 25 MB limit"}), 413
+        return jsonify({"error": f"Audio file is empty or exceeds the {MAX_AUDIO_BYTES / (1024 * 1024):g} MiB limit"}), 413
     try:
         duration = audio_duration_seconds(stored_path)
     except AudioDurationError as error:
@@ -147,6 +173,7 @@ def create_guest_audio_analysis():
                 user_id=0,
                 assessment_id=work_id,
                 original_name=original_name,
+                noise_preroll_seconds=noise_preroll_seconds,
                 analysis_purpose=analysis_purpose,
             )
             apply_genre_evaluation(analysis_dump, suggestion_context.genre if suggestion_context else request.form.get("genre"))
@@ -180,6 +207,8 @@ def create_guest_audio_analysis():
             visualization_images = _guest_visualization_images(analysis_dump)
             status = "Completed"
         except AudioAnalyzerExecutionError as error:
+            if str(error) == SHORT_SONG_MESSAGE:
+                return jsonify({"error": SHORT_SONG_MESSAGE}), 422
             analysis_dump = error.dump
             analysis_summary = None
             settings_payload = None
@@ -226,6 +255,7 @@ def create_guest_audio_analysis():
         "noise_level": (
             analysis_summary["noise_level"] if analysis_summary else None
         ),
+        **_noise_guard_response(analysis_summary),
         "noise_reliable": (
             analysis_summary.get("noise_reliable") if analysis_summary else None
         ),
@@ -239,6 +269,8 @@ def create_guest_audio_analysis():
             analysis_summary["sharpness"] if analysis_summary else None
         ),
         "flatness": analysis_summary["flatness"] if analysis_summary else None,
+        "flatness_reliable": analysis_summary.get("flatness_reliable") if analysis_summary else None,
+        "flatness_reliability_note": analysis_summary.get("flatness_reliability_note") if analysis_summary else None,
         "empirical_quality": (
             analysis_summary["empirical_quality"] if analysis_summary else None
         ),
@@ -247,6 +279,8 @@ def create_guest_audio_analysis():
         "visualizations": visualization_images,
         "created_at": utcnow().isoformat(),
     }
+    if analysis_summary and analysis_summary.get("quality_assessment"):
+        response_data["quality_assessment"] = analysis_summary["quality_assessment"]
     if settings_payload is not None:
         response_data["settings_recommendation"] = settings_payload
     return jsonify(response_data), 201
@@ -272,6 +306,10 @@ def create_audio_upload():
         client_duration = int(request.form.get("duration_seconds", "0"))
     except ValueError:
         return jsonify({"error": "duration_seconds must be an integer"}), 400
+    try:
+        noise_preroll_seconds = _parse_noise_preroll(request.form)
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
     if client_duration < 1:
         return jsonify({"error": "duration_seconds is required"}), 400
     genre_value = request.form.get("genre")
@@ -303,7 +341,7 @@ def create_audio_upload():
     size = os.path.getsize(stored_path)
     if size == 0 or size > MAX_AUDIO_BYTES:
         os.remove(stored_path)
-        return jsonify({"error": "Audio file is empty or exceeds the 25 MB limit"}), 413
+        return jsonify({"error": f"Audio file is empty or exceeds the {MAX_AUDIO_BYTES / (1024 * 1024):g} MiB limit"}), 413
     try:
         duration = audio_duration_seconds(stored_path)
     except AudioDurationError as error:
@@ -318,6 +356,7 @@ def create_audio_upload():
         duration=duration, size=size, mime_type=mime_type, stored_path=stored_path,
         analysis_purpose=analysis_purpose,
     )
+    short_song = False
     retryable_settings_failure = False
     try:
         analysis_dump = run_audio_analyzer(
@@ -325,6 +364,7 @@ def create_audio_upload():
             user_id=g.user_id,
             assessment_id=assessment_id,
             original_name=original_name,
+            noise_preroll_seconds=noise_preroll_seconds,
             analysis_purpose=analysis_purpose,
         )
         apply_genre_evaluation(analysis_dump, genre)
@@ -345,6 +385,7 @@ def create_audio_upload():
         status = "Completed"
         audit_result = "success"
     except AudioAnalyzerExecutionError as error:
+        short_song = str(error) == SHORT_SONG_MESSAGE
         analysis_dump = error.dump
         analysis_summary = None
         processing_time = _nested_number(
@@ -394,6 +435,8 @@ def create_audio_upload():
         resource_id=upload_id,
         details=f"purpose={analysis_purpose}; status={status}",
     )
+    if short_song:
+        return jsonify({"error": SHORT_SONG_MESSAGE}), 422
     if retryable_settings_failure:
         return (
             jsonify(
@@ -422,6 +465,7 @@ def create_audio_upload():
         "noise_level": (
             analysis_summary["noise_level"] if analysis_summary else None
         ),
+        **_noise_guard_response(analysis_summary),
         "noise_reliable": (
             analysis_summary.get("noise_reliable") if analysis_summary else None
         ),
@@ -435,6 +479,8 @@ def create_audio_upload():
             analysis_summary["sharpness"] if analysis_summary else None
         ),
         "flatness": analysis_summary["flatness"] if analysis_summary else None,
+        "flatness_reliable": analysis_summary.get("flatness_reliable") if analysis_summary else None,
+        "flatness_reliability_note": analysis_summary.get("flatness_reliability_note") if analysis_summary else None,
         "empirical_quality": (
             analysis_summary["empirical_quality"] if analysis_summary else None
         ),
@@ -448,6 +494,8 @@ def create_audio_upload():
         else {},
         "analysis_dump": analysis_dump,
     }
+    if analysis_summary and analysis_summary.get("quality_assessment"):
+        response_data["quality_assessment"] = analysis_summary["quality_assessment"]
     if analysis_summary and analysis_summary.get("settings_recommendation") is not None:
         response_data["settings_recommendation"] = analysis_summary[
             "settings_recommendation"

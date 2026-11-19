@@ -107,9 +107,11 @@ The pull must fast-forward successfully and the final status must be empty.
 
 ## 4a. Apply pending database migrations
 
-Releases from 1.9.0 onward need three additive columns. Run the files in order
-after the backup in section 3 has passed; each one is safe to repeat and keeps
-existing data.
+Run every migration below in order after the backup in section 3 has passed.
+Each file is additive, safe to repeat, and keeps existing data. Releases from
+1.9.0 need the first three; Noise Guard (after 1.11.0) needs `20261118_01` and
+`20261119_01`; `20261119_02` adds indexes for the admin reports and the nightly
+retention cleanup (section 10a).
 
 ```bash
 cd /opt/karaok/app
@@ -117,6 +119,9 @@ cd /opt/karaok/app
 sudo mysql < database/migrations/20261017_01_deferred_profile.sql
 sudo mysql < database/migrations/20261025_01_recommendation_feedback.sql
 sudo mysql < database/migrations/20261025_02_noise_reliable.sql
+sudo mysql < database/migrations/20261118_01_noise_guard.sql
+sudo mysql < database/migrations/20261119_01_flatness_reliability.sql
+sudo mysql < database/migrations/20261119_02_retention_indexes.sql
 
 sudo mysql -D karaok_db -e "
 SELECT table_name, column_name, is_nullable
@@ -124,12 +129,24 @@ FROM information_schema.columns
 WHERE table_schema = 'karaok_db'
   AND ((table_name = 'user' AND column_name = 'first_name')
     OR (table_name = 'settings_recommendation' AND column_name = 'feedback')
-    OR (table_name = 'audio_analysis_result' AND column_name = 'noise_reliable'));
+    OR (table_name = 'audio_analysis_result' AND column_name IN (
+        'noise_reliable', 'noise_guard_usable_pct', 'noise_guard_confidence',
+        'preroll_noise_dbfs', 'flatness_reliable', 'flatness_reliability_note')));
+"
+
+sudo mysql -D karaok_db -e "
+SELECT table_name, index_name FROM information_schema.statistics
+WHERE table_schema = 'karaok_db' AND index_name IN (
+  'idx_user_role_created', 'idx_assessment_date', 'idx_settings_recommendation_created',
+  'idx_refresh_token_expires', 'idx_revoked_access_token_expires', 'idx_registration_otp_expires')
+GROUP BY table_name, index_name;
 "
 ```
 
-Expect three rows, with `first_name` nullable (`YES`). The API health check
-returns HTTP 503 with `missing_required_columns` if any of these is missing.
+Expect eight column rows, with `first_name` nullable (`YES`), and six index
+rows. The API health check returns HTTP 503 with `missing_required_columns` if
+any of the Noise Guard or earlier columns is missing, so never restart the API
+before these migrations have run.
 
 ## 5. Prepare the backend environment
 
@@ -158,6 +175,16 @@ sudo -u karaok test -r audio_thresholds/median_centered_thresholds.json
 ```
 
 These commands are silent when successful.
+
+The nightly retention cleanup (section 10a) reads three optional settings from
+`backend/.env`. Add them if you want the windows visible; the values shown are
+the defaults, and `0` keeps that data forever:
+
+```bash
+REQUEST_LOG_RETENTION_DAYS=90
+AUDIT_LOG_RETENTION_DAYS=365
+VISUALIZATION_RETENTION_DAYS=0
+```
 
 ## 6. Prepare the runtime caches
 
@@ -342,7 +369,7 @@ sudo -u karaok ./.venv/bin/python -c \
   "from audio_thresholds import load_genre_profiles; p=load_genre_profiles(); assert p.artifact_checksum == 'acefe9949cd6eb8f8a713bcd4d0b5080820bcdd7de81f25e81676388d0c9f03d'; print(p.artifact_checksum)"
 ```
 
-Review `docs/settings-profile-sources.md` for source attribution, licenses,
+Review `docs/design/settings-profile-sources.md` for source attribution, licenses,
 selection exclusions, enabled genres, and profile version. KaraOK recommends
 five physical knob positions but never controls the amplifier.
 
@@ -510,6 +537,45 @@ sudo journalctl -u karaok-api -f -o cat
 ```
 
 Press `Ctrl+C` to stop following the log.
+
+## 10a. Enable the nightly retention cleanup
+
+`backend/scripts/purge_old_records.py` deletes `api_request_log` rows older than
+90 days, `audit_log` rows older than 365 days, and expired refresh tokens,
+revoked access tokens and sign-up codes one day after they expire. It never
+deletes users, assessments, scores or analysis details. Waveform and spectrogram
+images are kept unless `VISUALIZATION_RETENTION_DAYS` is above 0.
+
+First confirm the application database user may delete from those tables:
+
+```bash
+sudo mysql -e "SHOW GRANTS FOR 'karaok_app'@'localhost';"
+```
+
+The grants must include `DELETE` on `api_request_log`, `audit_log`,
+`refresh_token`, `revoked_access_token` and `registration_otp`, and `UPDATE` on
+`audio_analysis_result` (or `ALL` on `karaok_db`). Then count what would be
+removed without deleting anything:
+
+```bash
+cd /opt/karaok/app/backend
+sudo -u karaok .venv/bin/python scripts/purge_old_records.py --dry-run
+```
+
+The first real run on an older server may remove many request-log rows; that is
+expected. Install the timer (daily at 04:00, after the 03:15 backup), run it once,
+and check the result:
+
+```bash
+sudo install -m 0644 /opt/karaok/app/deploy/ovh/karaok-retention.service /opt/karaok/app/deploy/ovh/karaok-retention.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now karaok-retention.timer
+sudo systemctl start karaok-retention.service
+sudo journalctl -u karaok-retention -n 20 --no-pager -o cat
+systemctl list-timers karaok-retention.timer --no-pager
+```
+
+The journal shows one `deleted ...` line per table, and the timer lists its next run.
 
 ## 11. Run the local Admin Console
 

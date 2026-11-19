@@ -18,13 +18,18 @@ import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/assessments/data/assessment_api.dart';
 import 'package:karaok_app/features/assessments/data/audio_staging_service.dart';
 import 'package:karaok_app/features/auth/presentation/pages/login_screen.dart';
+import 'package:karaok_app/features/reports/domain/report_values.dart';
 import 'package:karaok_app/features/reports/presentation/pages/results_screen.dart';
 import 'package:karaok_app/features/sound_settings/domain/settings_recommendation.dart';
 import 'package:karaok_app/features/sound_settings/presentation/pages/settings_recommendation_screen.dart';
 
+const kNoisePreroll = Duration(seconds: 3);
+const kNoisyPrerollDbfs = -45.0;
+
 enum AudioInputState {
   idle,
   requestingPermission,
+  noiseCheck,
   recording,
   paused,
   processing,
@@ -80,6 +85,7 @@ Widget audioResultDestination({
   final rawRecommendation = record['settings_recommendation'];
   if (purpose == AudioAnalysisPurpose.settingsSuggestion &&
       !showEvaluationFirst &&
+      reportQualityFailures(record).isEmpty &&
       rawRecommendation is Map) {
     final rawSafetySignals = record['safety_signals'];
     return SettingsRecommendationScreen(
@@ -116,8 +122,13 @@ class AudioTestScreen extends StatefulWidget {
   State<AudioTestScreen> createState() => _AudioTestScreenState();
 }
 
-class _AudioTestScreenState extends State<AudioTestScreen> {
+class _AudioTestScreenState extends State<AudioTestScreen>
+    with WidgetsBindingObserver {
   static const _limit = AudioStagingService.maxDuration;
+  static const _interruptionMessage =
+      'Recording stopped because the microphone was interrupted. Play the song from another device and try again.';
+  static const _backgroundMessage =
+      'Recording stopped because KaraOK left the screen. Keep KaraOK open while recording, and play the song from another device.';
   final _recorder = AudioRecorder();
   final _player = AudioPlayer();
   late final AudioStagingService _staging;
@@ -129,10 +140,25 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   late final StreamSubscription<PlayerState> _playerStateSubscription;
   late final StreamSubscription<Duration> _positionSubscription;
   late final StreamSubscription<Duration?> _durationSubscription;
+  late final _recordingClock = WidgetsBinding.instance.samplingClock
+      .stopwatch();
   Timer? _timer;
+  Timer? _noiseCheckTimer;
+  Timer? _limitTimer;
+  StreamSubscription<RecordState>? _recorderStates;
+  StreamSubscription<Amplitude>? _amplitudes;
+  bool _startingRecorder = false;
+  String? _interruptedDuringStart;
+  bool _changingPause = false;
+  bool _noisy = false;
   String? _message;
   String? _recordingFileName;
   bool _guestLimitDialogVisible = false;
+
+  bool get _recording =>
+      _state == AudioInputState.noiseCheck ||
+      _state == AudioInputState.recording ||
+      _state == AudioInputState.paused;
 
   bool get _busy => const {
     AudioInputState.requestingPermission,
@@ -144,6 +170,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _staging = widget.stagingService ?? AudioStagingService();
     _playerStateSubscription = _player.playerStateStream.listen((state) {
       if (!mounted) return;
@@ -213,7 +240,12 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
+    _noiseCheckTimer?.cancel();
+    _limitTimer?.cancel();
+    _amplitudes?.cancel();
+    _recorderStates?.cancel();
     _playerStateSubscription.cancel();
     _positionSubscription.cancel();
     _durationSubscription.cancel();
@@ -222,13 +254,29 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused) {
+      _interruptRecording(background: true);
+    }
+  }
+
+  void _interruptRecording({bool background = false}) {
+    if (!mounted) return;
+    final message = background ? _backgroundMessage : _interruptionMessage;
+    if (_startingRecorder) {
+      if (background || _interruptedDuringStart == null) {
+        _interruptedDuringStart = message;
+      }
+    } else if (_recording) {
+      unawaited(_cancelRecording(interruptionMessage: message));
+    }
+  }
+
   Future<void> _start() async {
     if (!await _guestCanAssess()) return;
-    if (_busy ||
-        _state == AudioInputState.recording ||
-        _state == AudioInputState.paused) {
-      return;
-    }
+    if (!mounted || _busy || _recording) return;
     setState(() {
       _state = AudioInputState.requestingPermission;
       _message = null;
@@ -257,22 +305,81 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
               (await _staging.recordingDirectory()).path,
               _recordingFileName,
             );
-      await _recorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.wav,
-          sampleRate: 44100,
-          numChannels: 1,
-        ),
-        path: path,
+      if (!mounted) return;
+      _recorderStates ??= _recorder.onStateChanged().listen(
+        (state) {
+          if (state == RecordState.stop ||
+              (state == RecordState.pause &&
+                  _state != AudioInputState.paused)) {
+            _interruptRecording();
+          }
+        },
+        onError: (Object error, StackTrace stackTrace) {
+          developer.log(
+            'Recorder state error',
+            error: error,
+            stackTrace: stackTrace,
+          );
+          _interruptRecording();
+        },
       );
+      _startingRecorder = true;
+      _interruptedDuringStart = null;
+      try {
+        await _recorder.start(
+          const RecordConfig(
+            encoder: AudioEncoder.wav,
+            sampleRate: 44100,
+            numChannels: 1,
+            autoGain: false,
+            echoCancel: false,
+            noiseSuppress: false,
+            audioInterruption: AudioInterruptionMode.pause,
+          ),
+          path: path,
+        );
+      } finally {
+        _startingRecorder = false;
+      }
+      if (!mounted) return;
       _elapsed = Duration.zero;
-      _timer?.cancel();
-      _timer = Timer.periodic(const Duration(seconds: 1), (_) async {
-        if (!mounted || _state != AudioInputState.recording) return;
-        setState(() => _elapsed += const Duration(seconds: 1));
-        if (_elapsed >= _limit) await _stop(atLimit: true);
+      _noisy = false;
+      setState(() => _state = AudioInputState.noiseCheck);
+      final lifecycle = WidgetsBinding.instance.lifecycleState;
+      final interruptionMessage =
+          lifecycle == AppLifecycleState.hidden ||
+              lifecycle == AppLifecycleState.paused
+          ? _backgroundMessage
+          : _interruptedDuringStart;
+      if (interruptionMessage != null) {
+        await _cancelRecording(interruptionMessage: interruptionMessage);
+        return;
+      }
+      var levelSum = 0.0;
+      var samples = 0;
+      _amplitudes = _recorder
+          .onAmplitudeChanged(const Duration(milliseconds: 100))
+          .listen((amplitude) {
+            if (_state == AudioInputState.noiseCheck &&
+                amplitude.current.isFinite) {
+              levelSum += amplitude.current;
+              samples++;
+            }
+          });
+      _recordingClock
+        ..reset()
+        ..start();
+      _noiseCheckTimer = Timer(kNoisePreroll, () {
+        if (!mounted || _state != AudioInputState.noiseCheck) return;
+        _amplitudes?.cancel();
+        _amplitudes = null;
+        setState(() {
+          _noisy = samples > 0 && levelSum / samples > kNoisyPrerollDbfs;
+          _state = AudioInputState.recording;
+          _message = 'Start the song now.';
+        });
       });
-      if (mounted) setState(() => _state = AudioInputState.recording);
+      _scheduleRecordingTimers();
     } catch (e, st) {
       developer.log(
         'Recording initialization failed',
@@ -288,27 +395,56 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
     }
   }
 
+  void _scheduleRecordingTimers() {
+    _limitTimer = Timer(
+      _limit - _recordingClock.elapsed,
+      () => _stop(atLimit: true),
+    );
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _elapsed = _recordingClock.elapsed);
+    });
+  }
+
+  void _freezeRecordingTime() {
+    _recordingClock.stop();
+    _elapsed = _recordingClock.elapsed;
+    _timer?.cancel();
+    _limitTimer?.cancel();
+  }
+
   Future<void> _pauseResume() async {
+    if (_changingPause) return;
+    _changingPause = true;
     try {
       if (_state == AudioInputState.recording) {
-        await _recorder.pause();
+        // The plugin emits the same pause state for both user and OS pauses.
+        _freezeRecordingTime();
         setState(() => _state = AudioInputState.paused);
+        await _recorder.pause();
       } else if (_state == AudioInputState.paused) {
         await _recorder.resume();
+        if (!mounted || _state != AudioInputState.paused) return;
+        _recordingClock.start();
+        _scheduleRecordingTimers();
         setState(() => _state = AudioInputState.recording);
       }
     } catch (e, st) {
       developer.log('Pause/resume failed', error: e, stackTrace: st);
-      if (mounted) setState(() => _message = 'The recorder was interrupted.');
+      _interruptRecording();
+    } finally {
+      _changingPause = false;
     }
   }
 
   Future<void> _stop({bool atLimit = false}) async {
-    if (_state != AudioInputState.recording &&
-        _state != AudioInputState.paused) {
+    if (!_recording || _changingPause) return;
+    if (_recordingClock.elapsed <
+        AudioStagingService.minDuration + kNoisePreroll) {
+      setState(() => _message = AudioStagingService.tooShortMessage);
       return;
     }
-    _timer?.cancel();
+    _freezeRecordingTime();
+    _noiseCheckTimer?.cancel();
     setState(() => _state = AudioInputState.processing);
     try {
       final path = await _recorder.stop();
@@ -317,21 +453,22 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
           'The recorder did not create a file.',
         );
       }
-      if (kIsWeb) {
-        await _staging.stageBrowserRecording(
-          path,
-          _recordingFileName ?? 'recording.wav',
-        );
-      } else {
-        await _staging.stagePath(
-          path,
-          AudioSourceType.recording,
-          temporary: true,
-        );
-      }
+      final staged = kIsWeb
+          ? await _staging.stageBrowserRecording(
+              path,
+              _recordingFileName ?? 'recording.wav',
+              noisePrerollSeconds: kNoisePreroll.inSeconds.toDouble(),
+            )
+          : await _staging.stagePath(
+              path,
+              AudioSourceType.recording,
+              temporary: true,
+              noisePrerollSeconds: kNoisePreroll.inSeconds.toDouble(),
+            );
       _recordingFileName = null;
       if (mounted) {
         setState(() {
+          _elapsed = staged.duration;
           _state = AudioInputState.staged;
           _message = atLimit
               ? 'Recording stopped at the 5-minute limit.'
@@ -355,24 +492,33 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
     }
   }
 
-  Future<void> _cancelRecording() async {
-    if (_state != AudioInputState.recording &&
-        _state != AudioInputState.paused) {
-      return;
-    }
-    _timer?.cancel();
-    setState(() => _state = AudioInputState.processing);
+  Future<void> _cancelRecording({String? interruptionMessage}) async {
+    if (!_recording) return;
+    _freezeRecordingTime();
+    _noiseCheckTimer?.cancel();
+    setState(() {
+      _state = AudioInputState.processing;
+      _elapsed = Duration.zero;
+      if (interruptionMessage != null) _message = interruptionMessage;
+    });
     try {
+      unawaited(_amplitudes?.cancel());
+      _amplitudes = null;
       await _recorder.cancel();
+    } catch (error, stackTrace) {
+      developer.log(
+        'Recorder cancellation failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
     } finally {
       _recordingFileName = null;
       if (mounted) {
         setState(() {
-          _elapsed = Duration.zero;
           _state = _staging.current == null
               ? AudioInputState.idle
               : AudioInputState.staged;
-          _message = 'Recording cancelled.';
+          _message = interruptionMessage ?? 'Recording cancelled.';
         });
       }
     }
@@ -405,6 +551,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   Future<void> _selectFile() async {
     if (!await _guestCanAssess()) return;
     if (_busy ||
+        _state == AudioInputState.noiseCheck ||
         _state == AudioInputState.recording ||
         _state == AudioInputState.paused ||
         !await _confirmReplace()) {
@@ -519,12 +666,16 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
     final item = _staging.current;
     if (item == null ||
         _busy ||
+        _state == AudioInputState.noiseCheck ||
         _state == AudioInputState.recording ||
         _state == AudioInputState.paused) {
       return;
     }
     try {
-      AudioStagingService.validateDuration(item.duration);
+      AudioStagingService.validateDuration(
+        item.duration,
+        noisePrerollSeconds: item.noisePrerollSeconds,
+      );
     } on AudioStagingException catch (error) {
       setState(() => _message = error.message);
       return;
@@ -549,6 +700,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
         fileName: item.fileName,
         fileBytes: item.bytes,
         durationSeconds: item.duration.inSeconds,
+        noisePrerollSeconds: item.noisePrerollSeconds,
         genre: widget.settingsSuggestion?.genre ?? widget.genre,
         analysisPurpose: widget.purpose.requestValue,
         guest: isGuest,
@@ -655,8 +807,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   @override
   Widget build(BuildContext context) {
     final item = _staging.current;
-    final recording =
-        _state == AudioInputState.recording || _state == AudioInputState.paused;
+    final recording = _recording;
     return AppPageScaffold(
       title: widget.purpose.pageTitle,
       child: Column(
@@ -695,6 +846,10 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
           if (!recording && !_busy) ...[
             const SizedBox(height: AppSpacing.md),
             const RecordingChecklist(),
+            const SizedBox(height: AppSpacing.sm),
+            const Text(
+              'Play the song from a separate device or karaoke machine.',
+            ),
           ],
           const SizedBox(height: AppSpacing.xl),
           Text(
@@ -704,7 +859,7 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
           ),
           const SizedBox(height: AppSpacing.lg),
           Text(
-            'Minimum 10 seconds, maximum 5 minutes. For better results, record 20–30 seconds of continuous music.',
+            'Record at least 10 seconds of music after the 3-second noise check. Maximum 5 minutes total. For better results, record 20–30 seconds of continuous music.',
             textAlign: TextAlign.center,
             style: Theme.of(
               context,
@@ -712,6 +867,14 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
           ),
           const SizedBox(height: AppSpacing.lg),
           if (recording) ...[
+            if (_state == AudioInputState.noiseCheck)
+              const Text(
+                "Stay quiet, checking background noise. Don't start the song yet.",
+              ),
+            if (_noisy)
+              const Text(
+                "It's noisy here. Hold the phone about 30 cm (1 ft) from the speaker, pointed at it.",
+              ),
             LinearProgressIndicator(
               value: _elapsed.inSeconds / _limit.inSeconds,
               color: AppColors.orangeInk,
@@ -721,7 +884,9 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _pauseResume,
+                    onPressed: _state == AudioInputState.noiseCheck
+                        ? null
+                        : _pauseResume,
                     icon: Icon(
                       _state == AudioInputState.paused
                           ? Icons.play_arrow

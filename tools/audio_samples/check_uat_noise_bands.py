@@ -1,16 +1,19 @@
 """Run the shipped analyzer on both UAT sample sets without changing audio."""
+import argparse
 import csv
 from pathlib import Path
 import sys
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))
 from audio_engine.analyzer import analyze_audio
 
 
 def main():
-    destination = ROOT / "docs" / "uat-noise-samples.csv"
-    destination.parent.mkdir(exist_ok=True)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.parse_args()
+    destination = ROOT / "docs" / "findings" / "uat-noise-samples.csv"
+    destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("w", newline="", encoding="utf-8") as output:
         fields = ["set", "file", "noise_dbfs", "separation_db", "reliable", "distortion", "warning", "error"]
         writer = csv.DictWriter(output, fieldnames=fields)

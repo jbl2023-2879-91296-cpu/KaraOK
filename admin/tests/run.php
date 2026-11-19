@@ -75,6 +75,58 @@ $tests['Zero baseline and missing metrics are never fabricated'] = static functi
     assert_same(true, str_contains($html,'no baseline'));
     assert_same(false, str_contains($html,'NAN'));
 };
+$tests['Scoring details summarize all five features and keep escaped raw data collapsed'] = static function (): void {
+    $html = scoring_details(json_encode([
+        'overall_score' => 80.126, 'overall_status' => 'Good', 'method' => 'Empirical',
+        'features' => ['loudness' => ['value' => -18.236, 'target_lower' => -21, 'target_upper' => -16,
+            'score' => 91.567, 'status' => '<b>Good</b>', 'weight' => 0.3, 'direction' => 'within']],
+        'noise_guard_warnings' => ['<script>Warning</script>'],
+    ]));
+    [$summary, $raw] = explode('<details>', $html, 2);
+    foreach (['<table', 'Loudness', 'Bass', 'Treble', 'Sharpness', 'Flatness', '-18.24', '-21.00 to -16.00',
+        '91.57', '0.30', '80.13', 'within', 'Empirical', '&lt;b&gt;Good&lt;/b&gt;',
+        '<li>&lt;script&gt;Warning&lt;/script&gt;</li>'] as $content) {
+        assert_same(true, str_contains($summary, $content));
+    }
+    assert_same(true, str_contains($raw, '<summary>Raw scoring data</summary>'));
+    assert_same(false, str_contains($html, '<script>'));
+    assert_same(false, str_contains($html, '<b>'));
+};
+$tests['Invalid or unstructured scoring details use escaped raw fallback'] = static function (): void {
+    foreach (['invalid <b>JSON</b>', '{"overall_status":"<b>Good</b>"}', '{"features":[]}'] as $value) {
+        $html = scoring_details($value);
+        assert_same(true, str_contains($html, '<summary>View data</summary>'));
+        assert_same(true, str_contains($html, h($value)));
+        assert_same(false, str_contains($html, '<table'));
+    }
+};
+$tests['Operations retention shows configured periods and handles older APIs'] = static function (): void {
+    $html = retention_note(['request_log_days' => 90, 'audit_log_days' => 365]);
+    assert_same(true, str_contains($html, 'Request logs are kept for 90 days and audit logs are kept for 365 days.'));
+    assert_same(true, str_contains($html, 'nightly cleanup'));
+    $html = retention_note(['request_log_days' => 0, 'audit_log_days' => 0]);
+    assert_same(true, str_contains($html, 'Request logs are kept indefinitely and audit logs are kept indefinitely.'));
+    assert_same(false, str_contains($html, 'nightly cleanup'));
+    assert_same('', retention_note(null));
+};
+$tests['Assessment and Quality views distinguish Noise Guard readings from legacy nulls'] = static function (): void {
+    $check = ['noise_guard_confidence' => 'low', 'noise_guard_usable_pct' => 0, 'preroll_noise_dbfs' => -42.5,
+        'noise_reliable' => false, 'flatness_reliable' => true, 'flatness_reliability_note' => 'Flatness note'];
+    $html = profile_sections($check, false, null);
+    foreach (['Noise check', 'badge-medium', '0%', '-42.5 dBFS', 'No', 'Yes', 'Flatness note'] as $value) {
+        assert_same(true, str_contains($html, $value));
+    }
+    assert_same(6, substr_count(profile_sections(array_fill_keys(array_keys($check), null), false, null), 'Not collected'));
+
+    $data = ['meta' => ['start' => '2026-09-01', 'end' => '2026-09-07', 'coverage' => '', 'window' => '',
+        'generated_at' => '2026-09-08'], 'scores' => [], 'trend' => [], 'genres' => []];
+    $_GET = [];
+    assert_same(false, str_contains(product_report_view('quality', $data), 'Noise check quality'));
+    $data['noise_guard'] = [['confidence' => 'Not collected', 'assessments' => 1, 'mean_usable_pct' => null]];
+    $html = product_report_view('quality', $data);
+    assert_same(true, str_contains($html, 'Noise check quality'));
+    assert_same(true, str_contains($html, 'Recordings made before Noise Guard show as Not collected.'));
+};
 $tests['Privacy masking modifies the actual record rows'] = static function (): void {
     $records = ['rows'=>[['email'=>'ada@example.test']]];
     mask_personal_rows($records,true);

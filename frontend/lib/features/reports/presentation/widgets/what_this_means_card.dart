@@ -7,15 +7,18 @@ class WhatThisMeansCard extends StatelessWidget {
     super.key,
     required this.features,
     this.isSample = false,
+    this.flatnessReliable = true,
   });
   final Map<String, dynamic> features;
   final bool isSample;
+  final bool flatnessReliable;
 
   @override
   Widget build(BuildContext context) {
     final lines = <String>[];
     var compared = 0;
     for (final entry in measurementLabels.entries) {
+      if (entry.key == 'flatness' && !flatnessReliable) continue;
       final direction = measurementDirection(reportMap(features[entry.key]));
       if (direction == null) continue;
       compared++;

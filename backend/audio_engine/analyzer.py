@@ -47,6 +47,11 @@ import matplotlib.pyplot as plt  # noqa: E402  (backend must be selected first)
 import librosa  # noqa: E402
 import librosa.display  # noqa: E402
 
+if __package__:
+    from .noise_guard import NoiseGuardConfig, apply_noise_guard
+else:
+    from noise_guard import NoiseGuardConfig, apply_noise_guard
+
 
 EPSILON = 1.0e-12
 NOISE_RELIABILITY_MIN_SEPARATION_DB = 6.0
@@ -184,11 +189,13 @@ class AudioAnalyzerSettings:
     failure_behavior: FailureBehavior
     phone_recording: PhoneRecordingConfig
     settings_path: Path
+    noise_guard: NoiseGuardConfig = field(default_factory=NoiseGuardConfig)
 
 
 @dataclass(frozen=True)
 class AnalysisContext:
     audio: np.ndarray
+    loudness_audio: np.ndarray
     sample_rate: int
     magnitude: np.ndarray
     power: np.ndarray
@@ -246,6 +253,36 @@ def _section(data: dict[str, Any], name: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise AudioAnalysisError(f"Settings section '{name}' must be a JSON object.")
     return value
+
+
+def _validate_noise_guard(config: NoiseGuardConfig) -> None:
+    if not isinstance(config.enabled, bool):
+        raise AudioAnalysisError("Setting 'noise_guard.enabled' must be a boolean.")
+    if type(config.transient_pad_frames) is not int or config.transient_pad_frames < 0:
+        raise AudioAnalysisError("Setting 'noise_guard.transient_pad_frames' must be a non-negative integer.")
+    for name, value in asdict(config).items():
+        if name in ("enabled", "transient_pad_frames"):
+            continue
+        if type(value) not in (int, float) or not -sys.float_info.max <= value <= sys.float_info.max:
+            raise AudioAnalysisError(f"Setting 'noise_guard.{name}' must be a finite number.")
+
+    constraints = (
+        (config.preroll_min_usable_seconds >= 0, "preroll_min_usable_seconds must be non-negative"),
+        (config.preroll_silence_dbfs <= 0, "preroll_silence_dbfs must be at or below 0 dBFS"),
+        (0 <= config.subtraction_floor <= 1, "subtraction_floor must be between 0 and 1"),
+        (config.subtraction_high_band_factor >= 1, "subtraction_high_band_factor must be at least 1"),
+        (config.music_in_preroll_margin_db >= 0, "music_in_preroll_margin_db must be non-negative"),
+        (config.transient_window_seconds > 0, "transient_window_seconds must be positive"),
+        (config.transient_band_db >= 0, "transient_band_db must be non-negative"),
+        (0 < config.transient_band_fraction <= 1, "transient_band_fraction must be in (0, 1]"),
+        (0 <= config.usable_warn_percentage <= 100, "usable_warn_percentage must be between 0 and 100"),
+        (0 <= config.usable_fail_percentage <= 100, "legacy usable_fail_percentage must be between 0 and 100"),
+        (config.mnr_low_db <= config.mnr_warn_db, "mnr_low_db must not exceed mnr_warn_db"),
+        (config.mnr_high_db >= config.mnr_warn_db, "mnr_high_db must not be below mnr_warn_db"),
+    )
+    for valid, message in constraints:
+        if not valid:
+            raise AudioAnalysisError(f"Noise guard {message}.")
 
 
 def _reject_unknown_keys(section: dict[str, Any], allowed: set[str], name: str) -> None:
@@ -361,6 +398,7 @@ def load_settings(settings_path: str | Path = DEFAULT_SETTINGS_PATH) -> AudioAna
         "quality_thresholds",
         "failure_behavior",
         "phone_recording",
+        "noise_guard",
     }
     _reject_unknown_keys(raw, allowed_top_level, "root")
     if raw.get("schema_version") != 1:
@@ -446,15 +484,20 @@ def load_settings(settings_path: str | Path = DEFAULT_SETTINGS_PATH) -> AudioAna
         }
     )
 
+    noise_guard_data = _section(raw, "noise_guard")
+    _reject_unknown_keys(noise_guard_data, set(NoiseGuardConfig.__dataclass_fields__), "noise_guard")
+    noise_guard = NoiseGuardConfig(**noise_guard_data)
+
     try:
         _validate_config(analysis)
         _validate_safety(safety)
         _validate_quality_thresholds(quality)
         _validate_failure_behavior(behavior)
         _validate_phone_recording(phone)
+        _validate_noise_guard(noise_guard)
     except TypeError as exc:
         raise AudioAnalysisError(f"Settings values have invalid data types: {exc}") from exc
-    return AudioAnalyzerSettings(analysis, safety, quality, behavior, phone, path)
+    return AudioAnalyzerSettings(analysis, safety, quality, behavior, phone, path, noise_guard)
 
 
 def _recover_readable_prefix(
@@ -725,11 +768,14 @@ def _active_frame_mask(
     frame_rms: np.ndarray,
     config: AnalyzerConfig,
     minimum_active_frames: int,
+    keep_frames: np.ndarray | None = None,
 ) -> tuple[np.ndarray, float]:
     absolute_threshold = float(librosa.db_to_amplitude(config.silence_threshold_dbfs))
     adaptive_threshold = float(np.max(frame_rms)) * 0.01  # 40 dB below the loudest frame
     threshold = max(EPSILON, min(absolute_threshold, adaptive_threshold))
     active = frame_rms > threshold
+    if keep_frames is not None:
+        active &= keep_frames
     active_count = int(np.sum(active))
     if active_count < minimum_active_frames:
         raise AudioAnalysisError(
@@ -737,6 +783,38 @@ def _active_frame_mask(
             f"{minimum_active_frames} are required. Check the recording or silence threshold."
         )
     return active, threshold
+
+
+def _join_kept_segments(
+    audio: np.ndarray,
+    keep_frames: np.ndarray,
+    sample_rate: int,
+    frame_length: int,
+    hop_length: int,
+) -> np.ndarray:
+    if np.all(keep_frames):
+        return audio
+
+    edges = np.flatnonzero(np.diff(np.r_[False, keep_frames, False]))
+    # Assign samples to their nearest frame center, with no overlap across a drop.
+    first_edge = (frame_length - hop_length) // 2
+    boundaries = first_edge + edges * hop_length
+    boundaries[edges == 0] = 0
+    boundaries[edges == keep_frames.size] = audio.size
+    segments = [audio[start:end] for start, end in boundaries.reshape(-1, 2)]
+    if not segments:
+        return audio[:0]
+
+    crossfade_samples = round(0.010 * sample_rate)
+    parts = [segments[0]]
+    for previous, current in zip(segments, segments[1:]):
+        count = min(crossfade_samples, previous.size // 2, current.size // 2)
+        if count:
+            fade_in = np.linspace(0.0, 1.0, count, dtype=audio.dtype)
+            parts[-1] = parts[-1][:-count]
+            parts.append(previous[-count:] * (1.0 - fade_in) + current[:count] * fade_in)
+        parts.append(current[count:])
+    return np.concatenate(parts)
 
 
 def _band_rms(
@@ -919,7 +997,9 @@ def extract_loudness(context: AnalysisContext) -> dict[str, Any]:
     active_rms = np.maximum(context.frame_rms[context.active_frames], EPSILON)
     # ref=1.0 makes 0 dBFS full scale; clipping avoids log10(0) and -infinity.
     loudness_dbfs = librosa.amplitude_to_db(active_rms, ref=1.0, top_db=None)
-    filtered = _bs1770_filtered_mono(context.audio, context.sample_rate)
+    filtered = context.loudness_audio
+    if filtered.size:
+        filtered = _bs1770_filtered_mono(filtered, context.sample_rate)
     channel_note = (
         "Native mono measurement."
         if context.source_channels == 1
@@ -937,7 +1017,7 @@ def extract_loudness(context: AnalysisContext) -> dict[str, Any]:
         "integrated_lufs": _integrated_lufs(filtered),
         "maximum_momentary_lufs": _maximum_block_loudness(filtered, 0.4, 0.1),
         "maximum_short_term_lufs": _maximum_block_loudness(filtered, 3.0, 1.0),
-        "true_peak_dbtp": _true_peak_dbtp(context.audio),
+        "true_peak_dbtp": _true_peak_dbtp(context.loudness_audio),
         "loudness_method": "ITU-R BS.1770-5 K-weighting and gating (mono)",
         "channel_handling_note": channel_note,
     }
@@ -967,7 +1047,9 @@ def estimate_sharpness(context: AnalysisContext) -> dict[str, Any]:
     }
 
 
-def estimate_noise(context: AnalysisContext) -> dict[str, Any]:
+def estimate_noise(
+    context: AnalysisContext, preroll_noise_dbfs: float | None = None
+) -> dict[str, Any]:
     # Silent and quiet frames are excluded from normal feature averages, but are
     # intentionally retained here because they are the candidates for a noise
     # floor. validate_audio() has already rejected a wholly silent recording.
@@ -979,8 +1061,6 @@ def estimate_noise(context: AnalysisContext) -> dict[str, Any]:
         np.sqrt(np.mean(np.square(context.frame_rms[context.active_frames])))
     )
     noise_dbfs = 20.0 * math.log10(max(noise_rms, EPSILON))
-    estimated_snr_db = 20.0 * math.log10(max(signal_rms, EPSILON) / max(noise_rms, EPSILON))
-
     separation_db = 20.0 * math.log10(max(signal_rms, EPSILON) / max(cutoff, EPSILON))
     # Compare at micro-dB precision so the 6 dB boundary does not depend on
     # floating-point differences between Python/NumPy builds.
@@ -991,12 +1071,21 @@ def estimate_noise(context: AnalysisContext) -> dict[str, Any]:
         if not reliable
         else "Low-energy frames may contain wanted audio; treat this no-reference noise estimate cautiously."
     )
+    source = "quiet_frame_estimate"
+    if preroll_noise_dbfs is not None:
+        noise_dbfs = preroll_noise_dbfs
+        noise_rms = 10 ** (noise_dbfs / 20.0)
+        reliable = True
+        source = "preroll"
+        warning = "Background noise was measured during the noise check."
+    estimated_snr_db = 20.0 * math.log10(max(signal_rms, EPSILON) / max(noise_rms, EPSILON))
     return {
         "noise_rms": noise_rms,
         "noise_dbfs": float(noise_dbfs),
         "estimated_snr_db": float(estimated_snr_db),
         "signal_to_quiet_frame_separation_db": float(separation_db),
         "reliable": bool(reliable),
+        "source": source,
         "threshold_use": "advisory_only",
         "low_energy_percentile": float(context.config.noise_percentile),
         "quiet_frame_count": int(quiet_frames.size),
@@ -1508,6 +1597,7 @@ def measure_phone_recording(
 def evaluate_quality(
     results: dict[str, Any],
     thresholds: QualityThresholds,
+    noise_guard: NoiseGuardConfig | None = None,
 ) -> dict[str, Any]:
     """Apply configurable deterministic warning/failure thresholds."""
     _validate_quality_thresholds(thresholds)
@@ -1524,6 +1614,25 @@ def evaluate_quality(
     clipped_percentage = float(results["distortion"]["clipped_sample_percentage"])
     warnings: list[str] = []
     failures: list[str] = []
+
+    guard_report = results.get("noise_guard")
+    if guard_report is not None:
+        guard_config = noise_guard or NoiseGuardConfig()
+        mnr = guard_report.get("music_to_noise_db")
+        recording_tip = "Move closer to the speaker or record somewhere quieter."
+        if (
+            mnr is not None
+            and mnr < guard_config.mnr_low_db
+            and guard_report["usable_percentage"] < guard_config.usable_warn_percentage
+        ):
+            failures.append(
+                "Background noise was too loud for a reliable result. "
+                + recording_tip
+            )
+        elif mnr is None and results["analysis_information"].get("insufficient_usable_frames"):
+            failures.append(f"Too noisy: too few non-silent frames were usable. {recording_tip}")
+        if guard_report["confidence"] == "low":
+            warnings.append(f"Noise guard confidence is low. {recording_tip}")
 
     if snr_db < thresholds.snr_failure_below_db:
         message = (
@@ -1568,7 +1677,11 @@ def evaluate_quality(
         "failures": failures,
         "measured": {
             "estimated_snr_db": snr_db,
-            "snr_source": "separate_phone_noise_recording" if measured_phone_snr is not None else "quiet_frame_estimate",
+            "snr_source": (
+                "separate_phone_noise_recording"
+                if measured_phone_snr is not None
+                else results["noise"].get("source", "quiet_frame_estimate")
+            ),
             "snr_threshold_enforcement": "enforced" if snr_is_controlled else "advisory_only",
             "estimated_distortion_score": distortion_score,
             "clipped_sample_percentage": clipped_percentage,
@@ -1589,6 +1702,8 @@ def _analyze_with_context(
     file_path: str | Path,
     config: AnalyzerConfig | None = None,
     safety: SafetyLimits | None = None,
+    noise_preroll_seconds: float = 0.0,
+    noise_guard: NoiseGuardConfig | None = None,
 ) -> tuple[dict[str, Any], AnalysisContext]:
     config = config or AnalyzerConfig()
     safety = safety or SafetyLimits()
@@ -1596,6 +1711,19 @@ def _analyze_with_context(
     _validate_safety(safety)
     raw_audio, sample_rate, container_info = load_audio(file_path, safety)
     audio = validate_audio(raw_audio, sample_rate, config)
+    if not math.isfinite(noise_preroll_seconds) or noise_preroll_seconds < 0.0:
+        raise AudioAnalysisError("Noise pre-roll seconds must be finite and non-negative.")
+    if noise_preroll_seconds > 0.0:
+        preroll_samples = round(min(noise_preroll_seconds, audio.size / sample_rate) * sample_rate)
+        if audio.size - preroll_samples < 10.0 * sample_rate:
+            raise AudioAnalysisError("Record at least 10 seconds of song after the noise check.")
+    guard_config = noise_guard or NoiseGuardConfig()
+    guard_result = apply_noise_guard(
+        audio, sample_rate, noise_preroll_seconds, guard_config,
+        config.frame_length, config.hop_length,
+    )
+    audio = guard_result.audio
+    keep_frames = guard_result.keep_frames
     magnitude, power, frequencies, frame_times = compute_stft(
         audio, sample_rate, config.frame_length, config.hop_length
     )
@@ -1605,17 +1733,30 @@ def _analyze_with_context(
         hop_length=config.hop_length,
         center=False,
     )[0]
-    if frame_rms.size != magnitude.shape[1]:
+    if frame_rms.size != magnitude.shape[1] or frame_rms.shape != keep_frames.shape:
         raise AudioAnalysisError("Internal frame alignment error during analysis.")
-    active_frames, silence_threshold = _active_frame_mask(
-        frame_rms,
-        config,
-        safety.minimum_active_frames,
-    )
+    insufficient_usable_frames = False
+    fallback_active_frames = None
+    try:
+        active_frames, silence_threshold = _active_frame_mask(
+            frame_rms, config, safety.minimum_active_frames, keep_frames
+        )
+    except AudioAnalysisError:
+        if np.all(keep_frames):
+            raise
+        # Preserve technical failures that would have occurred without transient gating.
+        ungated_frames, _ = _active_frame_mask(frame_rms, config, safety.minimum_active_frames)
+        active_frames, silence_threshold = _active_frame_mask(frame_rms, config, 0, keep_frames)
+        insufficient_usable_frames = True
+        if not np.any(active_frames):
+            fallback_active_frames = ungated_frames
     flatness = librosa.feature.spectral_flatness(S=magnitude)[0]
 
     context = AnalysisContext(
         audio=audio,
+        loudness_audio=_join_kept_segments(
+            audio, keep_frames, sample_rate, config.frame_length, config.hop_length
+        ),
         sample_rate=sample_rate,
         magnitude=magnitude,
         power=power,
@@ -1629,7 +1770,16 @@ def _analyze_with_context(
         decode_status=str(container_info.get("decode_status", "complete")),
         container_subtype=str(container_info.get("container_subtype", "")),
     )
+    # Keep the legacy diagnostic fields available on a failed recording with no
+    # active frames. The returned context and the loudness signal stay gated.
+    metrics_context = (
+        replace(context, active_frames=fallback_active_frames)
+        if fallback_active_frames is not None
+        else context
+    )
     path = Path(file_path).expanduser().resolve()
+    mnr = guard_result.report["music_to_noise_db"]
+    flatness_reliable = mnr is None or mnr >= guard_config.mnr_high_db
     results: dict[str, Any] = {
         "file_information": {
             "file_path": str(path),
@@ -1643,19 +1793,29 @@ def _analyze_with_context(
             "hop_length": config.hop_length,
             "total_frame_count": int(frame_rms.size),
             "analyzed_frame_count": int(np.sum(active_frames)),
-            "ignored_silent_frame_count": int(np.sum(~active_frames)),
+            "ignored_silent_frame_count": int(np.sum(frame_rms <= silence_threshold)),
+            "ignored_transient_frame_count": int(np.sum((frame_rms > silence_threshold) & ~keep_frames)),
+            "insufficient_usable_frames": insufficient_usable_frames,
             "effective_silence_threshold_dbfs": float(
                 20.0 * math.log10(max(silence_threshold, EPSILON))
             ),
         },
-        "bass": extract_bass_features(context),
-        "treble": extract_treble_features(context),
-        "loudness": extract_loudness(context),
-        "flatness": extract_flatness(context),
-        "sharpness": estimate_sharpness(context),
-        "noise": estimate_noise(context),
-        "distortion": estimate_distortion(context),
+        "bass": extract_bass_features(metrics_context),
+        "treble": extract_treble_features(metrics_context),
+        "loudness": extract_loudness(metrics_context),
+        "flatness": {
+            **extract_flatness(metrics_context),
+            "reliable": flatness_reliable,
+            "reliability_note": None if flatness_reliable else "Background noise may affect this measurement.",
+        },
+        "sharpness": estimate_sharpness(metrics_context),
+        "noise": estimate_noise(metrics_context, guard_result.report["preroll_noise_dbfs"]),
+        "distortion": estimate_distortion(metrics_context),
+        "noise_guard": guard_result.report,
     }
+    if fallback_active_frames is not None:
+        for section in ("bass", "treble", "loudness", "flatness", "sharpness", "noise", "distortion"):
+            results[section]["frame_metric_source"] = "ungated_diagnostic"
     return results, context
 
 
@@ -1664,9 +1824,10 @@ def analyze_audio(
     config: AnalyzerConfig | None = None,
     safety: SafetyLimits | None = None,
     quality_thresholds: QualityThresholds | None = None,
+    noise_preroll_seconds: float = 0.0,
 ) -> dict[str, Any]:
     """Analyze an audio file and return a JSON-serializable result dictionary."""
-    results, _ = _analyze_with_context(file_path, config, safety)
+    results, _ = _analyze_with_context(file_path, config, safety, noise_preroll_seconds)
     results["quality_assessment"] = evaluate_quality(
         results,
         quality_thresholds or QualityThresholds(),
@@ -1888,7 +2049,7 @@ def create_visualizations(
         rms_dbfs[~context.active_frames],
         s=8,
         color="gray",
-        label="Ignored silent frames",
+        label="Ignored frames (silence or sudden noise)",
     )
     plt.title("RMS loudness over time")
     plt.xlabel("Time (s)")
@@ -1900,24 +2061,23 @@ def create_visualizations(
 
     active_flatness = context.flatness[context.active_frames]
     active_flatness_times = context.frame_times[context.active_frames]
-    flatness_mean = float(results["flatness"]["mean"])
-    flatness_upper = min(
-        1.0,
-        max(
-            float(np.percentile(active_flatness, 99.5)) * 1.15,
-            flatness_mean * 2.0,
-            1.0e-6,
-        ),
-    )
     plt.figure(figsize=(12, 4))
-    plt.plot(active_flatness_times, active_flatness, linewidth=1.1, label="Active frames")
-    plt.axhline(flatness_mean, color="darkorange", linestyle="--", label="Active-frame mean")
-    plt.ylim(0.0, flatness_upper)
+    if active_flatness.size:
+        flatness_mean = float(results["flatness"]["mean"])
+        flatness_upper = min(
+            1.0,
+            max(float(np.percentile(active_flatness, 99.5)) * 1.15, flatness_mean * 2.0, 1.0e-6),
+        )
+        plt.plot(active_flatness_times, active_flatness, linewidth=1.1, label="Active frames")
+        plt.axhline(flatness_mean, color="darkorange", linestyle="--", label="Active-frame mean")
+        plt.ylim(0.0, flatness_upper)
+        plt.legend()
+    else:
+        plt.text(0.5, 0.5, "No usable active frames", transform=plt.gca().transAxes, ha="center")
     plt.title("Spectral flatness over time")
     plt.xlabel("Time (s)")
     plt.ylabel("Spectral flatness")
     plt.ticklabel_format(axis="y", style="sci", scilimits=(-3, 3))
-    plt.legend()
     plt.grid(alpha=0.25)
     save_figure("spectral_flatness")
 
@@ -1927,7 +2087,10 @@ def create_visualizations(
     bars = plt.bar(labels, values, color=["#3566b8", "#d17432"])
     plt.bar_label(bars, fmt="%.2f%%", padding=3)
     plt.title("Bass and treble energy comparison")
-    plt.ylabel("Percentage of total active-frame spectral energy")
+    if results["bass"].get("frame_metric_source") == "ungated_diagnostic":
+        plt.ylabel("Percentage of ungated spectral energy (diagnostic)")
+    else:
+        plt.ylabel("Percentage of total active-frame spectral energy")
     plt.ylim(0.0, max(5.0, max(values) * 1.2))
     plt.grid(axis="y", alpha=0.25)
     save_figure("band_energy_comparison")
@@ -1950,11 +2113,16 @@ def print_report(results: dict[str, Any], saved_files: dict[str, str] | None = N
     if info.get("decode_status") != "complete":
         print(f"Recovery:   {info['decode_status']}")
         print(f"Warning:    {info['recovery_warning']}")
-    print(
+    frame_summary = (
         f"Frames:     {analysis['analyzed_frame_count']} analyzed, "
         f"{analysis['ignored_silent_frame_count']} silent/near-silent ignored"
     )
+    if skipped := analysis.get("ignored_transient_frame_count"):
+        frame_summary += f", {skipped} sudden-noise frames skipped"
+    print(frame_summary)
     print("-" * 72)
+    if results["flatness"].get("frame_metric_source") == "ungated_diagnostic":
+        print("Ungated diagnostic values are shown because no active frames survived noise filtering.")
     print(
         f"Bass:       RMS {results['bass']['rms']:.6f}, "
         f"energy {results['bass']['energy_percentage']:.2f}%"
@@ -2049,6 +2217,12 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=None,
         help="Override lowest RMS percentile used as noise",
+    )
+    parser.add_argument(
+        "--noise-preroll-seconds",
+        type=float,
+        default=0.0,
+        help="Seconds of background noise recorded before the song",
     )
     parser.add_argument(
         "--clipping-threshold",
@@ -2173,7 +2347,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Analyzing: {Path(audio_file).expanduser()}", flush=True)
         print(f"Settings:  {settings.settings_path}", flush=True)
         print("Please wait; long recordings and plot generation may take a minute.", flush=True)
-        results, context = _analyze_with_context(audio_file, config, settings.safety)
+        results, context = _analyze_with_context(
+            audio_file, config, settings.safety, args.noise_preroll_seconds, settings.noise_guard
+        )
         if args.phone_recording:
             if not args.noise_file or not args.tone_file:
                 raise AudioAnalysisError(
@@ -2204,10 +2380,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             "quality_thresholds": asdict(settings.quality_thresholds),
             "failure_behavior": asdict(settings.failure_behavior),
             "phone_recording": asdict(settings.phone_recording),
+            "noise_guard": asdict(settings.noise_guard),
         }
         results["quality_assessment"] = evaluate_quality(
             results,
             settings.quality_thresholds,
+            settings.noise_guard,
         )
         quality_failed = results["quality_assessment"]["status"] == "failed"
         save_quality_outputs = (

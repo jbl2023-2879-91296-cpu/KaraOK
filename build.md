@@ -60,10 +60,10 @@ Flutter verification and should not be used for release validation.
 Precedence is `-ApiBaseUrl` (alias `-AppBaseUrl`), then process environment
 `KARAOK_API_BASE_URL`, then mode default:
 
-| Mode | Default |
-| --- | --- |
-| Release/profile | `https://139.99.89.112/api` |
-| Debug | `http://10.0.2.2:5000/api` (Android emulator) |
+| Mode            | Default                                         |
+| --------------- | ----------------------------------------------- |
+| Release/profile | `https://139.99.89.112/api`                   |
+| Debug           | `http://10.0.2.2:5000/api` (Android emulator) |
 
 All endpoints must end in `/api`; release/profile endpoints require remote HTTPS.
 The script passes Flutter's `API_BASE_URL` define. Do not supply API URL keys

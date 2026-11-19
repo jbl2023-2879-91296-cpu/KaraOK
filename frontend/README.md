@@ -13,6 +13,11 @@ shipped target; web and desktop builds are used for development and testing.
 - Home, Records and Settings are the three bottom-navigation tabs.
 - **Evaluate Audio Quality**: record up to five minutes or pick a file, then
   see the score, the five measurements and the visual report.
+- **Noise check before recording** (Noise Guard): recording starts with a
+  3-second noise check, sent as `noise_preroll_seconds=3.0` (0 for picked
+  files). At least 10 seconds of song must follow it. Reports show a Noise
+  Guard card with usable audio, confidence and warnings, and mute measurements
+  the analysis marks unreliable.
 - **Generate Audio Settings Suggestion**: enter the amplifier's scale and
   current knob positions, record, and get five suggested positions with
   explanations and a Record Again to Verify step. Listener feedback (Better,

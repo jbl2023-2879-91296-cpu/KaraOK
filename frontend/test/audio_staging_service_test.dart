@@ -212,7 +212,7 @@ void main() {
             isA<AudioStagingException>().having(
               (e) => e.message,
               'size violation',
-              contains('25 MB'),
+              contains('26 MiB'),
             ),
           ),
         );
@@ -224,7 +224,9 @@ void main() {
       'PCM WAV skips data and enforces duration before native loading',
       () async {
         for (final seconds in [10, 300, 301]) {
-          final dataLength = seconds * 8000;
+          const rate = 44100;
+          const frameBytes = 2;
+          final dataLength = seconds * rate * frameBytes;
           final bytes = Uint8List(44 + dataLength);
           final data = ByteData.sublistView(bytes);
           bytes.setAll(0, 'RIFF'.codeUnits);
@@ -233,10 +235,10 @@ void main() {
           data.setUint32(16, 16, Endian.little);
           data.setUint16(20, 1, Endian.little);
           data.setUint16(22, 1, Endian.little);
-          data.setUint32(24, 8000, Endian.little);
-          data.setUint32(28, 8000, Endian.little);
-          data.setUint16(32, 1, Endian.little);
-          data.setUint16(34, 8, Endian.little);
+          data.setUint32(24, rate, Endian.little);
+          data.setUint32(28, rate * frameBytes, Endian.little);
+          data.setUint16(32, frameBytes, Endian.little);
+          data.setUint16(34, 16, Endian.little);
           bytes.setAll(36, 'data'.codeUnits);
           data.setUint32(40, dataLength, Endian.little);
           final file = await fixture('pcm.wav', bytes);
