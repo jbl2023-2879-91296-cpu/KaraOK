@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 
 from . import service
+from ...core import config
 from ...core.config import SETTINGS_RECOMMENDATIONS_ENABLED
 
 
@@ -136,6 +137,15 @@ def report(section, query):
             result['weekdays'] = rows(c,"SELECT WEEKDAY(a.assessment_date) weekday,COUNT(*) assessments"+BASE+where+" GROUP BY weekday ORDER BY weekday",args)
             result['daily'] = rows(c,"SELECT DATE(a.assessment_date) day,COUNT(DISTINCT a.user_id) active_users"+BASE+where+" GROUP BY day ORDER BY day",args)
         elif section == 'quality':
+            result['noise_guard'] = rows(c, """SELECT
+                COALESCE(r.noise_guard_confidence, 'Not collected') AS confidence,
+                COUNT(*) AS assessments,
+                ROUND(AVG(r.noise_guard_usable_pct), 1) AS mean_usable_pct,
+                ROUND(AVG(r.preroll_noise_dbfs), 1) AS mean_noise_check_dbfs,
+                SUM(r.noise_reliable = 0) AS noise_unreliable,
+                SUM(r.flatness_reliable = 0) AS flatness_unreliable
+                """ + BASE + where + """ AND a.assessment_status='Completed'
+                GROUP BY confidence ORDER BY FIELD(confidence, 'high', 'medium', 'low', 'Not collected')""", args)
             result['scores'] = rows(c,"SELECT CASE WHEN r.quality_score IS NULL THEN 'Not scored' WHEN r.quality_score < 0 OR r.quality_score > 100 THEN 'Outside 0–100' WHEN r.quality_score < 20 THEN '0–19' WHEN r.quality_score < 40 THEN '20–39' WHEN r.quality_score < 60 THEN '40–59' WHEN r.quality_score < 80 THEN '60–79' ELSE '80–100' END score_band,COUNT(*) assessments"+BASE+where+" GROUP BY score_band ORDER BY score_band",args)
             result['trend'] = rows(c,"SELECT DATE(a.assessment_date) day,ROUND(AVG(r.quality_score),2) average_score,COUNT(r.quality_score) scored_assessments"+BASE+where+" AND a.assessment_status='Completed' GROUP BY day ORDER BY day",args)
             result['genres'] = rows(c,"SELECT COALESCE(NULLIF(f.genre_name,''),'Not collected') genre,COUNT(*) assessments,COUNT(CASE WHEN a.assessment_status='Completed' THEN r.quality_score END) scored,ROUND(AVG(CASE WHEN a.assessment_status='Completed' THEN r.quality_score END),2) average_score,ROUND(100.0*SUM(a.assessment_status='Failed')/NULLIF(COUNT(*),0),2) failure_percent"+BASE+where+" GROUP BY genre ORDER BY assessments DESC LIMIT 25",args)
@@ -152,6 +162,8 @@ def report(section, query):
                     result['positions'] += rows(c,"SELECT %s control, FLOOR(10*(CAST(JSON_UNQUOTE(JSON_EXTRACT(s.recommended_positions,'$."+knob+"')) AS DECIMAL(10,3))-s.scale_min)/NULLIF(s.scale_max-s.scale_min,0))*10 normalized_percent_bucket,COUNT(*) recommendations FROM settings_recommendation s JOIN user u ON u.user_id=s.user_id WHERE u.role='user' AND s.created_at >= %s AND s.created_at < %s AND JSON_EXTRACT(s.recommended_positions,'$."+knob+"') IS NOT NULL GROUP BY normalized_percent_bucket ORDER BY normalized_percent_bucket",(knob,)+args)
         else:
             result['metrics'] = one(c,"SELECT COUNT(*) requests,COALESCE(SUM(status_code BETWEEN 400 AND 599),0) errors,ROUND(100.0*SUM(status_code BETWEEN 400 AND 599)/NULLIF(COUNT(*),0),2) error_percent,ROUND(AVG(duration_ms),2) mean_latency_ms FROM api_request_log WHERE created_at >= %s AND created_at < %s",args)
+            result['retention'] = {'request_log_days': config.REQUEST_LOG_RETENTION_DAYS,
+                                   'audit_log_days': config.AUDIT_LOG_RETENTION_DAYS}
             result['attention'] = rows(c,"SELECT a.assessment_id,a.user_id,u.username,a.assessment_date,a.assessment_status"+BASE+where+" AND a.assessment_status IN ('Failed','Pending','Processing') ORDER BY a.assessment_date DESC LIMIT 50",args)
             result['audit'] = rows(c,"SELECT audit_log_id,action,resource_type,resource_id,result,created_at FROM audit_log WHERE created_at >= %s AND created_at < %s ORDER BY created_at DESC,audit_log_id DESC LIMIT 50",args)
     return result
@@ -243,7 +255,14 @@ def detail(kind, record_id, query):
             data['genres']=rows(c,"SELECT COALESCE(f.genre_name,'Not collected') genre,COUNT(*) assessments"+BASE+" WHERE u.role='user' AND a.user_id=%s AND a.assessment_date >= %s AND a.assessment_date < %s GROUP BY genre ORDER BY assessments DESC LIMIT 25",(record_id,start,end))
             data['profiles']=rows(c,"SELECT amplifier_profile_id,name,scale_min,scale_max,scale_step,last_positions,created_at,updated_at FROM amplifier_profile WHERE user_id=%s ORDER BY updated_at DESC LIMIT 50",(record_id,)) if SETTINGS_RECOMMENDATIONS_ENABLED else []
         else:
-            found=rows(c,"SELECT a.assessment_id,a.user_id,u.username,a.assessment_date,a.analysis_purpose,a.assessment_status,a.duration_seconds,a.processing_time,a.result_status,f.genre_name,r.quality_score,r.noise_level,r.distortion_level,r.bass,r.treble,r.loudness,r.sharpness,r.flatness,r.empirical_status,r.worst_feature_status,r.worst_features,r.empirical_details,r.scoring_algorithm_version,r.quality_profile_version,r.reference_recording_count"+BASE+" WHERE u.role='user' AND a.assessment_id=%s",(record_id,))
+            found = rows(c, """SELECT a.assessment_id,a.user_id,u.username,a.assessment_date,
+                a.analysis_purpose,a.assessment_status,a.duration_seconds,a.processing_time,a.result_status,
+                f.genre_name,r.quality_score,r.noise_level,r.distortion_level,r.bass,r.treble,r.loudness,
+                r.sharpness,r.flatness,r.empirical_status,r.worst_feature_status,r.worst_features,
+                r.empirical_details,r.scoring_algorithm_version,r.quality_profile_version,r.reference_recording_count,
+                r.noise_reliable,r.noise_guard_usable_pct,r.noise_guard_confidence,r.preroll_noise_dbfs,
+                r.flatness_reliable,r.flatness_reliability_note
+                """ + BASE + " WHERE u.role='user' AND a.assessment_id=%s", (record_id,))
             if not found: raise LookupError('Assessment not found')
             data={'profile':found[0]}
     return data

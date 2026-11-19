@@ -30,6 +30,11 @@ function readable(string $key): string
         'monthly_active_users'=>'Monthly active', 'assessments_per_participant'=>'Assessments / user',
         'mean_hours_to_first_assessment'=>'Avg. first assessment (h)', 'conversion_percent'=>'Conversion (%)',
         'mean_latency_ms'=>'Avg. latency (ms)', 'error_percent'=>'Error rate (%)',
+        'noise_guard_confidence'=>'Confidence', 'noise_guard_usable_pct'=>'Usable audio',
+        'preroll_noise_dbfs'=>'Pre-recording noise', 'noise_reliable'=>'Noise check reliable',
+        'flatness_reliable'=>'Flatness reliable', 'flatness_reliability_note'=>'Flatness reliability note',
+        'mean_usable_pct'=>'Mean usable audio (%)', 'mean_noise_check_dbfs'=>'Mean noise check (dBFS)',
+        'empirical_details'=>'Scoring details',
     ][$key] ?? ucwords(str_replace('_', ' ', $key));
 }
 function metric_value(mixed $value): string
@@ -92,6 +97,22 @@ function bars(string $title, array $rows, string $label, string $value, string $
     ob_start(); ?><article class="panel p-5"><h2 class="section-title"><?= h($title) ?></h2><p class="muted text-sm mt-1 mb-5"><?= h($note) ?></p><?php if (!$rows): ?><div class="empty-state">No observations in this period.</div><?php endif; ?><?php foreach ($rows as $row): ?><div class="bar-row"><div class="flex justify-between gap-4 text-sm"><span><?= h($row[$label]) ?></span><strong><?= metric_value($row[$value]) ?></strong></div><meter min="0" max="<?= h($max) ?>" value="<?= h($row[$value]) ?>" aria-label="<?= h($row[$label].': '.$row[$value]) ?>"></meter></div><?php endforeach; ?></article><?php return (string)ob_get_clean();
 }
 
+function retention_note(?array $retention): string
+{
+    if (!isset($retention['request_log_days'], $retention['audit_log_days'])) return '';
+
+    $requestDays = (int) $retention['request_log_days'];
+    $auditDays = (int) $retention['audit_log_days'];
+    $duration = static fn (int $days): string => $days === 0
+        ? 'kept indefinitely'
+        : 'kept for '.$days.($days === 1 ? ' day' : ' days');
+    $text = 'Request logs are '.$duration($requestDays).' and audit logs are '.$duration($auditDays).'.';
+    if ($requestDays > 0 || $auditDays > 0) {
+        $text .= ' The nightly cleanup removes entries past their retention period.';
+    }
+    return '<p class="muted text-sm mt-1">'.h($text).'</p>';
+}
+
 function product_report_view(string $section, array $data): string
 {
     $meta = $data['meta'];
@@ -134,6 +155,9 @@ function product_report_view(string $section, array $data): string
     <?php elseif ($section === 'quality'): ?>
         <div class="report-columns"><?= bars('Score distribution',$data['scores'],'score_band','assessments','All period assessments · missing scores shown separately · scores on 0–100 scale') ?><?= trend_chart('Completed assessment quality',$data['trend'],'average_score',$meta,false) ?></div>
         <?= data_table('Genre comparison',$data['genres'],'Score averages include non-null scores of completed assessments. Failure denominator: all attempts in that genre. Top 25 genres.') ?>
+        <?php if (isset($data['noise_guard'])): ?>
+            <?= data_table('Noise check quality', $data['noise_guard'], 'Recordings made before Noise Guard show as Not collected.') ?>
+        <?php endif; ?>
         <a class="btn btn-primary mt-5" href="<?= h(product_url('/assessments')) ?>">Browse assessments</a>
     <?php elseif ($section === 'amplifiers'): ?>
         <?php if (!$data['enabled']): ?><div class="alert">Unavailable: settings recommendations are disabled by the backend feature flag.</div><?php else: ?>
@@ -144,7 +168,9 @@ function product_report_view(string $section, array $data): string
         <a class="btn mt-5" href="/preview?table=amplifier_profile">Inspect saved profiles</a> <a class="btn mt-5" href="/preview?table=settings_recommendation">Inspect recommendations</a>
         <?php endif; ?>
     <?php else: ?>
-        <?= metric_grid($data['metrics']) ?><details class="context-details"><summary>Traffic definition</summary><p>Source: api_request_log. Includes app, administrator and background requests. Errors are HTTP 400–599; error rate divides these by all logged requests. Latency is the arithmetic mean in milliseconds. This is operational traffic, not engagement.</p></details>
+        <?= metric_grid($data['metrics']) ?>
+        <?= retention_note($data['retention'] ?? null) ?>
+        <details class="context-details"><summary>Traffic definition</summary><p>Source: api_request_log. Includes app, administrator and background requests. Errors are HTTP 400–599; error rate divides these by all logged requests. Latency is the arithmetic mean in milliseconds. This is operational traffic, not engagement.</p></details>
         <?= data_table('Assessments needing attention',$data['attention'],'Latest 50 failed, pending or processing assessments in the period') ?><?= data_table('Audit history',$data['audit'],'Latest 50 events in the period; sensitive event details omitted') ?>
         <div class="flex flex-wrap gap-3 mt-5"><a class="btn" href="/diagnostics">Connection diagnostics</a><a class="btn" href="/activity">Local console activity</a><a class="btn" href="/preview?table=assessment">Controlled assessment management</a></div>
     <?php endif; ?>
@@ -229,6 +255,55 @@ function compact_directory_table(string $kind, array $rows, string $reference): 
     <?php return (string)ob_get_clean();
 }
 
+function scoring_details(mixed $value): string
+{
+    $raw = is_array($value) || is_object($value) ? json_encode($value, JSON_PRETTY_PRINT) : $value;
+    $details = is_string($raw) ? json_decode($raw) : null;
+    $structured = is_object($details) && is_object($details->features ?? null);
+    $number = static fn (mixed $value): string => is_numeric($value)
+        ? number_format((float) $value, 2, '.', '') : 'Not collected';
+    $label = static fn (mixed $value): string => is_scalar($value) ? (string) $value : 'Not collected';
+
+    ob_start(); ?>
+    <?php if ($structured): ?>
+        <p class="muted mb-3">Overall score <?= h($number($details->overall_score ?? null)) ?>
+            · Status <?= h($label($details->overall_status ?? null)) ?>
+            · Method <?= h($label($details->method ?? null)) ?></p>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Feature scores">
+            <table aria-label="Feature scores">
+                <thead><tr><th scope="col">Feature</th><th scope="col">Value</th><th scope="col">Target range</th><th scope="col">Score</th><th scope="col">Status</th><th scope="col">Weight</th><th scope="col">Direction</th></tr></thead>
+                <tbody>
+                <?php foreach (['loudness', 'bass', 'treble', 'sharpness', 'flatness'] as $key):
+                    $feature = $details->features->$key ?? null;
+                    $lower = $feature->target_lower ?? null;
+                    $upper = $feature->target_upper ?? null;
+                    $target = is_numeric($lower) && is_numeric($upper)
+                        ? $number($lower).' to '.$number($upper) : 'Not collected'; ?>
+                    <tr><th scope="row"><?= h(readable($key)) ?></th>
+                        <td><?= h($number($feature->value ?? null)) ?></td>
+                        <td><?= h($target) ?></td>
+                        <td><?= h($number($feature->score ?? null)) ?></td>
+                        <td><?= h($label($feature->status ?? null)) ?></td>
+                        <td><?= h($number($feature->weight ?? null)) ?></td>
+                        <td><?= h($label($feature->direction ?? null)) ?></td></tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php $warnings = $details->noise_guard_warnings ?? null;
+        if (is_array($warnings) && $warnings): ?>
+            <p class="muted mt-3">Noise Guard warnings</p>
+            <ul class="list-disc pl-5 mb-3">
+                <?php foreach ($warnings as $warning): ?>
+                    <li><?= h($label($warning)) ?></li>
+                <?php endforeach; ?>
+            </ul>
+        <?php endif; ?>
+    <?php endif; ?>
+    <details><summary><?= $structured ? 'Raw scoring data' : 'View data' ?></summary><pre class="json-value"><?= h($raw) ?></pre></details>
+    <?php return (string) ob_get_clean();
+}
+
 function profile_sections(array $profile, bool $users, ?string $reference): string
 {
     $groups = $users ? [
@@ -239,12 +314,25 @@ function profile_sections(array $profile, bool $users, ?string $reference): stri
         'Assessment'=>['assessment_id','user_id','username','assessment_date','analysis_purpose','genre_name','assessment_status','result_status'],
         'Quality & timing'=>['quality_score','duration_seconds','processing_time','empirical_status','worst_feature_status'],
         'Audio features'=>['noise_level','distortion_level','bass','treble','loudness','sharpness','flatness'],
+        'Noise check'=>['noise_guard_confidence','noise_guard_usable_pct','preroll_noise_dbfs','noise_reliable','flatness_reliable','flatness_reliability_note'],
         'Report metadata'=>['worst_features','empirical_details','scoring_algorithm_version','quality_profile_version','reference_recording_count'],
     ];
     ob_start(); ?><div class="report-columns"><?php foreach ($groups as $label=>$fields): ?>
-    <article class="panel p-4"><h2 class="section-title"><?= h($label) ?></h2>
+    <article class="panel p-4<?= $label === 'Report metadata' ? ' col-span-full' : '' ?>"><h2 class="section-title"><?= h($label) ?></h2>
     <?php if ($users && $label==='Identity'): ?><p class="muted text-xs mt-1">Age as of <?= h($reference) ?> UTC</p><?php endif; ?>
     <dl class="profile-details"><?php foreach ($fields as $key): if (!array_key_exists($key,$profile)) continue; $value=$profile[$key]; ?>
-    <dt><?= h(readable($key)) ?></dt><dd><?php if ($value===null): ?><span class="muted">Not collected</span><?php elseif (in_array($key,['is_active','verified'],true)): ?><?= $value ? 'Yes' : 'No' ?><?php elseif (is_array($value) || in_array($key,['worst_features','empirical_details'],true)): ?><details><summary>View data</summary><pre class="json-value"><?= h(is_array($value) ? json_encode($value,JSON_PRETTY_PRINT) : $value) ?></pre></details><?php else: ?><?= h($value) ?><?php endif; ?></dd>
+    <dt<?= $key === 'empirical_details' && $value !== null ? ' class="col-span-full"' : '' ?>><?= h(readable($key)) ?></dt>
+    <dd<?= $key === 'empirical_details' && $value !== null ? ' class="col-span-full"' : '' ?>>
+        <?php if ($value === null): ?><span class="muted">Not collected</span>
+        <?php elseif (in_array($key, ['is_active','verified','noise_reliable','flatness_reliable'], true)): ?><?= $value ? 'Yes' : 'No' ?>
+        <?php elseif ($key === 'noise_guard_confidence'): ?>
+            <span class="badge <?= match ($value) { 'high' => 'badge-ok', 'low' => 'badge-medium', default => '' } ?>"><?= h($value) ?></span>
+        <?php elseif ($key === 'noise_guard_usable_pct'): ?><?= h($value) ?>%
+        <?php elseif ($key === 'preroll_noise_dbfs'): ?><?= h($value) ?> dBFS
+        <?php elseif ($key === 'empirical_details'): ?><?= scoring_details($value) ?>
+        <?php elseif (is_array($value) || $key === 'worst_features'): ?>
+            <details><summary>View data</summary><pre class="json-value"><?= h(is_array($value) ? json_encode($value, JSON_PRETTY_PRINT) : $value) ?></pre></details>
+        <?php else: ?><?= h($value) ?><?php endif; ?>
+    </dd>
     <?php endforeach; ?></dl></article><?php endforeach; ?></div><?php return (string)ob_get_clean();
 }
