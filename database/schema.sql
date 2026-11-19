@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS user (
     requires_password_change BOOLEAN NOT NULL DEFAULT FALSE,
     security_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_user_role_created (role, created_at)
 );
 
 -- ==========================================
@@ -79,6 +80,7 @@ CREATE TABLE IF NOT EXISTS assessment (
     result_status VARCHAR(30) NOT NULL DEFAULT 'Acceptable',
 
     KEY idx_assessment_user_date (user_id, assessment_date),
+    KEY idx_assessment_date (assessment_date),
 
     CONSTRAINT fk_assessment_user
         FOREIGN KEY (user_id)
@@ -202,6 +204,7 @@ CREATE TABLE IF NOT EXISTS settings_recommendation (
     UNIQUE KEY uq_settings_recommendation_assessment (assessment_id),
     UNIQUE KEY uq_settings_recommendation_parent (parent_recommendation_id),
     KEY idx_settings_recommendation_user_created (user_id, created_at),
+    KEY idx_settings_recommendation_created (created_at),
     CONSTRAINT fk_settings_recommendation_user
         FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE CASCADE,
     CONSTRAINT fk_settings_recommendation_assessment
@@ -243,6 +246,7 @@ CREATE TABLE IF NOT EXISTS refresh_token (
     user_agent VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     KEY idx_refresh_token_user (user_id, revoked_at, expires_at),
+    KEY idx_refresh_token_expires (expires_at),
     CONSTRAINT fk_refresh_token_user
         FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE CASCADE
 );
@@ -256,6 +260,7 @@ CREATE TABLE IF NOT EXISTS revoked_access_token (
     user_id INT NOT NULL,
     expires_at DATETIME NOT NULL,
     revoked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_revoked_access_token_expires (expires_at),
     CONSTRAINT fk_revoked_access_user
         FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE CASCADE
 );
@@ -336,6 +341,7 @@ CREATE TABLE IF NOT EXISTS registration_otp (
     attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_registration_otp_user (user_id),
+    KEY idx_registration_otp_expires (expires_at),
     CONSTRAINT fk_registration_otp_user
         FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE CASCADE
 );

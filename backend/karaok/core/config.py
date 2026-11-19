@@ -83,6 +83,10 @@ AUDIO_ANALYZER_SETTINGS_PATH = os.path.abspath(
 AUDIO_ANALYSIS_TIMEOUT_SECONDS = int(
     os.getenv("AUDIO_ANALYSIS_TIMEOUT_SECONDS", "300")
 )
+# Nightly retention cleanup (scripts/purge_old_records.py). 0 keeps forever.
+REQUEST_LOG_RETENTION_DAYS = int(os.getenv("REQUEST_LOG_RETENTION_DAYS", "90"))
+AUDIT_LOG_RETENTION_DAYS = int(os.getenv("AUDIT_LOG_RETENTION_DAYS", "365"))
+VISUALIZATION_RETENTION_DAYS = int(os.getenv("VISUALIZATION_RETENTION_DAYS", "0"))
 ALLOWED_ANALYSIS_PURPOSES = {"quality_evaluation", "settings_suggestion"}
 ANALYZER_COMPLETED_EXIT_CODES = {0, 3}
 ALLOWED_AUDIO_EXTENSIONS = {"wav", "mp3", "m4a", "aac", "ogg", "flac"}
