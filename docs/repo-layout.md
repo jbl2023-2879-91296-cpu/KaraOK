@@ -52,7 +52,3 @@
 - The backend package layers, compatibility shims, platform sources, version numbers, deployment files, secrets, uploads, private storage, and local datasets retain their current paths.
 - `admin/.gitignore` already ignores cache and log contents while retaining the tracked placeholders.
 - The existing bare path in `CHANGELOG.md` is historical prose. Existing relative links within the same destination group keep working.
-
-## Manual follow-up for Don
-
-- In the deployment work, update the reference at `deploy.md:345` from `docs/settings-profile-sources.md` to `docs/design/settings-profile-sources.md` after the move.

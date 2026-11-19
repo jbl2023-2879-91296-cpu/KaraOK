@@ -342,7 +342,7 @@ sudo -u karaok ./.venv/bin/python -c \
   "from audio_thresholds import load_genre_profiles; p=load_genre_profiles(); assert p.artifact_checksum == 'acefe9949cd6eb8f8a713bcd4d0b5080820bcdd7de81f25e81676388d0c9f03d'; print(p.artifact_checksum)"
 ```
 
-Review `docs/settings-profile-sources.md` for source attribution, licenses,
+Review `docs/design/settings-profile-sources.md` for source attribution, licenses,
 selection exclusions, enabled genres, and profile version. KaraOK recommends
 five physical knob positions but never controls the amplifier.
 
@@ -602,6 +602,44 @@ Do not repeatedly rebuild the database while diagnosing an API startup error.
 The first verified backup remains the recovery point.
 
 ## Recovery note
+
+### Automatic API recovery
+
+After configuring the existing API, install the recovery safeguards:
+
+```bash
+sudo bash /opt/karaok/app/deploy/ovh/enable-api-recovery.sh
+```
+
+This preserves existing service overrides and does not restart a running API.
+It enables startup at boot, restarts unexpected process exits (including clean
+exits) after ten seconds, and checks every minute whether the service needs
+starting. Five starts per minute limit rapid crash loops. An explicit systemd
+stop is recovered by the timer, rather than by `Restart=always`.
+
+Before intentionally stopping the API for maintenance or database restoration,
+pause recovery first:
+
+```bash
+sudo touch /run/karaok-maintenance
+sudo systemctl stop karaok-api-recovery.timer karaok-api-recovery.service
+sudo systemctl stop karaok-api
+```
+
+After maintenance:
+
+```bash
+sudo rm -f /run/karaok-maintenance
+sudo systemctl start karaok-api
+sudo systemctl start karaok-api-recovery.timer
+curl --retry 10 --retry-connrefused --retry-delay 2 --max-time 60 -i http://127.0.0.1:8000/api/health
+curl --max-time 30 -i https://139.99.89.112/api/health
+```
+
+The maintenance marker is cleared on reboot. These safeguards recover stopped
+processes; they do not diagnose the original stop or guarantee recovery from a
+running but unhealthy API, database failure, or VPS/network outage. Check stop
+causes with the system journal and available sudo/authentication logs.
 
 The database backup created in section 3 is compressed SQL. Record its exact
 directory before making destructive changes. Restoring a live database is also
