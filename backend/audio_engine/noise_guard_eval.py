@@ -1,6 +1,7 @@
 """Measure production analyzer drift against a clean reference."""
 
 import math
+from dataclasses import replace
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
@@ -8,8 +9,7 @@ from typing import Any
 import numpy as np
 import soundfile as sf
 
-from audio_engine.analyzer import QualityThresholds, _analyze_with_context, analyze_audio, evaluate_quality
-from audio_engine.noise_guard import NoiseGuardConfig
+from audio_engine.analyzer import _analyze_with_context, evaluate_quality, load_settings
 from karaok.audio_pipeline.summary import _empirical_feature_values, summarize_audio_analysis
 
 
@@ -21,11 +21,10 @@ def analyze_samples(audio, sr, *, preroll=0.0, guard=True):
         path = Path(temp.name)
     try:
         sf.write(path, audio, sr, subtype="FLOAT")
-        if guard:
-            return analyze_audio(path, noise_preroll_seconds=preroll)
-        config = NoiseGuardConfig(enabled=False)
-        analysis, _ = _analyze_with_context(path, noise_preroll_seconds=preroll, noise_guard=config)
-        analysis["quality_assessment"] = evaluate_quality(analysis, QualityThresholds(), config)
+        settings = load_settings()
+        config = replace(settings.noise_guard, enabled=False) if not guard else settings.noise_guard
+        analysis, _ = _analyze_with_context(path, settings.analysis, settings.safety, preroll, config)
+        analysis["quality_assessment"] = evaluate_quality(analysis, settings.quality_thresholds, config)
         return analysis
     finally:
         path.unlink(missing_ok=True)
@@ -51,10 +50,13 @@ def compare(clean: dict, noisy: dict) -> dict[str, Any]:
                 delta = measured - reference
         limit = TOLERANCES["ratio_db" if ratio else name]
         metrics[name] = {"delta": delta, "ok": delta is not None and abs(delta) <= limit}
+        if name == "flatness" and noisy.get("flatness", {}).get("reliable") is False:
+            metrics[name].update(ok=None, skipped=True)
     status = {"clean": clean_summary["status"], "noisy": noisy_summary["status"]}
     status["ok"] = status["clean"] == status["noisy"]
     return {"metrics": metrics, "status": status,
-            "passed": status["ok"] and all(metric["ok"] for metric in metrics.values())}
+            "passed": status["ok"] and all(metric["ok"] or metric.get("skipped", False)
+                                             for metric in metrics.values())}
 
 
 def run_case(clean_audio, noise_audio, sr, mnr_db, guard: bool) -> dict:

@@ -269,6 +269,8 @@ def create_guest_audio_analysis():
             analysis_summary["sharpness"] if analysis_summary else None
         ),
         "flatness": analysis_summary["flatness"] if analysis_summary else None,
+        "flatness_reliable": analysis_summary.get("flatness_reliable") if analysis_summary else None,
+        "flatness_reliability_note": analysis_summary.get("flatness_reliability_note") if analysis_summary else None,
         "empirical_quality": (
             analysis_summary["empirical_quality"] if analysis_summary else None
         ),
@@ -277,6 +279,8 @@ def create_guest_audio_analysis():
         "visualizations": visualization_images,
         "created_at": utcnow().isoformat(),
     }
+    if analysis_summary and analysis_summary.get("quality_assessment"):
+        response_data["quality_assessment"] = analysis_summary["quality_assessment"]
     if settings_payload is not None:
         response_data["settings_recommendation"] = settings_payload
     return jsonify(response_data), 201
@@ -475,6 +479,8 @@ def create_audio_upload():
             analysis_summary["sharpness"] if analysis_summary else None
         ),
         "flatness": analysis_summary["flatness"] if analysis_summary else None,
+        "flatness_reliable": analysis_summary.get("flatness_reliable") if analysis_summary else None,
+        "flatness_reliability_note": analysis_summary.get("flatness_reliability_note") if analysis_summary else None,
         "empirical_quality": (
             analysis_summary["empirical_quality"] if analysis_summary else None
         ),
@@ -488,6 +494,8 @@ def create_audio_upload():
         else {},
         "analysis_dump": analysis_dump,
     }
+    if analysis_summary and analysis_summary.get("quality_assessment"):
+        response_data["quality_assessment"] = analysis_summary["quality_assessment"]
     if analysis_summary and analysis_summary.get("settings_recommendation") is not None:
         response_data["settings_recommendation"] = analysis_summary[
             "settings_recommendation"

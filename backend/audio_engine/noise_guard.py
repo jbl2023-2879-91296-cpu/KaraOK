@@ -16,14 +16,15 @@ class NoiseGuardConfig:
     enabled: bool = True
     preroll_min_usable_seconds: float = 1.0
     preroll_silence_dbfs: float = -90.0
-    subtraction_floor: float = 0.1
+    subtraction_floor: float = 0.25
+    subtraction_high_band_factor: float = 12.0
     music_in_preroll_margin_db: float = 6.0
     transient_window_seconds: float = 1.5
-    transient_band_db: float = 6.0
+    transient_band_db: float = 13.0
     transient_band_fraction: float = 0.3
-    transient_pad_frames: int = 2
+    transient_pad_frames: int = 0
     usable_warn_percentage: float = 60.0
-    usable_fail_percentage: float = 30.0
+    usable_fail_percentage: float = 30.0  # Accepted for legacy settings files only.
     mnr_warn_db: float = 19.4
     mnr_low_db: float = 15.1
     mnr_high_db: float = 29.0
@@ -72,12 +73,18 @@ def _subtract_noise(
     subtraction_floor: float,
     frame_length: int,
     hop_length: int,
+    *,
+    sample_rate: int,
+    high_band_factor: float = 1.0,
 ) -> np.ndarray:
     # Center padding lets the inverse transform reconstruct both song endpoints.
     spectrum = librosa.stft(
         song, n_fft=frame_length, hop_length=hop_length, window="hann", center=True
     )
     power = np.maximum(np.abs(spectrum) ** 2, _EPS)
+    if high_band_factor != 1:
+        frequencies = librosa.fft_frequencies(sr=sample_rate, n_fft=frame_length)
+        noise_profile = noise_profile * np.where(frequencies >= 4000, high_band_factor, 1.0)
     gain = np.sqrt(np.maximum(1 - noise_profile[:, None] / power, subtraction_floor ** 2))
     return librosa.istft(
         spectrum * gain,
@@ -153,7 +160,8 @@ def apply_noise_guard(
             preroll_margin_db = 10 * np.log10(max(song_power, _EPS) / noise_power)
             if preroll_margin_db < config.music_in_preroll_margin_db:
                 warnings.append(
-                    "The song started during the noise check, so background noise was not removed."
+                    "The noise check was nearly as loud as the song, so background noise was not removed. "
+                    "Start the song after the noise check, or move closer to the speaker."
                 )
             else:
                 noise_dbfs = float(10 * np.log10(noise_power))
@@ -161,8 +169,14 @@ def apply_noise_guard(
                     10 * np.log10(max(song_power - noise_power, _EPS) / noise_power)
                 )
                 if song.size >= frame_length:
+                    # Stronger treble subtraction is useful only when the noise
+                    # check indicates the music may be affected by noise.
+                    high_band_factor = (
+                        config.subtraction_high_band_factor if music_to_noise_db < config.mnr_high_db else 1.0
+                    )
                     song = _subtract_noise(
-                        song, noise_profile, config.subtraction_floor, frame_length, hop_length
+                        song, noise_profile, config.subtraction_floor, frame_length, hop_length,
+                        sample_rate=sample_rate, high_band_factor=high_band_factor,
                     )
                     subtraction_applied = True
 
@@ -177,12 +191,11 @@ def apply_noise_guard(
         warnings.append(f"{removed_percentage:.0f}% of the recording had sudden noises and was skipped.")
 
     confidence = "medium"
-    if usable_percentage < config.usable_warn_percentage or (
-        music_to_noise_db is not None and music_to_noise_db < config.mnr_low_db
-    ):
-        confidence = "low"
-    elif music_to_noise_db is not None and music_to_noise_db >= config.mnr_high_db:
-        confidence = "high"
+    if music_to_noise_db is not None:
+        if usable_percentage < config.usable_warn_percentage or music_to_noise_db < config.mnr_low_db:
+            confidence = "low"
+        elif music_to_noise_db >= config.mnr_high_db:
+            confidence = "high"
 
     return NoiseGuardResult(song, keep, {
         "preroll_seconds": float(preroll_seconds),

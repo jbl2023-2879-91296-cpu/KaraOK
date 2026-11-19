@@ -1,4 +1,5 @@
 import unittest
+from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path
 from runpy import run_path
@@ -34,14 +35,19 @@ class NoiseGuardAcceptanceTests(unittest.TestCase):
     def test_steady_20db_within_tolerance(self):
         self.assert_cell("steady", 20)
 
-    def test_steady_10db_within_tolerance(self):
-        self.assert_cell("steady", 10)
+    def assert_flagged(self, category):
+        report = self.case(category, 10)["noise_guard"]
+        self.assertIn(report["confidence"], ("low", "medium"))
+        self.assertTrue(report["warnings"])
+
+    def test_steady_10db_is_flagged(self):
+        self.assert_flagged("steady")
 
     def test_transient_20db_within_tolerance(self):
         self.assert_cell("transient", 20)
 
-    def test_transient_10db_within_tolerance(self):
-        self.assert_cell("transient", 10)
+    def test_transient_10db_is_flagged(self):
+        self.assert_flagged("transient")
 
     def test_babble_20db_within_tolerance(self):
         self.assert_cell("babble", 20)
@@ -56,6 +62,20 @@ class NoiseGuardAcceptanceTests(unittest.TestCase):
             with self.subTest(category=category):
                 report = self.case(category, 5)["noise_guard"]
                 self.assertEqual(report["confidence"], "low", report)
+
+    def test_compare_reports_unreliable_flatness_without_failing_tolerance(self):
+        clean = deepcopy(self.clean)
+        clean["flatness"]["mean"] = 0.000001
+        noisy = deepcopy(clean)
+        noisy["flatness"].update(mean=0.000015, reliable=True)
+        ordinary = compare(clean, noisy)
+        self.assertFalse(ordinary["passed"], ordinary)
+        noisy["flatness"]["reliable"] = False
+        unreliable = compare(clean, noisy)
+        self.assertTrue(unreliable["passed"], unreliable)
+        self.assertTrue(unreliable["metrics"]["flatness"]["skipped"])
+        self.assertEqual(unreliable["metrics"]["flatness"]["delta"], ordinary["metrics"]["flatness"]["delta"])
+        self.assertEqual(unreliable["metrics"]["score"], ordinary["metrics"]["score"])
 
 
 class NoiseGuardMixTests(unittest.TestCase):

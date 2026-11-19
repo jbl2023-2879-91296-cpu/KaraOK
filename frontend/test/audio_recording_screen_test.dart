@@ -8,6 +8,7 @@ import 'package:karaok_app/core/security/session_manager.dart';
 import 'package:karaok_app/features/assessments/presentation/pages/audio_test_screen.dart';
 import 'package:karaok_app/features/assessments/data/audio_staging_service.dart';
 import 'package:path/path.dart' as p;
+import 'package:record/record.dart';
 
 import 'support/audio_platform_stub.dart';
 
@@ -19,6 +20,9 @@ void main() {
     'config': 'recorder config disables phone processing',
     'fractional': 'pause excludes fractional seconds from the minimum',
     'minimum': 'stop is blocked until 13 s when a noise check was recorded',
+    'focus':
+        'an unexpected native pause discards the recording and stops the timer',
+    'background': 'leaving the app during the noise check stops the recording',
   };
   for (final outcome in [
     ...checks.keys,
@@ -59,8 +63,18 @@ void main() {
         var granted = true;
         var starts = 0;
         var stops = 0;
+        var cancels = 0;
+        late String recorderEvents;
         Map? config;
         String? path;
+        void sendState(RecordState state) {
+          messenger.handlePlatformMessage(
+            recorderEvents,
+            const StandardMethodCodec().encodeSuccessEnvelope(state.index),
+            (_) {},
+          );
+        }
+
         messenger.setMockMethodCallHandler(
           const MethodChannel('flutter.baseflow.com/permissions/methods'),
           (call) async => <int, int>{7: granted ? 1 : 0},
@@ -70,10 +84,10 @@ void main() {
           (call) async {
             final args = call.arguments as Map;
             if (call.method == 'create') {
+              recorderEvents =
+                  'com.llfbandit.record/events/${args['recorderId']}';
               messenger.setMockMethodCallHandler(
-                MethodChannel(
-                  'com.llfbandit.record/events/${args['recorderId']}',
-                ),
+                MethodChannel(recorderEvents),
                 (_) async => null,
               );
             }
@@ -84,19 +98,30 @@ void main() {
               File(path!).writeAsBytesSync([1, 2, 3]);
             }
             if (call.method == 'isRecording') return true;
+            if (call.method == 'pause') sendState(RecordState.pause);
+            if (call.method == 'resume') sendState(RecordState.record);
             if (call.method == 'getAmplitude') {
               final level = outcome == 'noisy' ? -30.0 : -60.0;
               return {'current': level, 'max': level};
             }
             if (call.method == 'stop') {
               stops++;
+              sendState(RecordState.stop);
               return path;
+            }
+            if (call.method == 'cancel') {
+              cancels++;
+              sendState(RecordState.stop);
             }
             return null;
           },
         );
         await tester.pumpWidget(
           MaterialApp(home: AudioTestScreen(stagingService: staging)),
+        );
+        expect(
+          find.text('Play the song from a separate device or karaoke machine.'),
+          findsOneWidget,
         );
         await _tapAndWait(
           tester,
@@ -169,6 +194,46 @@ void main() {
           await _tapAndWait(tester, 'Stop', () => staging.current != null);
           expect(stops, 1);
           expect(staging.current!.noisePrerollSeconds, 3);
+          expect(find.text('00:20 / 05:00'), findsOneWidget);
+        } else if (outcome == 'focus' || outcome == 'background') {
+          if (outcome == 'focus') {
+            await tester.pump(const Duration(seconds: 16));
+            expect(find.text('00:16 / 05:00'), findsOneWidget);
+            sendState(RecordState.pause);
+          } else {
+            await tester.pump(const Duration(seconds: 1));
+            for (final state in [
+              AppLifecycleState.inactive,
+              AppLifecycleState.hidden,
+              AppLifecycleState.paused,
+              AppLifecycleState.hidden,
+              AppLifecycleState.inactive,
+              AppLifecycleState.resumed,
+            ]) {
+              tester.binding.handleAppLifecycleStateChanged(state);
+            }
+          }
+          await tester.pumpAndSettle();
+          expect(cancels, 1);
+          await tester.pump(const Duration(seconds: 45));
+          expect(find.text('00:00 / 05:00'), findsOneWidget);
+          expect(find.text('Start the song now.'), findsNothing);
+          expect(find.text('Record Audio'), findsOneWidget);
+          const focusMessage =
+              'Recording stopped because the microphone was interrupted. Play the song from another device and try again.';
+          const backgroundMessage =
+              'Recording stopped because KaraOK left the screen. Keep KaraOK open while recording, and play the song from another device.';
+          final backgrounded = outcome == 'background';
+          expect(
+            find.text(backgrounded ? backgroundMessage : focusMessage),
+            findsOneWidget,
+          );
+          expect(
+            find.text(backgrounded ? focusMessage : backgroundMessage),
+            findsNothing,
+          );
+          expect(stops, 0);
+          expect(staging.current, isNull);
         }
         if (checks.containsKey(outcome)) {
           await tester.pumpWidget(const SizedBox());

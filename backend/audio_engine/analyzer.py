@@ -270,14 +270,13 @@ def _validate_noise_guard(config: NoiseGuardConfig) -> None:
         (config.preroll_min_usable_seconds >= 0, "preroll_min_usable_seconds must be non-negative"),
         (config.preroll_silence_dbfs <= 0, "preroll_silence_dbfs must be at or below 0 dBFS"),
         (0 <= config.subtraction_floor <= 1, "subtraction_floor must be between 0 and 1"),
+        (config.subtraction_high_band_factor >= 1, "subtraction_high_band_factor must be at least 1"),
         (config.music_in_preroll_margin_db >= 0, "music_in_preroll_margin_db must be non-negative"),
         (config.transient_window_seconds > 0, "transient_window_seconds must be positive"),
         (config.transient_band_db >= 0, "transient_band_db must be non-negative"),
         (0 < config.transient_band_fraction <= 1, "transient_band_fraction must be in (0, 1]"),
-        (
-            0 <= config.usable_fail_percentage < config.usable_warn_percentage <= 100,
-            "requires 0 <= usable_fail_percentage < usable_warn_percentage <= 100",
-        ),
+        (0 <= config.usable_warn_percentage <= 100, "usable_warn_percentage must be between 0 and 100"),
+        (0 <= config.usable_fail_percentage <= 100, "legacy usable_fail_percentage must be between 0 and 100"),
         (config.mnr_low_db <= config.mnr_warn_db, "mnr_low_db must not exceed mnr_warn_db"),
         (config.mnr_high_db >= config.mnr_warn_db, "mnr_high_db must not be below mnr_warn_db"),
     )
@@ -1619,14 +1618,18 @@ def evaluate_quality(
     guard_report = results.get("noise_guard")
     if guard_report is not None:
         guard_config = noise_guard or NoiseGuardConfig()
-        fail_percentage = guard_config.usable_fail_percentage
+        mnr = guard_report.get("music_to_noise_db")
         recording_tip = "Move closer to the speaker or record somewhere quieter."
-        if guard_report["usable_percentage"] < fail_percentage:
+        if (
+            mnr is not None
+            and mnr < guard_config.mnr_low_db
+            and guard_report["usable_percentage"] < guard_config.usable_warn_percentage
+        ):
             failures.append(
-                f"Too noisy: less than {fail_percentage:g}% of the recording was usable. "
+                "Background noise was too loud for a reliable result. "
                 + recording_tip
             )
-        elif results["analysis_information"].get("insufficient_usable_frames"):
+        elif mnr is None and results["analysis_information"].get("insufficient_usable_frames"):
             failures.append(f"Too noisy: too few non-silent frames were usable. {recording_tip}")
         if guard_report["confidence"] == "low":
             warnings.append(f"Noise guard confidence is low. {recording_tip}")
@@ -1714,8 +1717,9 @@ def _analyze_with_context(
         preroll_samples = round(min(noise_preroll_seconds, audio.size / sample_rate) * sample_rate)
         if audio.size - preroll_samples < 10.0 * sample_rate:
             raise AudioAnalysisError("Record at least 10 seconds of song after the noise check.")
+    guard_config = noise_guard or NoiseGuardConfig()
     guard_result = apply_noise_guard(
-        audio, sample_rate, noise_preroll_seconds, noise_guard or NoiseGuardConfig(),
+        audio, sample_rate, noise_preroll_seconds, guard_config,
         config.frame_length, config.hop_length,
     )
     audio = guard_result.audio
@@ -1774,6 +1778,8 @@ def _analyze_with_context(
         else context
     )
     path = Path(file_path).expanduser().resolve()
+    mnr = guard_result.report["music_to_noise_db"]
+    flatness_reliable = mnr is None or mnr >= guard_config.mnr_high_db
     results: dict[str, Any] = {
         "file_information": {
             "file_path": str(path),
@@ -1797,7 +1803,11 @@ def _analyze_with_context(
         "bass": extract_bass_features(metrics_context),
         "treble": extract_treble_features(metrics_context),
         "loudness": extract_loudness(metrics_context),
-        "flatness": extract_flatness(metrics_context),
+        "flatness": {
+            **extract_flatness(metrics_context),
+            "reliable": flatness_reliable,
+            "reliability_note": None if flatness_reliable else "Background noise may affect this measurement.",
+        },
         "sharpness": estimate_sharpness(metrics_context),
         "noise": estimate_noise(metrics_context, guard_result.report["preroll_noise_dbfs"]),
         "distortion": estimate_distortion(metrics_context),

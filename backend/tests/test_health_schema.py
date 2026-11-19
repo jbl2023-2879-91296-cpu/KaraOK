@@ -16,6 +16,8 @@ EXPECTED_COLUMNS = [
     ("audio_analysis_result", "noise_guard_usable_pct"),
     ("audio_analysis_result", "noise_guard_confidence"),
     ("audio_analysis_result", "preroll_noise_dbfs"),
+    ("audio_analysis_result", "flatness_reliable"),
+    ("audio_analysis_result", "flatness_reliability_note"),
 ]
 
 

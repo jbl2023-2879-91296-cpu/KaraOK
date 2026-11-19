@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:karaok_app/features/reports/domain/report_values.dart';
 import 'package:karaok_app/features/reports/presentation/widgets/empirical_feature_table.dart';
 import 'package:karaok_app/features/reports/presentation/widgets/noise_guard_card.dart';
+import 'package:karaok_app/features/reports/presentation/widgets/quality_failure_card.dart';
 import 'package:karaok_app/features/reports/presentation/widgets/report_measurements.dart';
 import 'package:karaok_app/features/assessments/data/assessment_api.dart';
 
@@ -20,10 +21,12 @@ class DetailedReportScreen extends StatefulWidget {
     this.score,
     this.noiseLevelDb,
     this.noiseReliable,
+    this.flatnessReliabilityNote,
     this.noiseGuardUsablePercentage,
     this.noiseGuardConfidence,
     this.prerollNoiseDbfs,
     this.noiseGuardWarnings = const [],
+    this.qualityFailures = const [],
     this.distortionLevel,
     this.assessmentId,
     this.empiricalStatus,
@@ -36,10 +39,12 @@ class DetailedReportScreen extends StatefulWidget {
   final num? score;
   final num? noiseLevelDb;
   final bool? noiseReliable;
+  final String? flatnessReliabilityNote;
   final double? noiseGuardUsablePercentage;
   final String? noiseGuardConfidence;
   final double? prerollNoiseDbfs;
   final List<String> noiseGuardWarnings;
+  final List<String> qualityFailures;
   final num? distortionLevel;
   final int? assessmentId;
   final String? empiricalStatus;
@@ -86,6 +91,7 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final failed = widget.qualityFailures.isNotEmpty;
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -118,6 +124,10 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
                 ),
               ),
               const SizedBox(height: 16),
+              if (failed) ...[
+                QualityFailureCard(messages: widget.qualityFailures),
+                const SizedBox(height: 20),
+              ],
               // Waveform Analysis
               const Text(
                 'Waveform Analysis',
@@ -183,76 +193,83 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
                 prerollNoiseDbfs: widget.prerollNoiseDbfs,
                 warnings: widget.noiseGuardWarnings,
               ),
-              const SizedBox(height: 20),
-              if (widget.featureResults.isNotEmpty ||
-                  widget.referenceRecordingCount != null) ...[
-                EmpiricalFeatureTable(
-                  features: widget.featureResults,
-                  referenceRecordingCount: widget.referenceRecordingCount,
-                ),
+              if (!failed) ...[
                 const SizedBox(height: 20),
+                if (widget.featureResults.isNotEmpty ||
+                    widget.flatnessReliabilityNote != null ||
+                    widget.referenceRecordingCount != null) ...[
+                  EmpiricalFeatureTable(
+                    features: widget.featureResults,
+                    flatnessReliabilityNote: widget.flatnessReliabilityNote,
+                    referenceRecordingCount: widget.referenceRecordingCount,
+                  ),
+                  const SizedBox(height: 20),
+                ],
+                // Overall score card
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Overall Audio Quality Score',
+                        style: TextStyle(color: AppColors.muted, fontSize: 13),
+                      ),
+                      const SizedBox(height: 8),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            Text(
+                              reportScoreLabel(widget.score),
+                              style: TextStyle(
+                                color: _gradeColor,
+                                fontSize: 44,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            Text(
+                              '/100',
+                              style: TextStyle(
+                                color: _gradeColor.withValues(alpha: 0.7),
+                                fontSize: 22,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        reportGradeLabel(_grade),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.titleMedium?.copyWith(color: _gradeColor),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        reportInterpretation(
+                          widget.score,
+                          widget.empiricalStatus,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                WhatThisMeansCard(
+                  features: widget.featureResults,
+                  flatnessReliable: widget.flatnessReliabilityNote == null,
+                ),
               ],
-              // Overall score card
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Overall Audio Quality Score',
-                      style: TextStyle(color: AppColors.muted, fontSize: 13),
-                    ),
-                    const SizedBox(height: 8),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: [
-                          Text(
-                            reportScoreLabel(widget.score),
-                            style: TextStyle(
-                              color: _gradeColor,
-                              fontSize: 44,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          Text(
-                            '/100',
-                            style: TextStyle(
-                              color: _gradeColor.withValues(alpha: 0.7),
-                              fontSize: 22,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      reportGradeLabel(_grade),
-                      style: Theme.of(
-                        context,
-                      ).textTheme.titleMedium?.copyWith(color: _gradeColor),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      reportInterpretation(
-                        widget.score,
-                        widget.empiricalStatus,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              WhatThisMeansCard(features: widget.featureResults),
             ],
           ),
         ),

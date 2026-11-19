@@ -18,7 +18,7 @@ MNR = 10
 
 
 def oracle_subtractor(aligned_noise, time_varying, calls):
-    def subtract(song, noise_profile, floor, frame_length, hop_length):
+    def subtract(song, noise_profile, floor, frame_length, hop_length, *, sample_rate, high_band_factor):
         calls.append(True)
         assert song.shape == aligned_noise.shape
         transform = dict(n_fft=frame_length, hop_length=hop_length, window="hann", center=True)
@@ -111,7 +111,7 @@ def summarize(destination, baseline, rows):
         f"The {len(baseline)} required 10 dB mixtures use the same clean clips, input headroom, "
         "acoustic noise tracks, production scoring, transient gating, and tolerances as the supplied baseline. "
         "The diagnostic filters use the isolated noise track's song-average or frame-aligned power spectrum. "
-        "Both retain the mixture phase and existing power-subtraction formula. Full passes use all TOLERANCES.",
+        "Both retain the mixture phase and existing power-subtraction formula. Passes use matching status and all applicable tolerances.",
         "",
         "## Bass within 3 percentage points",
         "",

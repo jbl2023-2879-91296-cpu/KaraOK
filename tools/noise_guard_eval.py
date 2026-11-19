@@ -110,7 +110,9 @@ def format_summary(rows, levels, categories):
     for row in rows:
         grid[row["category"], row["true_mnr_db"], row["guard"]].append(row["passed"])
 
-    lines = ["# Noise guard pass rates", "", "Pass rates use matching status and all TOLERANCES."]
+    lines = ["# Noise guard pass rates", "", "Pass rates require matching status and all applicable TOLERANCES.",
+             "Flatness is skipped where the analyzer marks it unreliable. The score still includes flatness.",
+             "Required 20 dB cells each target at least 90%."]
     categories = grid_categories(category for category in categories if category != "quiet_room")
     if "street_mix" in categories:
         lines.extend(["", "The report-only street mix combines the four tracks at equal RMS, "
@@ -155,6 +157,28 @@ def format_summary(rows, levels, categories):
             warnings = ", ".join(row["warnings"]) or "—"
             lines.append(f"| {row['clean']} | {row['confidence']} | {measured} | {row['usable_percentage']:.2f}% | "
                          f"{row['dropped_percentage']:.2f}% | {warnings} |")
+    skipped = [row for row in rows if row.get("flatness_skipped")]
+    lines.extend(["", "## Flatness skipped", "",
+                  f"{len(skipped)} mixed cases had flatness skipped. Individual deltas are in cases.csv.", "",
+                  "| Noise type | MNR | Skipped | Score delta range | Within ±5 and same status |",
+                  "|---|---:|---:|---:|---:|"])
+    for category in categories:
+        for mnr in levels:
+            cell = [row for row in skipped if row["category"] == category and row["true_mnr_db"] == mnr]
+            if cell:
+                deltas = [row["score_delta"] for row in cell if row["score_delta"] is not None]
+                span = f"{min(deltas):+.2f} to {max(deltas):+.2f}" if deltas else "Unavailable"
+                matched = sum(bool(row["score_ok"] and row["status_ok"]) for row in cell)
+                lines.append(f"| {category} | {mnr:g} dB | {len(cell)} | {span} | {matched}/{len(cell)} |")
+    exceptions = [row for row in skipped if not (row["score_ok"] and row["status_ok"])]
+    if exceptions:
+        lines.extend(["", "| Song | Noise | MNR | Score delta | Same status |",
+                      "|---|---|---:|---:|---|"])
+        for row in exceptions:
+            delta = row["score_delta"]
+            score = f"{delta:+.2f}" if delta is not None else "Unavailable"
+            lines.append(f"| {row['clean']} | {row['noise']} | {row['true_mnr_db']:g} dB | "
+                         f"{score} | {'Yes' if row['status_ok'] else 'No'} |")
     return "\n".join(lines) + "\n"
 
 
@@ -179,6 +203,7 @@ def evaluation_row(clean, noise, category, mnr, guard, case, result=None):
     for name, metric in metrics.items():
         row[f"{name}_delta"] = metric["delta"]
         row[f"{name}_ok"] = metric["ok"]
+    row["flatness_skipped"] = metrics["flatness"].get("skipped", False)
     return row
 
 

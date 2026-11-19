@@ -9,11 +9,13 @@ class EmpiricalFeatureTable extends StatelessWidget {
     super.key,
     required this.features,
     this.referenceRecordingCount,
+    this.flatnessReliabilityNote,
     this.isSample = false,
   });
 
   final Map<String, dynamic> features;
   final int? referenceRecordingCount;
+  final String? flatnessReliabilityNote;
   final bool isSample;
 
   static const _labels = {
@@ -82,13 +84,20 @@ class EmpiricalFeatureTable extends StatelessWidget {
                 final direction = measurementDirection(feature);
                 final score = reportNumber(feature['score']);
                 final status = feature['status']?.toString() ?? 'not_evaluated';
-                final directionLabel = switch (direction) {
-                  'above' => 'Too high',
-                  'below' => 'Too low',
-                  'within' => 'Good',
-                  _ => 'Unavailable',
-                };
-                final color = _statusColor(status);
+                final reliabilityNote = key == 'flatness'
+                    ? flatnessReliabilityNote
+                    : null;
+                final directionLabel = reliabilityNote != null
+                    ? 'Unreliable'
+                    : switch (direction) {
+                        'above' => 'Too high',
+                        'below' => 'Too low',
+                        'within' => 'Good',
+                        _ => 'Unavailable',
+                      };
+                final color = reliabilityNote == null
+                    ? _statusColor(status)
+                    : AppColors.muted;
                 return InkWell(
                   borderRadius: BorderRadius.circular(AppRadii.sm),
                   onTap: () => MeasurementGuide.showMetric(
@@ -128,6 +137,15 @@ class EmpiricalFeatureTable extends StatelessWidget {
                             color: AppColors.muted,
                           ),
                         ),
+                        if (reliabilityNote != null) ...[
+                          const SizedBox(height: AppSpacing.xs),
+                          Text(
+                            reliabilityNote,
+                            style: text.bodySmall?.copyWith(
+                              color: AppColors.muted,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: AppSpacing.xs),
                         Row(
                           children: [

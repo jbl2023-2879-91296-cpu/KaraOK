@@ -34,7 +34,7 @@ def main():
 
     lines = [
         "# Noise Guard comparison", "",
-        "Pass rates use matching status and all TOLERANCES in both evaluations.", "",
+        "Pass rates use the status and tolerance policy recorded by each evaluation.", "",
         "| Noise type | MNR | Guard | Original | Tuned |",
         "|---|---:|---|---:|---:|",
     ]

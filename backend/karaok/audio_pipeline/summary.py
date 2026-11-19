@@ -104,6 +104,16 @@ def summarize_audio_analysis(dump: dict[str, Any]) -> dict[str, Any]:
         loudness = _nested_number(analysis, "loudness", "mean_dbfs")
     sharpness = _nested_number(analysis, "sharpness", "normalized_score")
     flatness = _nested_number(analysis, "flatness", "mean")
+    flatness_report = analysis.get("flatness")
+    flatness_report = flatness_report if isinstance(flatness_report, dict) else {}
+    flatness_reliable = flatness_report.get("reliable")
+    quality = analysis.get("quality_assessment")
+    failures = quality.get("failures") if isinstance(quality, dict) else None
+    quality_failures = (
+        [message.strip() for message in failures if isinstance(message, str) and message.strip()]
+        if isinstance(failures, list)
+        else []
+    )
     return {
         "score": quality_score,
         "status": result_status,
@@ -119,6 +129,11 @@ def summarize_audio_analysis(dump: dict[str, Any]) -> dict[str, Any]:
         "loudness": loudness,
         "sharpness": sharpness,
         "flatness": flatness,
+        "flatness_reliable": flatness_reliable if isinstance(flatness_reliable, bool) else None,
+        "flatness_reliability_note": flatness_report.get("reliability_note") if flatness_reliable is False else None,
         "empirical_quality": empirical,
+        "quality_assessment": {"status": "failed", "failures": quality_failures}
+        if quality_failures
+        else None,
         "safety_signals": _analysis_safety_signals(analysis),
     }

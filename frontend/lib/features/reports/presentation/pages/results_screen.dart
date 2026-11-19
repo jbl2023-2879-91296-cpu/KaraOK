@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:karaok_app/features/reports/domain/report_values.dart';
 import 'package:karaok_app/features/reports/presentation/widgets/empirical_feature_table.dart';
 import 'package:karaok_app/features/reports/presentation/widgets/report_measurements.dart';
+import 'package:karaok_app/features/reports/presentation/widgets/quality_failure_card.dart';
 import 'package:karaok_app/app/app_shell.dart';
 import 'package:karaok_app/core/security/guest_assessment_service.dart';
 import 'package:karaok_app/features/assessments/presentation/pages/audio_test_screen.dart';
@@ -22,10 +23,12 @@ class ResultsScreen extends StatefulWidget {
     this.score,
     this.noiseLevelDb,
     this.noiseReliable,
+    this.flatnessReliabilityNote,
     this.noiseGuardUsablePercentage,
     this.noiseGuardConfidence,
     this.prerollNoiseDbfs,
     this.noiseGuardWarnings = const [],
+    this.qualityFailures = const [],
     this.distortionLevel,
     this.empiricalStatus,
     this.referenceRecordingCount,
@@ -46,6 +49,8 @@ class ResultsScreen extends StatefulWidget {
     final visualizationValues = reportMap(record['visualizations']);
     final confidence = record['noise_guard_confidence'];
     final warnings = record['noise_guard_warnings'];
+    final flatnessNote = record['flatness_reliability_note'];
+    final flatnessReliable = reportBool(record['flatness_reliable']);
     return ResultsScreen(
       testName: (record['test_name'] ?? record['file_name'] ?? 'Audio test')
           .toString(),
@@ -54,6 +59,11 @@ class ResultsScreen extends StatefulWidget {
           reportNumber(record['score']),
       noiseLevelDb: reportNumber(record['noise_level']),
       noiseReliable: reportBool(record['noise_reliable']),
+      flatnessReliabilityNote: flatnessReliable == false
+          ? (flatnessNote is String && flatnessNote.isNotEmpty
+                ? flatnessNote
+                : 'Background noise may affect this measurement.')
+          : null,
       noiseGuardUsablePercentage: reportNumber(
         record['noise_guard_usable_percentage'],
       )?.toDouble(),
@@ -62,6 +72,7 @@ class ResultsScreen extends StatefulWidget {
       noiseGuardWarnings: warnings is List
           ? warnings.whereType<String>().toList()
           : const [],
+      qualityFailures: reportQualityFailures(record),
       distortionLevel: reportNumber(record['distortion_level']),
       empiricalStatus: empirical['overall_status']?.toString(),
       referenceRecordingCount: reportReferenceCount(
@@ -89,10 +100,12 @@ class ResultsScreen extends StatefulWidget {
   final num? score;
   final num? noiseLevelDb;
   final bool? noiseReliable;
+  final String? flatnessReliabilityNote;
   final double? noiseGuardUsablePercentage;
   final String? noiseGuardConfidence;
   final double? prerollNoiseDbfs;
   final List<String> noiseGuardWarnings;
+  final List<String> qualityFailures;
   final num? distortionLevel;
   final String? empiricalStatus;
   final int? referenceRecordingCount;
@@ -158,6 +171,11 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final failed = widget.qualityFailures.isNotEmpty;
+    final showFeatures =
+        widget.featureResults.isNotEmpty ||
+        widget.flatnessReliabilityNote != null ||
+        widget.referenceRecordingCount != null;
     return PopScope(
       canPop: widget.isSample,
       onPopInvokedWithResult: (didPop, result) {
@@ -218,106 +236,115 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         ),
                         const SizedBox(height: AppSpacing.md),
                       ],
-                      // Score card
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(AppSpacing.xl),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(AppRadii.card),
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              widget.testName,
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.titleSmall,
-                            ),
-                            Text(
-                              'Audio quality score',
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: AppColors.muted),
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
-                            RichText(
-                              textScaler: MediaQuery.textScalerOf(context),
-                              text: TextSpan(
-                                style: Theme.of(context).textTheme.bodyMedium,
-                                children: [
-                                  TextSpan(
-                                    text: _scoreLabel,
-                                    style: TextStyle(
-                                      color: _gradeColor,
-                                      fontSize: 56,
-                                      height: 1.1,
-                                      letterSpacing: 0,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                  TextSpan(
-                                    text: '/100',
-                                    style: TextStyle(
-                                      color: _gradeColor.withValues(alpha: 0.7),
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
+                      if (failed)
+                        QualityFailureCard(messages: widget.qualityFailures)
+                      else ...[
+                        // Score card
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(AppSpacing.xl),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(AppRadii.card),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                widget.testName,
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.titleSmall,
                               ),
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
-                            Text(
-                              reportGradeLabel(_grade),
-                              style: Theme.of(context).textTheme.titleMedium
-                                  ?.copyWith(color: _gradeColor),
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
-                            Text(
-                              widget.isSample
-                                  ? 'Example quality score. These are not measurements of your audio.'
-                                  : _interpretation,
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(color: AppColors.muted),
-                            ),
-                          ],
+                              Text(
+                                'Audio quality score',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: AppColors.muted),
+                              ),
+                              const SizedBox(height: AppSpacing.sm),
+                              RichText(
+                                textScaler: MediaQuery.textScalerOf(context),
+                                text: TextSpan(
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                  children: [
+                                    TextSpan(
+                                      text: _scoreLabel,
+                                      style: TextStyle(
+                                        color: _gradeColor,
+                                        fontSize: 56,
+                                        height: 1.1,
+                                        letterSpacing: 0,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    TextSpan(
+                                      text: '/100',
+                                      style: TextStyle(
+                                        color: _gradeColor.withValues(
+                                          alpha: 0.7,
+                                        ),
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: AppSpacing.sm),
+                              Text(
+                                reportGradeLabel(_grade),
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(color: _gradeColor),
+                              ),
+                              const SizedBox(height: AppSpacing.sm),
+                              Text(
+                                widget.isSample
+                                    ? 'Example quality score. These are not measurements of your audio.'
+                                    : _interpretation,
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(color: AppColors.muted),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-                      WhatThisMeansCard(
-                        features: widget.featureResults,
-                        isSample: widget.isSample,
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-                      if (widget.featureResults.isNotEmpty ||
-                          widget.referenceRecordingCount != null)
-                        EmpiricalFeatureTable(
-                          isSample: widget.isSample,
+                        const SizedBox(height: AppSpacing.lg),
+                        WhatThisMeansCard(
                           features: widget.featureResults,
-                          referenceRecordingCount:
-                              widget.referenceRecordingCount,
-                        ),
-                      if (widget.featureResults.isNotEmpty ||
-                          widget.referenceRecordingCount != null)
-                        const SizedBox(height: AppSpacing.lg),
-                      ReportMeasurements(
-                        noiseLevelDb: widget.noiseLevelDb,
-                        noiseReliable: widget.noiseReliable,
-                        distortionLevel: widget.distortionLevel,
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-                      // Status row
-                      if (widget.settingsRecord != null) ...[
-                        OutlinedButton.icon(
-                          onPressed: _openGeneratedSettings,
-                          icon: const Icon(Icons.tune),
-                          label: const Text('Generate Audio Settings'),
+                          isSample: widget.isSample,
+                          flatnessReliable:
+                              widget.flatnessReliabilityNote == null,
                         ),
                         const SizedBox(height: AppSpacing.lg),
+                        if (showFeatures) ...[
+                          EmpiricalFeatureTable(
+                            isSample: widget.isSample,
+                            features: widget.featureResults,
+                            flatnessReliabilityNote:
+                                widget.flatnessReliabilityNote,
+                            referenceRecordingCount:
+                                widget.referenceRecordingCount,
+                          ),
+                          const SizedBox(height: AppSpacing.lg),
+                        ],
+                        ReportMeasurements(
+                          noiseLevelDb: widget.noiseLevelDb,
+                          noiseReliable: widget.noiseReliable,
+                          distortionLevel: widget.distortionLevel,
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        // Status row
+                        if (widget.settingsRecord != null) ...[
+                          OutlinedButton.icon(
+                            onPressed: _openGeneratedSettings,
+                            icon: const Icon(Icons.tune),
+                            label: const Text('Generate Audio Settings'),
+                          ),
+                          const SizedBox(height: AppSpacing.lg),
+                        ],
                       ],
+                      if (failed) const SizedBox(height: AppSpacing.lg),
 
                       // View Visual Report
-                      if (!widget.isSample && widget.score != null)
+                      if (!widget.isSample && (failed || widget.score != null))
                         Container(
                           width: double.infinity,
                           constraints: const BoxConstraints(minHeight: 52),
@@ -335,6 +362,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
                                         widget.referenceRecordingCount,
                                     noiseLevelDb: widget.noiseLevelDb,
                                     noiseReliable: widget.noiseReliable,
+                                    flatnessReliabilityNote:
+                                        widget.flatnessReliabilityNote,
                                     noiseGuardUsablePercentage:
                                         widget.noiseGuardUsablePercentage,
                                     noiseGuardConfidence:
@@ -342,6 +371,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                                     prerollNoiseDbfs: widget.prerollNoiseDbfs,
                                     noiseGuardWarnings:
                                         widget.noiseGuardWarnings,
+                                    qualityFailures: widget.qualityFailures,
                                     distortionLevel: widget.distortionLevel,
                                     assessmentId: widget.assessmentId,
                                     visualizationImages:
@@ -356,9 +386,11 @@ class _ResultsScreenState extends State<ResultsScreen> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            child: const Text(
-                              'View Visual Report',
-                              style: TextStyle(
+                            child: Text(
+                              failed
+                                  ? 'View Detailed Report'
+                                  : 'View Visual Report',
+                              style: const TextStyle(
                                 color: AppColors.ink,
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,

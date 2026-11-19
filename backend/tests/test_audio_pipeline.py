@@ -234,14 +234,36 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertEqual(summary["preroll_noise_dbfs"], -44.0)
         self.assertEqual(summary["noise_guard_warnings"], ["Ambient noise"])
 
+    def test_guest_upload_exposes_quality_failure_and_advice(self):
+        message = "Background noise was too loud. Move closer to the speaker."
+        analysis = _analyzer_result("failed")
+        analysis["quality_assessment"]["failures"] = [message]
+        with patch.object(api, "run_audio_analyzer", return_value={"analysis": analysis}):
+            response, status = self._post_noise_guard_wav(13, "3")
+        self.assertEqual(status, 201)
+        self.assertEqual(response.json["status"], "Completed")
+        self.assertEqual(
+            response.json["quality_assessment"],
+            {"status": "failed", "failures": [message]},
+        )
+
     def test_records_persist_noise_guard_columns(self):
         connection = MagicMock()
         cursor = connection.cursor.return_value
         cursor.fetchone.return_value = (4,)
-        guard = {"usable_percentage": 83.5, "confidence": "medium", "preroll_noise_dbfs": -44.0}
+        guard = {
+            "usable_percentage": 83.5,
+            "confidence": "medium",
+            "preroll_noise_dbfs": -44.0,
+            "warnings": ["Some frames were skipped."],
+        }
+        analysis = _analyzer_result("failed")
+        failure = "Background noise was too loud. Move closer to the speaker."
+        analysis["quality_assessment"]["failures"] = [failure]
+        analysis["flatness"].update(reliable=False, reliability_note="Background noise may affect this measurement.")
         with patch.object(api, "get_db", return_value=connection):
             api.persist_audio_analysis(11, 13, {
-                "analysis": {**_analyzer_result(), "noise_guard": guard},
+                "analysis": {**analysis, "noise_guard": guard},
                 "visualizations": {
                     "waveform": "7/11/test_waveform.png",
                     "spectrogram": "7/11/test_spectrogram.png",
@@ -254,7 +276,14 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertEqual(row["noise_guard_usable_pct"], 83.5)
         self.assertEqual(row["noise_guard_confidence"], "medium")
         self.assertEqual(row["preroll_noise_dbfs"], -44.0)
+        self.assertIs(row["flatness_reliable"], False)
+        self.assertEqual(row["flatness_reliability_note"], "Background noise may affect this measurement.")
         self.assertNotIn("noise_guard_warnings", row)
+        enriched = api._enrich_audio_test_row({**row, "score": row["quality_score"]})
+        self.assertEqual(enriched["quality_assessment"], {"status": "failed", "failures": [failure]})
+        self.assertEqual(enriched["noise_guard_warnings"], guard["warnings"])
+        self.assertNotIn("quality_assessment", enriched["empirical_quality"])
+        self.assertNotIn("noise_guard_warnings", enriched["empirical_quality"])
 
     def _run_with_fake_process(self, return_code: int, result_status: str = "passed"):
         temporary = tempfile.TemporaryDirectory()
@@ -441,7 +470,7 @@ class AudioPipelineTests(unittest.TestCase):
                 30,
                 "7/11/test_waveform.png",
                 "7/11/test_spectrogram.png",
-                None, None, None, None,
+                None, None, None, None, None, None,
             ),
         )
         statements = "\n".join(call.args[0] for call in cursor.execute.call_args_list)
@@ -1475,6 +1504,8 @@ class AudioPipelineTests(unittest.TestCase):
             "loudness": -14.0,
             "sharpness": 0.2,
             "flatness": 0.03,
+            "flatness_reliable": 0,
+            "flatness_reliability_note": "Background noise may affect this measurement.",
             "empirical_status": "good",
             "worst_feature_status": "good",
             "worst_features": '["treble"]',
@@ -1494,8 +1525,14 @@ class AudioPipelineTests(unittest.TestCase):
         self.assertEqual(payload["analysis_status"], "completed")
         self.assertEqual(payload["analysis"]["noise_guard"], {
             "confidence": None, "usable_percentage": None, "preroll_noise_dbfs": None,
+            "warnings": [],
         })
         self.assertIsNone(payload["analysis"]["noise"]["reliable"])
+        self.assertEqual(payload["analysis"]["flatness"], {
+            "mean": 0.03,
+            "reliable": False,
+            "reliability_note": "Background noise may affect this measurement.",
+        })
         self.assertEqual(payload["analysis"]["bass"]["energy_percentage"], 40.0)
         self.assertEqual(payload["empirical_quality"]["overall_score"], 91.5)
         self.assertEqual(payload["quality_profile_version"], "2026.09.1")

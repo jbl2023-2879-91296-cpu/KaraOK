@@ -115,6 +115,8 @@ CREATE TABLE IF NOT EXISTS audio_analysis_result (
     sharpness FLOAT,
 
     flatness FLOAT,
+    flatness_reliable BOOLEAN NULL,
+    flatness_reliability_note VARCHAR(160) NULL,
 
     empirical_status VARCHAR(40),
 

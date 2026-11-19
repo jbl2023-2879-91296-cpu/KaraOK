@@ -10,6 +10,26 @@ bool? reportBool(Object? value) => value is bool ? value : null;
 Map<String, dynamic> reportMap(Object? value) =>
     value is Map ? Map<String, dynamic>.from(value) : const {};
 
+List<String> reportQualityFailures(Map<dynamic, dynamic> record) {
+  final dump = reportMap(record['analysis_dump']);
+  final analysis = reportMap(dump['analysis'] ?? record['analysis']);
+  for (final assessment in [
+    reportMap(record['quality_assessment']),
+    reportMap(analysis['quality_assessment']),
+  ]) {
+    final failures = assessment['failures'];
+    if (failures is List) {
+      final messages = failures
+          .whereType<String>()
+          .map((message) => message.trim())
+          .where((message) => message.isNotEmpty)
+          .toList();
+      if (messages.isNotEmpty) return messages;
+    }
+  }
+  return const [];
+}
+
 String reportGrade(num? score, String? status) {
   if (reportNumber(score) == null || status == 'not_evaluated') {
     return 'NOT SCORED';

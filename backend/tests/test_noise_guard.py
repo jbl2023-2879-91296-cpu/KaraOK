@@ -1,4 +1,5 @@
 import unittest
+from dataclasses import replace
 
 import numpy as np
 
@@ -86,3 +87,15 @@ class NoiseGuardTests(unittest.TestCase):
         self.assertLess(abs(rms_db_change), 0.2)
         self.assertGreaterEqual(result.report["usable_percentage"], 95)
         self.assertEqual(result.report["confidence"], "high")
+
+    def test_extra_treble_subtraction_is_disabled_when_the_noise_check_is_quiet(self):
+        rng = np.random.default_rng(4)
+        quiet = rng.standard_normal(3 * SAMPLE_RATE) * 10 ** (-70 / 20)
+        song = music_like(SAMPLE_RATE, 12, 2)
+        audio = np.concatenate([quiet, song])
+        baseline = guard(audio, 3.0)
+        config = replace(NoiseGuardConfig(), subtraction_high_band_factor=12.0)
+        stronger = apply_noise_guard(audio, SAMPLE_RATE, 3.0, config, FRAME_LENGTH, HOP_LENGTH)
+
+        np.testing.assert_array_equal(stronger.audio, baseline.audio)
+        self.assertEqual(stronger.report["confidence"], "high")
