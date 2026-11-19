@@ -2,16 +2,22 @@
 
 All notable changes to KaraOK are documented here.
 
-## Unreleased
+## 2026-11-19 - 1.12.0+18 - Noise Guard
 
-Backend changes on `main`, not yet in a released APK. Apply migrations
-`20261118_01`, `20261119_01` and `20261119_02` before restarting the API.
+Backend deployed to production the same day from `main` (PR #6; migrations
+`20261118_01`, `20261119_01` and `20261119_02` applied, retention timer
+enabled). APK `KaraOK-v1.12.0+18-release.apk`, SHA-256
+`29BDAC71E85701F3CE9F4E5F0E969E85C2B765B40792DE1DCDBA19D1C36D4119`.
+The 1.11.0 app keeps working with this backend; it just has no noise check.
 
 ### Added
 
-- Noise Guard: a 3-second noise check before every recording. Reports show
-  usable audio, confidence and warnings, and unreliable noise or flatness
-  readings are labelled instead of scored as if reliable.
+- Noise Guard: a 3-second noise check before every recording (at least 10
+  seconds of song must follow). The analyzer subtracts the measured room noise
+  and gates transients. Reports show a Noise Guard card with usable audio,
+  confidence and warnings; unreliable noise or flatness readings are labelled
+  instead of scored as if reliable, and a failed quality check explains why
+  instead of showing the feature table.
 - Nightly retention cleanup (`backend/scripts/purge_old_records.py`,
   `karaok-retention.timer`): request logs kept 90 days, audit logs 365 days,
   expired tokens and sign-up codes removed after one day. Old report images can
@@ -23,8 +29,13 @@ Backend changes on `main`, not yet in a released APK. Apply migrations
 
 ### Changed
 
+- Clearer recording error messages (too short, interrupted, song during the
+  noise check); history cards, recording checklist, measurement bands and
+  glossary wording updated.
+- `/api/health` requires the Noise Guard columns (HTTP 503 if a migration is
+  missing).
 - deploy.md lists all seven migrations with a verification query and a new
-  section 10a for the retention timer.
+  section 10a for the retention timer. Tools and docs reorganized.
 
 ## 2026-11-07 - 1.11.0+17 - Consistent app layout
 
