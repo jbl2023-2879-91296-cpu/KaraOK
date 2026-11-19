@@ -83,7 +83,7 @@ rows.
 
 Quality thresholds, genre targets, and starting controls live in versioned JSON
 artifacts under `backend/audio_thresholds/`. The retired lookup tables and result
-foreign keys are absent from the fresh schema. See [profile sources](../docs/settings-profile-sources.md).
+foreign keys are absent from the fresh schema. See [profile sources](../docs/design/settings-profile-sources.md).
 
 ## Nullable fields
 

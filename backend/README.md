@@ -92,7 +92,7 @@ Expected checksum:
 ```
 
 The licensed recording manifest, selection rules, source attribution, disabled
-genres, and quartiles are documented in `../docs/settings-profile-sources.md`.
+genres, and quartiles are documented in `../docs/design/settings-profile-sources.md`.
 Do not hand-edit the generated JSON or enable a genre without a compatible,
 licensed cohort that passes the derivation tests.
 

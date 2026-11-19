@@ -1,9 +1,9 @@
-# Local environment configuration (keep example templates tracked)
+# Secrets and environment
 .env
 .env.*
 !.env.example
 
-# Installed dependencies and local package caches
+# Dependencies and language caches
 node_modules/
 vendor/
 .venv/
@@ -12,26 +12,31 @@ venv/
 .dart_tool/
 .pub-cache/
 .pub/
-
-/audio sample(good)
-/audio sample(bad)
-/results
-/sample
-/Generate Settings songs
-/results_bad
-/project.md
-backend/uploads/
-/backend/.tmp-tests/
-/tests/
 __pycache__/
 *.py[cod]
+
+# Build outputs
 /build/
 /frontend/android/.kotlin/
 /dist/
-.worktrees/
+
+# Local data
+/audio sample(good)
+/audio sample(bad)
+/audio sample(noise)
+/Generate Settings songs
+/DATA GATHERING
+/sample
+backend/uploads/
+/project.md
 /admin/README.md
-docs/reports
+/backend/.tmp-tests/
+/tests/
+.worktrees/
 tmp/
 
-# Generated documents, diagrams, and reports
+# Generated reports
+/results
+/results_bad
+docs/reports
 /output/

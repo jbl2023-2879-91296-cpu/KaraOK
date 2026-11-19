@@ -2,7 +2,7 @@
 
 Verified against repository sources on 2026-09-15.
 
-[Download the PDF](../output/pdf/karaok-empirical-scoring-report.pdf).
+[Download the PDF](../../output/pdf/karaok-empirical-scoring-report.pdf).
 
 
 ## KaraOK empirical scoring
@@ -177,7 +177,7 @@ Use the same song segment, source, phone/microphone position and playback condit
 
 [4] backend/karaok/application.py and backend/audio_engine/analyzer.py - extraction-to-scoring integration and measurement implementation.
 
-[5] docs/report-reference-audit.md and results/results.csv - source audit, CSV rounding, measurement limitations and reference checksum.
+[5] docs/findings/report-reference-audit.md and results/results.csv - source audit, CSV rounding, measurement limitations and reference checksum.
 
 [6] backend/audio_thresholds/derive_thresholds.py - cohort selection and threshold derivation.
 

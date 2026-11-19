@@ -90,7 +90,7 @@ class NoiseGuardMixTests(unittest.TestCase):
 class NoiseGuardCliTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cli_path = Path(__file__).resolve().parents[2] / "tools/noise_guard_eval.py"
+        cli_path = Path(__file__).resolve().parents[2] / "tools/noise_guard/noise_guard_eval.py"
         cls.cli = run_path(str(cli_path))
 
     def test_specific_category_overrides_default_substring(self):

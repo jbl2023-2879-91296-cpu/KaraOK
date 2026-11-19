@@ -63,11 +63,13 @@ history is stored in MySQL; guests keep their reports on the device.
 
 How scores are calculated is documented in the
 [assessment profile](backend/audio_thresholds/README.md) and the
-[empirical scoring report](docs/empirical-scoring-report.md). Settings
+[empirical scoring report](docs/findings/empirical-scoring-report.md). Settings
 suggestions and their sources are covered in
-[settings profile sources](docs/settings-profile-sources.md).
+[settings profile sources](docs/design/settings-profile-sources.md).
 
 ## Repository layout
+
+See the [repository layout guide](docs/repo-layout.md) for the tools and documentation groups.
 
 ```text
 KaraOK/
@@ -83,9 +85,7 @@ KaraOK/
 `-- CHANGELOG.md    Release history
 ```
 
-Local-only folders (ignored by Git): `dist/` for built APKs, the audio sample
-folders, `results/` and `sample/` for analysis output, `output/` for generated
-documents, and `tmp/` for scratch files.
+Ignored local folders include `audio sample(good)/`, `audio sample(bad)/`, `audio sample(noise)/`, `Generate Settings songs/`, `DATA GATHERING/`, `sample/`, `results/`, `results_bad/`, `dist/`, `output/`, `tmp/`.
 
 ## Quick start
 

@@ -48,7 +48,7 @@ When the target can't be met, the app has to **say so** (low confidence or
   hiss or a chicken at 2 to 4 kHz moves these by multiples, so they need the
   most protection.
 - The current no-reference noise estimate is flagged unreliable on most files
-  (`docs/uat-noise-samples.csv`).
+  (`docs/findings/uat-noise-samples.csv`).
 - Speech-tuned denoisers (RNNoise, phone OS noise suppression) reshape the
   music spectrum, which is exactly what we measure. They are not used, and the
   phone's own processing is turned off explicitly.

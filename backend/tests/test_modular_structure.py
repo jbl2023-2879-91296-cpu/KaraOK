@@ -45,7 +45,7 @@ class ModularStructureTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("Adjusted amplifier settings", readme)
         self.assertIn("Record Again to Verify", readme)
-        self.assertIn("docs/settings-profile-sources.md", readme)
+        self.assertIn("docs/design/settings-profile-sources.md", readme)
 
 
 if __name__ == "__main__":

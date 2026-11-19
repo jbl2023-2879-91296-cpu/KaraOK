@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3 / numpy / librosa 0.11 / scipy (backend analyzer), Flask, MySQL, Flutter + `record` 7.1.1.
 
-**Spec:** `docs/superpowers/specs/2026-11-18-noise-guard-design.md`
+**Spec:** `docs/noise-guard/2026-11-18-noise-guard-design.md`
 
 ## Global Constraints
 
@@ -155,7 +155,7 @@ git commit -m "feat(noise-guard): add pre-roll subtraction and transient gating"
 
 **Files:**
 - Create: `backend/audio_engine/noise_guard_eval.py` (comparison logic, importable)
-- Create: `tools/noise_guard_eval.py` (CLI over real files)
+- Create: `tools/noise_guard/noise_guard_eval.py` (CLI over real files)
 - Test: `backend/tests/test_noise_guard_acceptance.py`
 
 **Interfaces:**
@@ -164,7 +164,7 @@ git commit -m "feat(noise-guard): add pre-roll subtraction and transient gating"
   - `TOLERANCES = {"score": 5.0, "loudness": 1.0, "bass": 3.0, "ratio_db": 1.0, "ratio_floor": 1e-5}`
   - `def compare(clean: dict, noisy: dict) -> dict[str, Any]`, which returns per-metric deltas, a per-metric `ok` flag, and an overall `passed: bool` (also requiring the same status).
   - `def run_case(clean_audio, noise_audio, sr, mnr_db, guard: bool) -> dict`. It builds `noise[:3 s] ++ (clean + scaled noise)`, writes a temp WAV, and analyzes with preroll 3.0 (guard on) or with `enabled=False` (baseline).
-  - CLI: `python tools/noise_guard_eval.py --clean "audio sample(good)" --noise "audio sample(noise)" --mnr 20 10 5 --limit 10 --out results/noise_guard_eval/`. It writes `cases.csv` (one row per clean × noise × MNR × guard on/off) and `summary.md` (the pass-rate grid in the spec's layout, guard off versus on).
+  - CLI: `python tools/noise_guard/noise_guard_eval.py --clean "audio sample(good)" --noise "audio sample(noise)" --mnr 20 10 5 --limit 10 --out results/noise_guard_eval/`. It writes `cases.csv` (one row per clean × noise × MNR × guard on/off) and `summary.md` (the pass-rate grid in the spec's layout, guard off versus on).
   - The CLI loads each noise file with the analyzer's `load_audio`, downmixes to mono, and resamples to the clean file's rate. It uses the noise file's first 3.0 s as the pre-roll and the next N s as the mix noise, where N = min(clean length, noise length - 3 s), looping the noise if needed. It trims the clean file to the same N. It accepts `.mp3`/`.wav` noise files, skips `.zip`, and maps the category from the file name through `--category jeep=steady chicken=transient motorcycle=transient "Human talk"=babble` (these are the defaults).
 
 - [ ] **Step 1: Write the failing tests.**
@@ -278,10 +278,10 @@ git commit -m "feat(noise-guard): add pre-roll subtraction and transient gating"
 
 **Files:**
 - Use the existing field noise in `audio sample(noise)/` (Don, 2026-11-18): `jeep.mp3` (60.6 s), `motorcycle.mp3` (65.5 s), `chicken.mp3` (60.5 s), `Human talk.mp3` (60.3 s). All are 48 kHz stereo MP3. `noise.zip` holds the same four files, so ignore it. Category mapping for the grid: jeep = steady, chicken and motorcycle = transient, Human talk = babble. The tool also builds a fifth `street_mix` by summing all four at equal RMS. This mix is report-only.
-- Create: `docs/noise-guard-evaluation.md` (the pass-rate grid from `tools/noise_guard_eval.py` and the open-field UAT result)
+- Create: `docs/noise-guard-evaluation.md` (the pass-rate grid from `tools/noise_guard/noise_guard_eval.py` and the open-field UAT result)
 - Modify: `CHANGELOG.md`, `backend/README.md` (new settings section and CLI flag), `deploy.md` (run `database/migrations/20261118_01_noise_guard.sql` before deploying), `frontend/pubspec.yaml` (version from the `dist/` baseline, expected `1.12.0+18`). Coordinate with Don's uncommitted edits to the same files: re-read each one and append without overwriting his lines.
 
-- [ ] **Step 1: Run the real-file evaluation.** Run `python tools/noise_guard_eval.py --clean "audio sample(good)" --noise "audio sample(noise)" --mnr 20 10 5 --limit 10 --out results/noise_guard_eval/`. Expected: every must-pass cell has ≥ 90 % of cases passing with the guard on, and the guard-off pass rate is lower in the same cells.
+- [ ] **Step 1: Run the real-file evaluation.** Run `python tools/noise_guard/noise_guard_eval.py --clean "audio sample(good)" --noise "audio sample(noise)" --mnr 20 10 5 --limit 10 --out results/noise_guard_eval/`. Expected: every must-pass cell has ≥ 90 % of cases passing with the guard on, and the guard-off pass rate is lower in the same cells.
 - [ ] **Step 2: Do the open-field UAT** (manual, Don's team). Use the same karaoke machine, song section, phone and 30 cm distance. Record once in a quiet room and once in the open field with traffic and animals. Pass: overall score within ±5 points, the same status, and confidence not "low". Record both results in `docs/noise-guard-evaluation.md`.
 - [ ] **Step 3: Run the full backend suite once, plus `flutter test` and `flutter analyze`.** Expected: all pass.
 - [ ] **Step 4: Commit the docs and version** (stage by path), then `git commit -m "docs(noise-guard): evaluation, migration and release notes"`.

@@ -66,6 +66,6 @@ reference limitations are documented in `backend/audio_thresholds/README.md`.
 See [empirical scoring and user interpretation](empirical-scoring-report.md)
 for all five threshold anchors, the piecewise score formula, engineering-default
 weights, song 25 worked example, and proposed user-facing explanations.
-The [six-page PDF](../output/pdf/karaok-empirical-scoring-report.pdf) contains the
+The [six-page PDF](../../output/pdf/karaok-empirical-scoring-report.pdf) contains the
 same explanation. The source CSV checksum was reverified for that report.
 No scoring code, calibration values, or weights were changed.
