@@ -2,6 +2,30 @@
 
 All notable changes to KaraOK are documented here.
 
+## Unreleased
+
+Backend changes on `main`, not yet in a released APK. Apply migrations
+`20261118_01`, `20261119_01` and `20261119_02` before restarting the API.
+
+### Added
+
+- Noise Guard: a 3-second noise check before every recording. Reports show
+  usable audio, confidence and warnings, and unreliable noise or flatness
+  readings are labelled instead of scored as if reliable.
+- Nightly retention cleanup (`backend/scripts/purge_old_records.py`,
+  `karaok-retention.timer`): request logs kept 90 days, audit logs 365 days,
+  expired tokens and sign-up codes removed after one day. Old report images can
+  optionally be removed (`VISUALIZATION_RETENTION_DAYS`, off by default).
+- Indexes for admin report date filters and the cleanup.
+- Admin Console: Noise check details per assessment, a Noise check quality
+  report, a readable per-feature scoring table, and the log retention window on
+  Operations.
+
+### Changed
+
+- deploy.md lists all seven migrations with a verification query and a new
+  section 10a for the retention timer.
+
 ## 2026-11-07 - 1.11.0+17 - Consistent app layout
 
 Backend deployed to production the same day (migrations `20261017_01`,

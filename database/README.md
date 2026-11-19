@@ -119,12 +119,16 @@ matching backend is deployed. Each file is safe to run more than once.
 | `migrations/20261017_01_deferred_profile.sql` | Nullable profile fields on `user` | Email-only sign-up |
 | `migrations/20261025_01_recommendation_feedback.sql` | `settings_recommendation.feedback` | Listener feedback on suggestions |
 | `migrations/20261025_02_noise_reliable.sql` | `audio_analysis_result.noise_reliable` | Noise reliability labels |
+| `migrations/20261118_01_noise_guard.sql` | Noise Guard columns on `audio_analysis_result` (`noise_guard_usable_pct`, `noise_guard_confidence`, `preroll_noise_dbfs`) | Noise check before recording |
+| `migrations/20261119_01_flatness_reliability.sql` | `audio_analysis_result.flatness_reliable`, `flatness_reliability_note` | Flatness reliability labels |
 | `migrations/20261119_02_retention_indexes.sql` | Date and expiry indexes on `user`, `assessment`, `settings_recommendation` and the token tables | Fast admin reports and the nightly retention cleanup (optional, no column changes) |
 
 ```bash
 sudo mysql < database/migrations/20261017_01_deferred_profile.sql
 sudo mysql < database/migrations/20261025_01_recommendation_feedback.sql
 sudo mysql < database/migrations/20261025_02_noise_reliable.sql
+sudo mysql < database/migrations/20261118_01_noise_guard.sql
+sudo mysql < database/migrations/20261119_01_flatness_reliability.sql
 sudo mysql < database/migrations/20261119_02_retention_indexes.sql
 ```
 

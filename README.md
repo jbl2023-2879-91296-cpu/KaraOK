@@ -51,6 +51,10 @@ history is stored in MySQL; guests keep their reports on the device.
   result shows a 0 to 100 score, a grade (Acceptable, Needs Improvement,
   Problematic), each measurement with Good / Too high / Too low, noise and
   distortion estimates, and visual reports.
+- **Noise Guard**: every recording starts with a 3-second noise check. The
+  analysis measures the room noise, reports how much of the song was usable
+  and with what confidence, and warns when background noise is too loud or the
+  song started during the noise check.
 - **Adjusted amplifier settings**: describe the amplifier's knob scale and
   current positions, record, and get five bounded knob positions with reasons.
   After applying them, **Record Again to Verify** checks the result. KaraOK
@@ -59,7 +63,10 @@ history is stored in MySQL; guests keep their reports on the device.
 - **Records**: search, filters, sorting, and two-report comparison.
 - **Glossary** of every sound term, available from Settings and reports.
 - **Admin Console**: a local PHP console for analytics and policy-limited record
-  management through the Data Administration API.
+  management through the Data Administration API, including Noise Guard results
+  and a readable per-feature scoring table.
+- **Bounded storage**: a nightly cleanup removes old request and audit logs and
+  expired tokens ([deploy.md](deploy.md#10a-enable-the-nightly-retention-cleanup)).
 
 How scores are calculated is documented in the
 [assessment profile](backend/audio_thresholds/README.md) and the

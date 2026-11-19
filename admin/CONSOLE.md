@@ -62,12 +62,18 @@ No new database privileges or dependencies are required.
   mean delay, daily active-user trend and weekday volume.
 - **Assessments / Audio quality:** paginated searchable attempts, status and
   genre filters, recorded detail/feature/grading metadata, score distribution,
-  daily completed-score means, genre score averages and failure rates.
+  daily completed-score means, genre score averages and failure rates. Each
+  assessment shows a **Noise check** box (confidence, usable audio, noise-check
+  level, noise and flatness reliability) and its scoring details as a
+  per-feature table with the raw JSON one click away. The Quality report adds a
+  **Noise check quality** table by confidence; recordings made before Noise
+  Guard show as Not collected.
 - **Amplifier settings:** feature-flag-aware saved-profile counts, recommendation
   statuses/genres, normalized recommended knob distributions, recorded versions
   and confidence, and explicitly parent-linked verification comparisons.
 - **Operations:** logged request volume/error rate/mean latency, latest 50
-  failed/pending/processing attempts and latest 50 audit events. Connection
+  failed/pending/processing attempts and latest 50 audit events, plus how long
+  request and audit logs are kept before the nightly cleanup removes them. Connection
   diagnostics and controlled record management remain accessible. Technical
   schema tools are grouped under **Advanced**.
 
