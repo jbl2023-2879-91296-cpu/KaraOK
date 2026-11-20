@@ -21,6 +21,7 @@ def issue_access_token(
         "role": user["user_type"],
         "iss": issuer,
         "iat": now,
+        "issued_at_epoch": now.timestamp(),
         "nbf": now,
         "exp": expires,
         "jti": secrets.token_hex(16),
@@ -35,4 +36,6 @@ def token_precedes_security_update(
     updated_epoch = account.get("security_updated_at_epoch")
     if updated_epoch is None:
         return False
+    if "issued_at_epoch" in payload:
+        return float(payload["issued_at_epoch"]) < float(updated_epoch)
     return int(payload["iat"]) < int(updated_epoch)

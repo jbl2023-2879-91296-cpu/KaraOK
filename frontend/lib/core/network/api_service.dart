@@ -7,6 +7,8 @@ import 'package:http/http.dart' as http;
 
 import 'package:karaok_app/core/config/environment.dart';
 import 'package:karaok_app/core/network/api_exception.dart';
+import 'package:karaok_app/core/security/auth_limits.dart';
+import 'package:karaok_app/core/security/device_id.dart';
 import 'package:karaok_app/core/security/secure_token_store.dart';
 
 export 'package:karaok_app/core/network/api_exception.dart';
@@ -32,6 +34,8 @@ class ApiService {
   }) : _http = client;
   final http.Client _http;
   final Duration requestTimeout;
+  Future<Map<String, dynamic>?>? _refreshInFlight;
+  int _sessionGeneration = 0;
 
   Uri _uri(String path, [Map<String, String>? params]) {
     final uri = Uri.parse('$baseUrl$path');
@@ -39,7 +43,10 @@ class ApiService {
   }
 
   Future<Map<String, String>> _headers({bool authenticated = true}) async {
-    final headers = <String, String>{'Content-Type': 'application/json'};
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'X-KaraOK-Device': await DeviceId.get(),
+    };
     if (authenticated) {
       final token = await _tokenStore.readAccessToken();
       if (token != null) headers['Authorization'] = 'Bearer $token';
@@ -54,8 +61,10 @@ class ApiService {
     Map<String, dynamic>? body,
     bool authenticated = true,
     bool retry = true,
+    bool checkStatus = true,
   }) async {
     final uri = _uri(path, params);
+    final generation = _sessionGeneration;
     final headers = await _headers(authenticated: authenticated);
     late http.Response response;
     try {
@@ -103,7 +112,7 @@ class ApiService {
     if (response.statusCode == 401 &&
         authenticated &&
         retry &&
-        await _refresh()) {
+        await _retryUnauthorized(headers['Authorization'], generation)) {
       return _send(
         method,
         path,
@@ -113,7 +122,7 @@ class ApiService {
         retry: false,
       );
     }
-    _checkStatus(response);
+    if (checkStatus) _checkStatus(response);
     return response;
   }
 
@@ -147,13 +156,17 @@ class ApiService {
         _ => 'Request failed (${response.statusCode}).',
       };
       final fields = <String, String>{};
-      final retryAfter = int.tryParse(response.headers['retry-after'] ?? '');
+      var retryAfter = int.tryParse(response.headers['retry-after'] ?? '');
       try {
         final decoded = jsonDecode(response.body);
         if (decoded is Map && decoded['error'] is String) {
           message = decoded['error'];
         }
         if (decoded is Map) {
+          if (decoded['retry_after'] is int &&
+              (decoded['retry_after'] as int) > 0) {
+            retryAfter = decoded['retry_after'] as int;
+          }
           if (decoded['field'] is String) fields[decoded['field']] = message;
           if (decoded['errors'] is Map) {
             for (final entry in (decoded['errors'] as Map).entries) {
@@ -165,14 +178,14 @@ class ApiService {
         }
       } catch (_) {}
       if (response.statusCode == 429) {
-        final seconds =
-            retryAfter ??
-            (response.request?.url.path.endsWith('/auth/register') == true
-                ? 3600
-                : 60);
-        final minutes = (seconds / 60).ceil().clamp(1, 2147483647);
-        message =
-            '$message Wait $minutes ${minutes == 1 ? 'minute' : 'minutes'} before retrying.';
+        retryAfter ??= authDefaultRetrySeconds;
+        if (!message.contains(RegExp(r'\d+\s+(second|minute)'))) {
+          final minutes = (retryAfter / 60).ceil();
+          final minuteUnit = minutes == 1 ? 'minute' : 'minutes';
+          message = retryAfter < 60
+              ? 'Too many attempts. Try again in $retryAfter seconds.'
+              : 'Too many attempts. Try again in $minutes $minuteUnit.';
+        }
       }
       throw ApiException(
         response.statusCode,
@@ -191,19 +204,21 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>?> _exchangeRefreshToken() async {
+    final generation = _sessionGeneration;
     final refreshToken = await _tokenStore.readRefreshToken();
     if (refreshToken == null) return null;
 
-    final response = await _http
-        .post(
-          _uri('/auth/refresh'),
-          headers: const {'Content-Type': 'application/json'},
-          body: jsonEncode({'refresh_token': refreshToken}),
-        )
-        .timeout(const Duration(seconds: 15));
+    final response = await _send(
+      'POST',
+      '/auth/refresh',
+      body: {'refresh_token': refreshToken},
+      authenticated: false,
+      checkStatus: false,
+    );
+    if (generation != _sessionGeneration) return null;
     if (response.statusCode == 401 || response.statusCode == 403) {
       await clearTokens();
-      return null;
+      throw SessionExpiredException(response.statusCode);
     }
     _checkStatus(response);
 
@@ -212,14 +227,52 @@ class ApiService {
     return Map<String, dynamic>.from(data['user'] as Map);
   }
 
-  Future<bool> _refresh() async {
+  Future<Map<String, dynamic>?> _sharedRefresh() {
+    return _refreshInFlight ??= _exchangeRefreshToken().whenComplete(() {
+      _refreshInFlight = null;
+    });
+  }
+
+  Future<bool> _refresh() async => await _sharedRefresh() != null;
+
+  Future<bool> _retryUnauthorized(
+    String? failedAuthorization,
+    int generation,
+  ) async {
+    if (generation != _sessionGeneration) return false;
+    final inFlight = _refreshInFlight;
+    if (inFlight != null) {
+      return await inFlight != null && generation == _sessionGeneration;
+    }
+    final current = await _tokenStore.readAccessToken();
+    if (generation != _sessionGeneration) return false;
+    if (current != null && 'Bearer $current' != failedAuthorization) {
+      return true;
+    }
+    return await _refresh() && generation == _sessionGeneration;
+  }
+
+  Future<bool> ensureFreshAccessToken({
+    Duration minValidity = const Duration(minutes: 3),
+  }) async {
+    final token = await _tokenStore.readAccessToken();
+    final parts = token?.split('.');
+    if (parts == null || parts.length != 3) return token != null;
+    num? expiry;
     try {
-      return await _exchangeRefreshToken() != null;
-    } catch (_) {
-      // A failed background refresh should leave the saved refresh token in
-      // place so a temporary outage does not sign the user out.
+      final payload = jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+      );
+      expiry = (payload as Map)['exp'] as num?;
+    } on FormatException {
+      return false;
+    } on TypeError {
       return false;
     }
+    if (expiry == null) return false;
+    final minimum =
+        DateTime.now().add(minValidity).millisecondsSinceEpoch / 1000;
+    return expiry > minimum || await _refresh();
   }
 
   /// Restores a persisted login and returns the authoritative server profile.
@@ -228,7 +281,9 @@ class ApiService {
   /// errors are surfaced so startup can offer Retry without deleting tokens.
   Future<Map<String, dynamic>?> restoreSession() async {
     try {
-      return await _exchangeRefreshToken();
+      return await _sharedRefresh();
+    } on SessionExpiredException {
+      return null;
     } on SocketException catch (error) {
       throw ApiException(
         0,
@@ -245,12 +300,15 @@ class ApiService {
   }
 
   Future<void> clearTokens() async {
+    _sessionGeneration++;
     await _tokenStore.clear();
   }
 
   Future<bool> checkHealth() async {
     try {
-      final response = await _http.get(_uri('/health')).timeout(requestTimeout);
+      final response = await _http
+          .get(_uri('/health'), headers: await _headers(authenticated: false))
+          .timeout(requestTimeout);
       return response.statusCode == 200 &&
           jsonDecode(response.body)['status'] == 'ok';
     } catch (_) {
@@ -275,17 +333,54 @@ class ApiService {
 
   Future<Map<String, dynamic>> verifyRegistration({
     required String email,
+    required String challengeId,
     required String code,
   }) async {
-    final data = Map<String, dynamic>.from(
-      await _post('/auth/register/verify', {
-            'email': email,
-            'code': code,
-          }, authenticated: false)
-          as Map,
+    final data = await _postChallenge(
+      '/auth/register/verify',
+      email,
+      challengeId,
+      {'code': code},
     );
+    _sessionGeneration++;
     await _saveAuth(data);
     return Map<String, dynamic>.from(data['user'] as Map);
+  }
+
+  Future<Map<String, dynamic>> _postChallenge(
+    String path,
+    String email,
+    String challengeId, [
+    Map<String, dynamic> fields = const {},
+  ]) async => Map<String, dynamic>.from(
+    await _post(path, {
+          'email': email,
+          'challenge_id': challengeId,
+          ...fields,
+        }, authenticated: false)
+        as Map,
+  );
+
+  Future<Map<String, dynamic>> resendRegistration({
+    required String email,
+    required String challengeId,
+  }) => _postChallenge('/auth/register/resend', email, challengeId);
+
+  Future<Map<String, dynamic>> resendPasswordReset({
+    required String email,
+    required String challengeId,
+  }) => _postChallenge('/auth/forgot-password/resend', email, challengeId);
+
+  Future<void> resetPassword({
+    required String email,
+    required String challengeId,
+    required String code,
+    required String newPassword,
+  }) async {
+    await _postChallenge('/auth/forgot-password/reset', email, challengeId, {
+      'code': code,
+      'new_password': newPassword,
+    });
   }
 
   Future<Map<String, dynamic>> login({
@@ -299,6 +394,7 @@ class ApiService {
           }, authenticated: false)
           as Map,
     );
+    _sessionGeneration++;
     await _saveAuth(data);
     return Map<String, dynamic>.from(data['user'] as Map);
   }
@@ -495,6 +591,7 @@ class ApiService {
     String analysisPurpose = 'quality_evaluation',
     bool guest = false,
     Map<String, String>? settingsSuggestionFields,
+    void Function(int sent, int total)? onUploadProgress,
   }) async {
     if (analysisPurpose == 'settings_suggestion' &&
         settingsSuggestionFields == null) {
@@ -503,23 +600,27 @@ class ApiService {
       );
     }
     final endpoint = guest ? '/guest/audio-analysis' : '/audio-uploads';
-    final request = http.MultipartRequest('POST', _uri(endpoint));
-    final headers = await _headers(authenticated: !guest);
-    headers.remove('Content-Type');
-    request.headers.addAll(headers);
-    request.fields['duration_seconds'] =
-        (durationSeconds < 1 ? 1 : durationSeconds).toString();
-    if (noisePrerollSeconds > 0) {
-      request.fields['noise_preroll_seconds'] = noisePrerollSeconds
-          .toStringAsFixed(1);
-    }
-    request.fields['analysis_purpose'] = analysisPurpose;
-    if (analysisPurpose == 'settings_suggestion') {
-      request.fields.addAll(settingsSuggestionFields!);
-    } else if (genre != null && genre.trim().isNotEmpty) {
-      request.fields['genre'] = genre.trim();
-    }
-    try {
+
+    Future<(http.Response, String?)> upload() async {
+      final request = _ProgressMultipartRequest(
+        _uri(endpoint),
+        onUploadProgress,
+      );
+      final headers = await _headers(authenticated: !guest);
+      headers.remove('Content-Type');
+      request.headers.addAll(headers);
+      request.fields['duration_seconds'] =
+          (durationSeconds < 1 ? 1 : durationSeconds).toString();
+      if (noisePrerollSeconds > 0) {
+        request.fields['noise_preroll_seconds'] = noisePrerollSeconds
+            .toStringAsFixed(1);
+      }
+      request.fields['analysis_purpose'] = analysisPurpose;
+      if (analysisPurpose == 'settings_suggestion') {
+        request.fields.addAll(settingsSuggestionFields!);
+      } else if (genre != null && genre.trim().isNotEmpty) {
+        request.fields['genre'] = genre.trim();
+      }
       request.files.add(
         fileBytes == null
             ? await http.MultipartFile.fromPath('audio', filePath)
@@ -535,6 +636,24 @@ class ApiService {
       final response = await http.Response.fromStream(
         streamed,
       ).timeout(const Duration(seconds: 360));
+      return (response, headers['Authorization']);
+    }
+
+    try {
+      final generation = _sessionGeneration;
+      if (!guest) await ensureFreshAccessToken();
+      if (!guest && generation != _sessionGeneration) {
+        throw const ApiException(
+          401,
+          'We could not confirm your sign-in. Retry.',
+        );
+      }
+      var (response, authorization) = await upload();
+      if (!guest &&
+          response.statusCode == 401 &&
+          await _retryUnauthorized(authorization, generation)) {
+        (response, _) = await upload();
+      }
       _checkStatus(response);
       final decoded = _decode(response);
       if (decoded is! Map) {
@@ -553,5 +672,28 @@ class ApiService {
     } on HttpException catch (e) {
       throw ApiException(0, 'The upload connection failed: ${e.message}');
     }
+  }
+}
+
+class _ProgressMultipartRequest extends http.MultipartRequest {
+  _ProgressMultipartRequest(Uri uri, this.onProgress) : super('POST', uri);
+
+  final void Function(int sent, int total)? onProgress;
+
+  @override
+  http.ByteStream finalize() {
+    final total = contentLength;
+    final stream = super.finalize();
+    final progress = onProgress;
+    if (progress == null) return stream;
+    var sent = 0;
+    progress(sent, total);
+    return http.ByteStream(
+      stream.map((chunk) {
+        sent += chunk.length;
+        progress(sent, total);
+        return chunk;
+      }),
+    );
   }
 }

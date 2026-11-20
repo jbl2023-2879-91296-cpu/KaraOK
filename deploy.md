@@ -108,10 +108,15 @@ The pull must fast-forward successfully and the final status must be empty.
 ## 4a. Apply pending database migrations
 
 Run every migration below in order after the backup in section 3 has passed.
-Each file is additive, safe to repeat, and keeps existing data. Releases from
-1.9.0 need the first three; Noise Guard (after 1.11.0) needs `20261118_01` and
+Releases from 1.9.0 need the first three. Noise Guard (after 1.11.0) needs `20261118_01` and
 `20261119_01`; `20261119_02` adds indexes for the admin reports and the nightly
-retention cleanup (section 10a).
+retention cleanup (section 10a). The auth migration invalidates pending
+legacy registration codes once and preserves user accounts. Deploy the matching
+API and app together because registration verification now requires
+`challenge_id`. Users with an outstanding code can request a new one after the update.
+Stop the API before applying the auth migration so the legacy API cannot issue
+codes during the schema change. If you override `ALLOWED_EMAIL_DOMAINS` on the
+API, build Flutter with the same value via `--dart-define=ALLOWED_EMAIL_DOMAINS=…`.
 
 ```bash
 cd /opt/karaok/app
@@ -122,12 +127,17 @@ sudo mysql < database/migrations/20261025_02_noise_reliable.sql
 sudo mysql < database/migrations/20261118_01_noise_guard.sql
 sudo mysql < database/migrations/20261119_01_flatness_reliability.sql
 sudo mysql < database/migrations/20261119_02_retention_indexes.sql
+sudo systemctl stop karaok-api
+sudo mysql < database/migrations/20261120_01_auth_hardening.sql
 
 sudo mysql -D karaok_db -e "
 SELECT table_name, column_name, is_nullable
 FROM information_schema.columns
 WHERE table_schema = 'karaok_db'
-  AND ((table_name = 'user' AND column_name = 'first_name')
+  AND ((table_name = 'user' AND column_name IN ('first_name', 'email_canonical'))
+    OR (table_name = 'registration_otp' AND column_name = 'challenge_id')
+    OR (table_name = 'password_reset_otp' AND column_name = 'challenge_id')
+    OR (table_name = 'auth_throttle' AND column_name = 'locked_until')
     OR (table_name = 'settings_recommendation' AND column_name = 'feedback')
     OR (table_name = 'audio_analysis_result' AND column_name IN (
         'noise_reliable', 'noise_guard_usable_pct', 'noise_guard_confidence',
@@ -143,9 +153,9 @@ GROUP BY table_name, index_name;
 "
 ```
 
-Expect eight column rows, with `first_name` nullable (`YES`), and six index
+Expect twelve column rows, with `first_name` nullable (`YES`), and six index
 rows. The API health check returns HTTP 503 with `missing_required_columns` if
-any of the Noise Guard or earlier columns is missing, so never restart the API
+any required column is missing, so never restart the API
 before these migrations have run.
 
 ## 5. Prepare the backend environment
@@ -459,7 +469,7 @@ Expected values:
 
 | Check                    | Expected |
 | ------------------------ | -------: |
-| `table_count`          |       11 |
+| `table_count`          |       13 |
 | retired-table query rows |        0 |
 
 Confirm the non-secret database connection identity configured for the service:
@@ -541,9 +551,9 @@ Press `Ctrl+C` to stop following the log.
 ## 10a. Enable the nightly retention cleanup
 
 `backend/scripts/purge_old_records.py` deletes `api_request_log` rows older than
-90 days, `audit_log` rows older than 365 days, and expired refresh tokens,
-revoked access tokens and sign-up codes one day after they expire. It never
-deletes users, assessments, scores or analysis details. Waveform and spectrogram
+90 days, `audit_log` rows older than 365 days, and refresh tokens, revoked access
+tokens, and signup and reset codes one day after expiry. It removes throttle
+entries after one day of inactivity. Waveform and spectrogram
 images are kept unless `VISUALIZATION_RETENTION_DAYS` is above 0.
 
 First confirm the application database user may delete from those tables:
@@ -552,8 +562,9 @@ First confirm the application database user may delete from those tables:
 sudo mysql -e "SHOW GRANTS FOR 'karaok_app'@'localhost';"
 ```
 
-The grants must include `DELETE` on `api_request_log`, `audit_log`,
-`refresh_token`, `revoked_access_token` and `registration_otp`, and `UPDATE` on
+The grants must include CRUD access on `auth_throttle` and `password_reset_otp`,
+`DELETE` on `api_request_log`, `audit_log`, `refresh_token`,
+`revoked_access_token` and `registration_otp`, and `UPDATE` on
 `audio_analysis_result` (or `ALL` on `karaok_db`). Then count what would be
 removed without deleting anything:
 

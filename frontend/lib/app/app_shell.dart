@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/adaptive_layout.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
@@ -31,53 +32,88 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final home = UserHomeScreen(onOpenRecords: () => _selectTab(1));
-
+    final window = windowSizeOf(context);
+    final content = IndexedStack(
+      index: _currentIndex,
+      children: [
+        UserHomeScreen(onOpenRecords: () => _selectTab(1)),
+        PreviousResultsScreen(
+          title: 'Records',
+          refreshToken: _recordsRefreshToken,
+        ),
+        const ChangePasswordScreen(),
+      ],
+    );
+    final navigation = ListenableBuilder(
+      listenable: UserSession.instance,
+      builder: (context, _) {
+        final settingsBadge = UserSession.instance.needsProfileCompletion;
+        final destinations = [
+          const NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.receipt_long_outlined),
+            selectedIcon: Icon(Icons.receipt_long),
+            label: 'Records',
+          ),
+          NavigationDestination(
+            icon: Badge(
+              isLabelVisible: settingsBadge,
+              child: const Icon(Icons.settings_outlined),
+            ),
+            selectedIcon: Badge(
+              isLabelVisible: settingsBadge,
+              child: const Icon(Icons.settings),
+            ),
+            label: 'Settings',
+          ),
+        ];
+        if (window == WindowSize.compact) {
+          return NavigationBar(
+            selectedIndex: _currentIndex,
+            onDestinationSelected: _selectTab,
+            backgroundColor: AppColors.background,
+            indicatorColor: AppColors.mint,
+            destinations: destinations,
+          );
+        }
+        final extended = window == WindowSize.expanded;
+        return SafeArea(
+          right: false,
+          child: NavigationRail(
+            extended: extended,
+            scrollable: true,
+            labelType: extended
+                ? NavigationRailLabelType.none
+                : NavigationRailLabelType.all,
+            backgroundColor: AppColors.background,
+            indicatorColor: AppColors.mint,
+            selectedIndex: _currentIndex,
+            onDestinationSelected: _selectTab,
+            destinations: [
+              for (final item in destinations)
+                NavigationRailDestination(
+                  icon: item.icon,
+                  selectedIcon: item.selectedIcon,
+                  label: Text(item.label),
+                ),
+            ],
+          ),
+        );
+      },
+    );
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: IndexedStack(
-        index: _currentIndex,
+      body: Row(
         children: [
-          home,
-          PreviousResultsScreen(
-            title: 'Records',
-            refreshToken: _recordsRefreshToken,
-          ),
-          const ChangePasswordScreen(),
+          if (window != WindowSize.compact) navigation,
+          Expanded(child: content),
         ],
       ),
-      bottomNavigationBar: ListenableBuilder(
-        listenable: UserSession.instance,
-        builder: (context, _) => NavigationBar(
-          selectedIndex: _currentIndex,
-          onDestinationSelected: _selectTab,
-          backgroundColor: AppColors.background,
-          indicatorColor: AppColors.mint,
-          destinations: [
-            const NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home),
-              label: 'Home',
-            ),
-            const NavigationDestination(
-              icon: Icon(Icons.receipt_long_outlined),
-              selectedIcon: Icon(Icons.receipt_long),
-              label: 'Records',
-            ),
-            NavigationDestination(
-              icon: Badge(
-                isLabelVisible: UserSession.instance.needsProfileCompletion,
-                child: const Icon(Icons.settings_outlined),
-              ),
-              selectedIcon: Badge(
-                isLabelVisible: UserSession.instance.needsProfileCompletion,
-                child: const Icon(Icons.settings),
-              ),
-              label: 'Settings',
-            ),
-          ],
-        ),
-      ),
+      bottomNavigationBar: window == WindowSize.compact ? navigation : null,
     );
   }
 

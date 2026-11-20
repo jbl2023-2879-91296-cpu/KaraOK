@@ -1,6 +1,8 @@
+import 'package:karaok_app/shared/widgets/otp_countdown.dart';
+import 'package:karaok_app/core/security/submit_guard.dart';
 import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:karaok_app/shared/widgets/form_feedback.dart';
-import 'package:karaok_app/features/auth/presentation/pages/forgot_password_screen.dart';
+import 'package:karaok_app/core/security/email_policy.dart';
 
 import 'package:flutter/material.dart';
 
@@ -17,7 +19,10 @@ class SignUpScreen extends StatefulWidget {
   State<SignUpScreen> createState() => _SignUpScreenState();
 }
 
-class _SignUpScreenState extends State<SignUpScreen> {
+class _SignUpScreenState extends State<SignUpScreen>
+    with GuardedSubmit<SignUpScreen> {
+  @override
+  Iterable<String> get submitActions => ['register'];
   final _formKey = GlobalKey<FormState>();
   final _confirmCtrl = TextEditingController();
   final _feedback = FormFeedback();
@@ -40,45 +45,52 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   Future<void> _signUp() async {
-    if (_loading) return;
+    if (_loading || guard('register').isLocked) return;
     _submitted = true;
     setState(_feedback.clear);
-    if (!_formKey.currentState!.validate()) {
-      _feedback.reveal();
-      return;
-    }
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final response = await (widget.authApi ?? AuthApi()).startRegistration(
-        email: _emailCtrl.text.trim(),
-        password: _passCtrl.text,
-      );
+      final email = _emailCtrl.text.trim();
+      var challenge = await OtpChallenge.restore('registration', email);
       if (!mounted) return;
-      final serverEmail = response['email'];
-      final verificationEmail = serverEmail is String && serverEmail.isNotEmpty
-          ? serverEmail
-          : _emailCtrl.text.trim().toLowerCase();
-      setState(() => _loading = false);
-      Navigator.push(
+      String? developmentCode;
+      if (challenge == null) {
+        if (!_formKey.currentState!.validate()) {
+          _feedback.reveal();
+          return;
+        }
+        if (await guard('register').recordAttempt() != null || !mounted) return;
+        final response = await (widget.authApi ?? AuthApi()).startRegistration(
+          email: email,
+          password: _passCtrl.text,
+        );
+        challenge = OtpChallenge.fromResponse(
+          response['email'] as String? ?? email,
+          response,
+        );
+        developmentCode = response['development_code'] as String?;
+        await challenge.save('registration');
+      }
+      if (!mounted) return;
+      final activeChallenge = challenge;
+      await Navigator.push<void>(
         context,
         MaterialPageRoute(
           builder: (_) => OtpVerificationScreen(
-            email: verificationEmail,
-            developmentCode: response['development_code'] as String?,
+            challenge: activeChallenge,
+            developmentCode: developmentCode,
+            authApi: widget.authApi,
           ),
         ),
       );
     } on ApiException catch (error) {
+      await applyRetryAfter('register', error);
       if (!mounted) return;
       setState(() {
         _feedback.receive(error);
-        if (error.statusCode == 409 && _feedback.errors.isEmpty) {
-          _feedback.errors['email'] = error.message;
-          _feedback.banner = null;
-        }
         _error = _feedback.banner;
         _loading = false;
       });
@@ -87,8 +99,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       if (!mounted) return;
       setState(() {
         _error = 'Could not connect to server.';
-        _loading = false;
       });
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -96,6 +109,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget build(BuildContext context) {
     return AppPageScaffold(
       title: 'Create account',
+      maxContentWidth: 480,
       child: Form(
         key: _formKey,
         child: Column(
@@ -121,7 +135,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               controller: _emailCtrl,
               hint: 'you@example.com',
               keyboardType: TextInputType.emailAddress,
-              validator: validateEmail,
+              validator: validateRegistrationEmail,
             ),
             const SizedBox(height: 16),
             _LabeledField(
@@ -164,37 +178,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ? 'Passwords must match.'
                   : null,
             ),
-            if (_feedback.errors.containsKey('email'))
-              Wrap(
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => LoginScreen(
-                          initialIdentifier: _emailCtrl.text.trim(),
-                        ),
-                      ),
-                    ),
-                    child: const Text('Sign in'),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const ForgotPasswordScreen(),
-                      ),
-                    ),
-                    child: const Text('Reset password'),
-                  ),
-                ],
-              ),
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
               child: AppPrimaryButton(
-                label: 'Send Verification Code',
-                onPressed: _signUp,
+                label: guard('register').label('Send Verification Code'),
+                onPressed: guard('register').isLocked ? null : _signUp,
                 isLoading: _loading,
               ),
             ),

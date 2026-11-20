@@ -1,3 +1,5 @@
+import 'package:karaok_app/shared/widgets/otp_countdown.dart';
+import 'package:karaok_app/core/security/submit_guard.dart';
 import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:karaok_app/shared/widgets/form_feedback.dart';
 import 'package:karaok_app/app/app_theme.dart';
@@ -11,12 +13,12 @@ import 'package:karaok_app/features/auth/data/auth_api.dart';
 class OtpVerificationScreen extends StatefulWidget {
   const OtpVerificationScreen({
     super.key,
-    required this.email,
+    required this.challenge,
     this.developmentCode,
     this.authApi,
   });
 
-  final String email;
+  final OtpChallenge challenge;
   final String? developmentCode;
   final AuthApi? authApi;
 
@@ -24,7 +26,12 @@ class OtpVerificationScreen extends StatefulWidget {
   State<OtpVerificationScreen> createState() => _OtpVerificationScreenState();
 }
 
-class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
+class _OtpVerificationScreenState extends State<OtpVerificationScreen>
+    with GuardedSubmit<OtpVerificationScreen> {
+  @override
+  Iterable<String> get submitActions => ['register_verify', 'register_resend'];
+  late OtpChallenge _challenge = widget.challenge;
+  late String? _developmentCode = widget.developmentCode;
   final _formKey = GlobalKey<FormState>();
   final _otpController = TextEditingController();
   bool _loading = false;
@@ -38,7 +45,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   }
 
   Future<void> _verify() async {
-    if (_loading) return;
+    if (_loading || guard('register_verify').isLocked) return;
     setState(_feedback.clear);
     if (!_formKey.currentState!.validate()) {
       _feedback.reveal();
@@ -50,15 +57,20 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       _feedback.clear();
     });
     try {
+      if (await guard('register_verify').recordAttempt() != null || !mounted) {
+        return;
+      }
       final user = await (widget.authApi ?? AuthApi()).verifyRegistration(
-        email: widget.email,
+        email: _challenge.email,
+        challengeId: _challenge.challengeId,
         code: _otpController.text.trim(),
       );
       try {
-        await SecureTokenStore.instance.saveLastIdentifier(widget.email);
+        await SecureTokenStore.instance.saveLastIdentifier(_challenge.email);
       } catch (_) {
         // Account creation succeeds even if the convenience value cannot save.
       }
+      await OtpChallenge.clear('registration');
       UserSession.instance.setUserFromMap(user);
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
@@ -67,6 +79,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         (route) => false,
       );
     } on ApiException catch (error) {
+      await applyRetryAfter('register_verify', error);
       if (!mounted) return;
       setState(() {
         _feedback.receive(error, aliases: const {'otp': 'code'});
@@ -77,8 +90,47 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       if (!mounted) return;
       setState(() {
         _feedback.banner = 'Could not connect to server.';
-        _loading = false;
       });
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<OtpChallenge?> _resend() async {
+    if (_loading) return null;
+    setState(() {
+      _loading = true;
+      _feedback.clear();
+    });
+    try {
+      if (await guard('register_resend').recordAttempt() != null || !mounted) {
+        return null;
+      }
+      final json = await (widget.authApi ?? AuthApi()).resendRegistration(
+        email: _challenge.email,
+        challengeId: _challenge.challengeId,
+      );
+      final updated = OtpChallenge.fromResponse(_challenge.email, json);
+      await updated.save('registration');
+      if (mounted) {
+        setState(() {
+          _challenge = updated;
+          _developmentCode = json['development_code'] as String?;
+          _otpController.clear();
+        });
+      }
+      return updated;
+    } on ApiException catch (error) {
+      await applyRetryAfter('register_resend', error);
+      if (mounted) setState(() => _feedback.banner = error.message);
+      return null;
+    } catch (_) {
+      if (mounted) {
+        setState(() => _feedback.banner = 'Could not resend the code.');
+      }
+      return null;
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -86,6 +138,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   Widget build(BuildContext context) {
     return AppPageScaffold(
       title: 'Email verification',
+      maxContentWidth: 480,
       automaticallyImplyLeading: !_loading,
       child: Form(
         key: _formKey,
@@ -100,11 +153,11 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
               ),
             AppSectionHeader(
               title: 'Verify Your Email',
-              subtitle: 'Enter the 6-digit code sent to ${widget.email}.',
+              subtitle: 'Enter the 6-digit code sent to ${_challenge.email}.',
             ),
-            if (widget.developmentCode != null) ...[
+            if (_developmentCode != null) ...[
               Text(
-                'Development OTP: ${widget.developmentCode}',
+                'Development OTP: $_developmentCode',
                 style: const TextStyle(color: AppColors.orangeInk),
               ),
               const SizedBox(height: AppSpacing.md),
@@ -156,12 +209,21 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 ),
               ),
             ),
+            const Text(
+              'If you already have an account, check your email for next steps.',
+            ),
+            OtpCountdown(
+              challenge: _challenge,
+              onResend: _resend,
+              enabled: !_loading,
+              lockRemaining: guard('register_resend').remaining,
+            ),
             const SizedBox(height: AppSpacing.xl),
             SizedBox(
               width: double.infinity,
               child: AppPrimaryButton(
-                label: 'Verify Email',
-                onPressed: _verify,
+                label: guard('register_verify').label('Verify Email'),
+                onPressed: guard('register_verify').isLocked ? null : _verify,
                 isLoading: _loading,
               ),
             ),

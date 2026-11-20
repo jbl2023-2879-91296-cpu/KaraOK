@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/adaptive_layout.dart';
 import 'package:karaok_app/features/reports/presentation/pages/glossary_screen.dart';
 import 'package:karaok_app/features/reports/domain/measurement_glossary.dart';
 import 'package:karaok_app/features/reports/presentation/widgets/what_this_means_card.dart';
@@ -92,6 +93,142 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
   @override
   Widget build(BuildContext context) {
     final failed = widget.qualityFailures.isNotEmpty;
+    final visualizations = <Widget>[
+      // Waveform Analysis
+      const Text(
+        'Waveform Analysis',
+        style: TextStyle(
+          color: AppColors.ink,
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      const SizedBox(height: 10),
+      Container(
+        height: 220,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: AppColors.mint,
+          borderRadius: BorderRadius.circular(AppRadii.card),
+          border: Border.all(color: AppColors.outline, width: 1),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: _VisualizationImage(
+          image: _waveformImage,
+          onRetry: () =>
+              setState(() => _waveformImage = _loadVisualization('waveform')),
+        ),
+      ),
+      const SizedBox(height: 20),
+      // Spectrogram Analysis
+      const Text(
+        'Spectrogram Analysis',
+        style: TextStyle(
+          color: AppColors.ink,
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      const SizedBox(height: 10),
+      Container(
+        height: 220,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppRadii.card),
+          color: AppColors.mint,
+          border: Border.all(color: AppColors.outline, width: 1),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: _VisualizationImage(
+          image: _spectrogramImage,
+          onRetry: () => setState(
+            () => _spectrogramImage = _loadVisualization('spectrogram'),
+          ),
+        ),
+      ),
+    ];
+    final measurements = <Widget>[
+      ReportMeasurements(
+        noiseLevelDb: widget.noiseLevelDb,
+        noiseReliable: widget.noiseReliable,
+        distortionLevel: widget.distortionLevel,
+      ),
+      NoiseGuardCard(
+        usablePercentage: widget.noiseGuardUsablePercentage,
+        confidence: widget.noiseGuardConfidence,
+        prerollNoiseDbfs: widget.prerollNoiseDbfs,
+        warnings: widget.noiseGuardWarnings,
+      ),
+      if (!failed) ...[
+        const SizedBox(height: 20),
+        if (widget.featureResults.isNotEmpty ||
+            widget.flatnessReliabilityNote != null ||
+            widget.referenceRecordingCount != null) ...[
+          EmpiricalFeatureTable(
+            features: widget.featureResults,
+            flatnessReliabilityNote: widget.flatnessReliabilityNote,
+            referenceRecordingCount: widget.referenceRecordingCount,
+          ),
+        ],
+      ],
+    ];
+    final overallScore = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Overall Audio Quality Score',
+            style: TextStyle(color: AppColors.muted, fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  reportScoreLabel(widget.score),
+                  style: TextStyle(
+                    color: _gradeColor,
+                    fontSize: 44,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                Text(
+                  '/100',
+                  style: TextStyle(
+                    color: _gradeColor.withValues(alpha: 0.7),
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            reportGradeLabel(_grade),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(color: _gradeColor),
+          ),
+          const SizedBox(height: 10),
+          Text(reportInterpretation(widget.score, widget.empiricalStatus)),
+        ],
+      ),
+    );
+    final interpretation = WhatThisMeansCard(
+      features: widget.featureResults,
+      flatnessReliable: widget.flatnessReliabilityNote == null,
+    );
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -128,147 +265,39 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
                 QualityFailureCard(messages: widget.qualityFailures),
                 const SizedBox(height: 20),
               ],
-              // Waveform Analysis
-              const Text(
-                'Waveform Analysis',
-                style: TextStyle(
-                  color: AppColors.ink,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Container(
-                height: 220,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: AppColors.mint,
-                  borderRadius: BorderRadius.circular(AppRadii.card),
-                  border: Border.all(color: AppColors.outline, width: 1),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: _VisualizationImage(
-                  image: _waveformImage,
-                  onRetry: () => setState(
-                    () => _waveformImage = _loadVisualization('waveform'),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              // Spectrogram Analysis
-              const Text(
-                'Spectrogram Analysis',
-                style: TextStyle(
-                  color: AppColors.ink,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Container(
-                height: 220,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(AppRadii.card),
-                  color: AppColors.mint,
-                  border: Border.all(color: AppColors.outline, width: 1),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: _VisualizationImage(
-                  image: _spectrogramImage,
-                  onRetry: () => setState(
-                    () => _spectrogramImage = _loadVisualization('spectrogram'),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              ReportMeasurements(
-                noiseLevelDb: widget.noiseLevelDb,
-                noiseReliable: widget.noiseReliable,
-                distortionLevel: widget.distortionLevel,
-              ),
-              NoiseGuardCard(
-                usablePercentage: widget.noiseGuardUsablePercentage,
-                confidence: widget.noiseGuardConfidence,
-                prerollNoiseDbfs: widget.prerollNoiseDbfs,
-                warnings: widget.noiseGuardWarnings,
-              ),
-              if (!failed) ...[
-                const SizedBox(height: 20),
-                if (widget.featureResults.isNotEmpty ||
-                    widget.flatnessReliabilityNote != null ||
-                    widget.referenceRecordingCount != null) ...[
-                  EmpiricalFeatureTable(
-                    features: widget.featureResults,
-                    flatnessReliabilityNote: widget.flatnessReliabilityNote,
-                    referenceRecordingCount: widget.referenceRecordingCount,
-                  ),
-                  const SizedBox(height: 20),
-                ],
-                // Overall score card
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              if (windowSizeOf(context) == WindowSize.expanded)
+                AdaptiveColumns(
+                  primary: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Text(
-                        'Overall Audio Quality Score',
-                        style: TextStyle(color: AppColors.muted, fontSize: 13),
-                      ),
-                      const SizedBox(height: 8),
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.baseline,
-                          textBaseline: TextBaseline.alphabetic,
-                          children: [
-                            Text(
-                              reportScoreLabel(widget.score),
-                              style: TextStyle(
-                                color: _gradeColor,
-                                fontSize: 44,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            Text(
-                              '/100',
-                              style: TextStyle(
-                                color: _gradeColor.withValues(alpha: 0.7),
-                                fontSize: 22,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        reportGradeLabel(_grade),
-                        style: Theme.of(
-                          context,
-                        ).textTheme.titleMedium?.copyWith(color: _gradeColor),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        reportInterpretation(
-                          widget.score,
-                          widget.empiricalStatus,
-                        ),
-                      ),
+                      if (!failed) ...[
+                        overallScore,
+                        const SizedBox(height: 20),
+                      ],
+                      ...visualizations,
                     ],
                   ),
-                ),
-                const SizedBox(height: 12),
-                WhatThisMeansCard(
-                  features: widget.featureResults,
-                  flatnessReliable: widget.flatnessReliabilityNote == null,
-                ),
+                  secondary: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      ...measurements,
+                      if (!failed) ...[
+                        const SizedBox(height: 12),
+                        interpretation,
+                      ],
+                    ],
+                  ),
+                )
+              else ...[
+                ...visualizations,
+                const SizedBox(height: 20),
+                ...measurements,
+                if (!failed) ...[
+                  const SizedBox(height: 20),
+                  overallScore,
+                  const SizedBox(height: 12),
+                  interpretation,
+                ],
               ],
             ],
           ),

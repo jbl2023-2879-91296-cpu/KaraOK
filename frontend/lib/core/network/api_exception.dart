@@ -14,3 +14,8 @@ class ApiException implements Exception {
   @override
   String toString() => 'ApiException $statusCode: $message';
 }
+
+class SessionExpiredException extends ApiException {
+  const SessionExpiredException(int statusCode)
+    : super(statusCode, 'Your session expired. Sign in and retry.');
+}

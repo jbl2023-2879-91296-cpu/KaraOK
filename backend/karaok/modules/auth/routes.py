@@ -17,6 +17,13 @@ def verify_registration():
     return accounts.verify_registration()
 
 
+@blueprint.post("/register/resend")
+def resend_registration():
+    from ...auth import accounts
+
+    return accounts.resend_registration()
+
+
 @blueprint.post("/login")
 def login():
     from ...auth import accounts
@@ -43,6 +50,20 @@ def forgot_password():
     from ...auth import accounts
 
     return accounts.forgot_password()
+
+
+@blueprint.post("/forgot-password/resend")
+def resend_password_reset():
+    from ...auth import accounts
+
+    return accounts.resend_password_reset()
+
+
+@blueprint.post("/forgot-password/reset")
+def reset_password():
+    from ...auth import accounts
+
+    return accounts.reset_password()
 
 
 @blueprint.post("/change-password")

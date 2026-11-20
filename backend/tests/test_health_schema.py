@@ -18,6 +18,10 @@ EXPECTED_COLUMNS = [
     ("audio_analysis_result", "preroll_noise_dbfs"),
     ("audio_analysis_result", "flatness_reliable"),
     ("audio_analysis_result", "flatness_reliability_note"),
+    ("registration_otp", "challenge_id"),
+    ("password_reset_otp", "challenge_id"),
+    ("auth_throttle", "locked_until"),
+    ("user", "email_canonical"),
 ]
 
 

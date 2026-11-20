@@ -1,10 +1,12 @@
+import 'package:karaok_app/shared/widgets/otp_countdown.dart';
+import 'package:karaok_app/core/security/submit_guard.dart';
 import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:karaok_app/shared/widgets/form_feedback.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
 
 import 'package:karaok_app/features/auth/data/auth_api.dart';
-import 'package:karaok_app/features/auth/presentation/pages/login_screen.dart';
+import 'package:karaok_app/features/auth/presentation/pages/reset_password_screen.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key, this.authApi});
@@ -15,7 +17,10 @@ class ForgotPasswordScreen extends StatefulWidget {
   State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
 }
 
-class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
+    with GuardedSubmit<ForgotPasswordScreen> {
+  @override
+  Iterable<String> get submitActions => ['forgot'];
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   bool _loading = false;
@@ -29,7 +34,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   Future<void> _requestReset() async {
-    if (_loading) return;
+    if (_loading || guard('forgot').isLocked) return;
     setState(_feedback.clear);
     if (!_formKey.currentState!.validate()) {
       _feedback.reveal();
@@ -41,25 +46,28 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       _feedback.clear();
     });
     try {
-      await (widget.authApi ?? AuthApi()).requestPasswordReset(
-        _emailController.text.trim(),
-      );
+      final email = _emailController.text.trim();
+      var challenge = await OtpChallenge.restore('password_reset', email);
+      if (challenge == null) {
+        if (await guard('forgot').recordAttempt() != null || !mounted) return;
+        final response = await (widget.authApi ?? AuthApi())
+            .requestPasswordReset(email);
+        challenge = OtpChallenge.fromResponse(email, response);
+        await challenge.save('password_reset');
+      }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'If the account exists, a temporary password was sent.',
+      final activeChallenge = challenge;
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ResetPasswordScreen(
+            challenge: activeChallenge,
+            authApi: widget.authApi,
           ),
         ),
       );
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) =>
-              LoginScreen(initialIdentifier: _emailController.text.trim()),
-        ),
-      );
     } on ApiException catch (error) {
+      await applyRetryAfter('forgot', error);
       if (!mounted) return;
       setState(() => _feedback.receive(error));
       _feedback.reveal();
@@ -76,6 +84,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Widget build(BuildContext context) {
     return AppPageScaffold(
       title: 'Forgot Password',
+      maxContentWidth: 480,
       child: Form(
         key: _formKey,
         child: Column(
@@ -90,7 +99,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             const AppSectionHeader(
               title: 'Recover your account',
               subtitle:
-                  'Enter your verified email address. We will send a temporary password that you can use to sign in. You must change it immediately after login.',
+                  'Enter your verified email address to request a password reset code.',
             ),
             TextFormField(
               autovalidateMode: AutovalidateMode.onUserInteraction,
@@ -113,8 +122,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             SizedBox(
               width: double.infinity,
               child: AppPrimaryButton(
-                label: 'Send temporary password',
-                onPressed: _requestReset,
+                label: guard('forgot').label('Send reset code'),
+                onPressed: guard('forgot').isLocked ? null : _requestReset,
                 isLoading: _loading,
               ),
             ),

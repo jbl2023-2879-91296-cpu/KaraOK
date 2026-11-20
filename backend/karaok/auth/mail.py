@@ -12,59 +12,41 @@ from karaok.core.config import SMTP_USERNAME
 import smtplib
 
 
-def send_registration_otp(email: str, code: str) -> None:
-    if not all((SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM)):
-        raise RuntimeError("SMTP is not configured; set SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, and SMTP_FROM")
-    message = EmailMessage()
-    message["Subject"] = "Email Verification OTP — Audio Evaluation System"
-    message["From"] = SMTP_FROM
-    message["To"] = email
-    message.set_content(
-        f"""Dear User,
-
-Thank you for registering with our application.
-
-Your One-Time Password (OTP) for email verification is:
-
-**{code}**
-
-This verification code is valid for **{OTP_MINUTES} minutes**. Please enter this code in the application to complete your registration.
-
-For your security, do not share this OTP with anyone. Our team will never ask you for your verification code.
-
-If you did not request this verification or believe you received this email in error, please disregard this message. No further action is required, and your account will not be activated unless the correct OTP is entered.
-
-Thank you,
-
-**The Audio Evaluation System Team**
-"""
-    )
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
-        server.starttls()
-        server.login(SMTP_USERNAME, SMTP_PASSWORD)
-        server.send_message(message)
-
-
-def send_temporary_password_email(email: str, temporary_password: str) -> None:
+def _send(email: str, subject: str, content: str) -> None:
     if not all((SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM)):
         raise RuntimeError("SMTP is not configured")
     message = EmailMessage()
-    message["Subject"] = "Your temporary KaraOK password"
+    message["Subject"] = subject
     message["From"] = SMTP_FROM
     message["To"] = email
-    message.set_content(
-        f"""A password reset was requested for your KaraOK account.
-
-Use this temporary password to sign in to the KaraOK application:
-
-{temporary_password}
-
-You will be required to choose a new password immediately after signing in. Do
-not share this temporary password. If you did not request this reset, contact
-the KaraOK administrator.
-"""
-    )
+    message.set_content(content)
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
         server.starttls()
         server.login(SMTP_USERNAME, SMTP_PASSWORD)
         server.send_message(message)
+
+
+def send_registration_otp(email: str, code: str) -> None:
+    _send(email, "Your KaraOK verification code",
+          f"Your KaraOK verification code is {code}.\n\n"
+          f"It expires in {OTP_MINUTES} minutes. Do not share this code. "
+          "If you did not request verification, you can ignore this message.")
+
+
+def send_reset_otp(email: str, code: str) -> None:
+    _send(email, "Your KaraOK password reset code",
+          f"Your KaraOK password reset code is {code}.\n\n"
+          f"It expires in {OTP_MINUTES} minutes. Do not share this code. "
+          "If you did not request a reset, you can ignore this message.")
+
+
+def send_account_exists_notice(email: str) -> None:
+    _send(email, "KaraOK account registration request",
+          "Someone tried to create a KaraOK account with this email. "
+          "If it was you, log in or use Forgot password.")
+
+
+def send_password_changed_notice(email: str) -> None:
+    _send(email, "Your KaraOK password has changed",
+          "Your KaraOK password was reset. If you did not make this change, "
+          "contact the KaraOK administrator.")

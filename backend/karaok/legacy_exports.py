@@ -73,7 +73,6 @@ from .modules.users.routes import blueprint as users_routes
 from .security.password_service import (
     EMAIL_RE,
     clean_email,
-    generate_temporary_password,
     password_hasher,
     token_hash,
     validate_password,
@@ -127,7 +126,6 @@ from karaok.audio_pipeline.pipeline import summarize_audio_analysis
 from karaok.audio_pipeline.pipeline import persist_audio_analysis
 from karaok.results.records import mark_audio_analysis_failed, save_audio_analysis, create_audio_upload_records
 from karaok.auth.mail import send_registration_otp
-from karaok.auth.mail import send_temporary_password_email
 from karaok.core.request_context import client_ip
 from karaok.core.audit import audit
 from karaok.auth.tokens import issue_access_token

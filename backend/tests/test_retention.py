@@ -88,7 +88,7 @@ class PurgeExpiredRecordsTests(unittest.TestCase):
         params = {s.split()[2]: p for s, p in db.executed}
         self.assertEqual(params["api_request_log"], (30,))
         self.assertEqual(params["audit_log"], (400,))
-        for table in ("refresh_token", "revoked_access_token", "registration_otp"):
+        for table in ("refresh_token", "revoked_access_token", "registration_otp", "password_reset_otp", "auth_throttle"):
             self.assertEqual(params[table], (1,))
 
     def test_zero_window_skips_that_table(self):

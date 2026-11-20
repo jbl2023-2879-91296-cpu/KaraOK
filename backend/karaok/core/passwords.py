@@ -2,7 +2,6 @@
 
 import hashlib
 import re
-import secrets
 from typing import Any
 
 from argon2 import PasswordHasher
@@ -29,26 +28,6 @@ def validate_password(password: Any) -> str:
     if not re.search(r"\d", password) or not re.search(r"[^A-Za-z0-9]", password):
         raise ValueError("password must include a number and symbol")
     return password
-
-
-def generate_temporary_password(length: int = 8) -> str:
-    """Generate a policy-compliant password intended for one-time login."""
-    if length != 8:
-        raise ValueError("temporary passwords must be exactly 8 characters")
-    uppercase = "ABCDEFGHJKLMNPQRSTUVWXYZ"
-    lowercase = "abcdefghijkmnopqrstuvwxyz"
-    digits = "23456789"
-    symbols = "!@#$%&*-_"
-    characters = uppercase + lowercase + digits + symbols
-    password = [
-        secrets.choice(uppercase),
-        secrets.choice(lowercase),
-        secrets.choice(digits),
-        secrets.choice(symbols),
-    ]
-    password.extend(secrets.choice(characters) for _ in range(length - len(password)))
-    secrets.SystemRandom().shuffle(password)
-    return "".join(password)
 
 
 def token_hash(token: str) -> str:

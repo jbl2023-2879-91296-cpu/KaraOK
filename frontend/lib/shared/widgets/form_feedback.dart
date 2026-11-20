@@ -155,47 +155,66 @@ class PasswordChecklist extends StatelessWidget {
   const PasswordChecklist({super.key, required this.controller});
   final TextEditingController controller;
   @override
-  Widget build(
-    BuildContext context,
-  ) => ValueListenableBuilder<TextEditingValue>(
-    valueListenable: controller,
-    builder: (context, value, _) {
-      final password = value.text;
-      final rules = <String, bool>{
-        '8–128 characters': password.length >= 8 && password.length <= 128,
-        'Uppercase letter': RegExp(r'[A-Z]').hasMatch(password),
-        'Lowercase letter': RegExp(r'[a-z]').hasMatch(password),
-        'Number': RegExp(r'\d').hasMatch(password),
-        'Symbol': RegExp(r'[^A-Za-z0-9]').hasMatch(password),
-      };
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Wrap(
-          spacing: 16,
-          runSpacing: 8,
-          children: [
-            for (final rule in rules.entries)
-              Semantics(
-                label: '${rule.key}: ${rule.value ? 'met' : 'not met'}',
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      rule.value ? Icons.check_circle : Icons.circle_outlined,
-                      size: 16,
-                      color: rule.value ? AppColors.success : AppColors.muted,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      rule.key,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
+  Widget build(BuildContext context) =>
+      ValueListenableBuilder<TextEditingValue>(
+        valueListenable: controller,
+        builder: (context, value, _) {
+          final password = value.text;
+          final rules = <String, bool>{
+            '8–128 characters': password.length >= 8 && password.length <= 128,
+            'Uppercase letter': RegExp(r'[A-Z]').hasMatch(password),
+            'Lowercase letter': RegExp(r'[a-z]').hasMatch(password),
+            'Number': RegExp(r'\d').hasMatch(password),
+            'Symbol': RegExp(r'[^A-Za-z0-9]').hasMatch(password),
+          };
+          return IgnorePointer(
+            child: ExcludeFocus(
+              child: Semantics(
+                container: true,
+                explicitChildNodes: true,
+                label: 'Password requirements',
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    spacing: 6,
+                    children: [
+                      for (final rule in rules.entries)
+                        Semantics(
+                          label:
+                              '${rule.key}: ${rule.value ? 'met' : 'not met'}',
+                          excludeSemantics: true,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                rule.value
+                                    ? Icons.check_rounded
+                                    : Icons.close_rounded,
+                                size: 16,
+                                color: rule.value
+                                    ? AppColors.success
+                                    : AppColors.muted,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                rule.key,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: rule.value
+                                          ? AppColors.ink
+                                          : AppColors.muted,
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
-          ],
-        ),
+            ),
+          );
+        },
       );
-    },
-  );
 }

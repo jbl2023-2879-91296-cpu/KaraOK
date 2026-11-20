@@ -4,15 +4,21 @@ from __future__ import annotations
 
 from argon2.exceptions import InvalidHashError
 from argon2.exceptions import VerifyMismatchError
-from datetime import datetime
+from contextlib import contextmanager
+from datetime import datetime, timezone
 from functools import wraps
 from flask import g
 from flask import jsonify
 from flask import request
 from karaok.auth.access import require_auth
 from karaok.auth.mail import send_registration_otp
-from karaok.auth.mail import send_temporary_password_email
-from karaok.auth.tokens import create_refresh_token
+from karaok.auth.mail import send_account_exists_notice, send_password_changed_notice, send_reset_otp
+from karaok.auth.mail_queue import MailReservation, enqueue_mail
+from karaok.auth.otp import (
+    ResendTooSoon, challenge_payload, decoy_challenge, issue_challenge,
+    resend_challenge, verify_challenge,
+)
+from karaok.auth.tokens import create_refresh_token, insert_refresh_token
 from karaok.auth.tokens import issue_access_token
 from karaok.core.accounts import _clean_birthday
 from karaok.core.accounts import _clean_phone
@@ -23,15 +29,19 @@ from karaok.core.config import DEV_MODE
 from karaok.core.config import EXPOSE_REGISTRATION_OTP
 from karaok.core.config import JWT_ISSUER
 from karaok.core.config import JWT_SECRET
-from karaok.core.config import OTP_MINUTES
 from karaok.core.config import SMTP_FROM
 from karaok.core.config import SMTP_HOST
 from karaok.core.config import SMTP_PASSWORD
 from karaok.core.config import SMTP_USERNAME
+import karaok.core.config as config
 from karaok.core.database import get_db
+from karaok.core.email_policy import canonical_email, clean_registration_email
+from karaok.core.request_context import client_ip
+from karaok.security.throttle import (
+    ThrottleDecision, auth_throttle, request_device_id, throttled_response,
+)
 from karaok.core.passwords import EMAIL_RE
 from karaok.core.passwords import clean_email
-from karaok.core.passwords import generate_temporary_password
 from karaok.core.passwords import password_hasher
 from karaok.core.passwords import token_hash
 from karaok.core.passwords import validate_password
@@ -44,10 +54,106 @@ from typing import Any
 import jwt
 import re
 import secrets
-import smtplib
 
 
 SELF_REGISTER_ROLE = "user"
+SIGNUP_ACCEPTED = "If this email can be registered, a verification code has been sent."
+RESET_ACCEPTED = "If an account exists for this email, a reset code has been sent."
+AUTH_FLOOD_LIMIT = f"{config.AUTH_IP_CEILING_PER_MINUTE} per minute"
+
+
+def _request_throttle(action, email=None):
+    decision = auth_throttle.check(action, email=email, device_id=request_device_id(), ip=client_ip())
+    return None if decision.allowed else throttled_response(decision)
+
+
+@contextmanager
+def _transaction():
+    connection = get_db()
+    try:
+        cursor = connection.cursor(dictionary=True)
+        try:
+            yield cursor
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            cursor.close()
+    finally:
+        connection.close()
+
+
+def _otp_response(purpose, email, challenge):
+    registration = purpose == "registration"
+    response = challenge_payload(challenge)
+    response["message"] = SIGNUP_ACCEPTED if registration else RESET_ACCEPTED
+    if registration:
+        response["email"] = email
+    if registration and DEV_MODE and EXPOSE_REGISTRATION_OTP:
+        response["development_code"] = challenge.code or f"{secrets.randbelow(1_000_000):06d}"
+    return jsonify(response), 202
+
+
+def _mail_unavailable():
+    g.karaok_retry_after = 30
+    return (
+        jsonify(error="We could not send the code right now. Try again shortly.", retry_after=30),
+        503,
+        {"Retry-After": "30"},
+    )
+
+
+def _mail_available():
+    return all((SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM))
+
+
+def _submit_otp_mail(reservation, purpose, email, challenge, existing_email=None):
+    if challenge.code and _mail_available():
+        send = send_registration_otp if purpose == "registration" else send_reset_otp
+        return reservation.submit(lambda: send(email, challenge.code), description=purpose)
+    if existing_email and _mail_available():
+        return reservation.submit(
+            lambda: send_account_exists_notice(existing_email), description="existing account notice"
+        )
+    return True
+
+
+def _select_user(cursor, email, purpose, *, include_profile=False):
+    if purpose == "registration":
+        condition = "email_verified_at IS NULL AND role = 'user'"
+    else:
+        condition = "email_verified_at IS NOT NULL AND is_active = TRUE"
+    fields = "user.*, role AS user_type" if include_profile else "user_id, password"
+    cursor.execute(f"SELECT {fields} FROM user WHERE email = %s AND {condition} FOR UPDATE", (email,))
+    return cursor.fetchone()
+
+
+def _challenge_form():
+    data = json_body()
+    email = clean_email(data.get("email"))
+    challenge_id = data.get("challenge_id")
+    if not isinstance(challenge_id, str) or not re.fullmatch(r"[0-9a-f]{32}", challenge_id):
+        challenge_id = None
+    return data, email, challenge_id
+
+
+def _new_username(cursor):
+    while True:
+        username = "user_" + secrets.token_hex(16)
+        cursor.execute("SELECT user_id FROM user WHERE username = %s LIMIT 1", (username,))
+        if cursor.fetchone() is None:
+            return username
+
+
+def _valid_code(code):
+    return isinstance(code, str) and re.fullmatch(r"[0-9]{6}", code)
+
+
+def _invalid_code(purpose):
+    label = "verification" if purpose == "registration" else "reset"
+    message = f"Invalid or expired {label} code"
+    return _auth_error(message, 400, code=message)
 
 
 def _auth_error(message, status=400, **fields):
@@ -86,9 +192,12 @@ def _field_errors(view):
     return wrapped
 
 
-def auth_response(user: dict[str, Any], status: int = 200):
+def auth_response(user: dict[str, Any], status: int = 200, *, cursor=None):
     access_token, access_expires_at = issue_access_token(user)
-    refresh_token, refresh_expires_at = create_refresh_token(user["user_id"])
+    refresh_token, refresh_expires_at = (
+        create_refresh_token(user["user_id"]) if cursor is None
+        else insert_refresh_token(cursor, user["user_id"])
+    )
     g.authenticated_user_id = int(user["user_id"])
     return jsonify(
         {
@@ -102,7 +211,7 @@ def auth_response(user: dict[str, Any], status: int = 200):
 
 
 @_field_errors
-@limiter.limit("5 per hour")
+@limiter.limit(AUTH_FLOOD_LIMIT)
 def register():
     data = json_body()
     username = (clean_text(data["username"], "username", 3, 50)
@@ -119,7 +228,13 @@ def register():
 
     first_name = optional_text("first_name", 1, 80)
     last_name = optional_text("last_name", 1, 80)
-    email = clean_email(data.get("email"))
+    try:
+        email = clean_registration_email(data.get("email"))
+    except ValueError as error:
+        if str(error) != "email domain is not supported":
+            raise
+        message = "Use an email from a supported provider such as Gmail, Yahoo, Outlook or iCloud."
+        return _auth_error(message, email=message)
     password = validate_password(data.get("password"))
     address = optional_text("address", 5, 255)
     city = optional_text("city", 2, 100)
@@ -139,224 +254,142 @@ def register():
     if "user_type" in data and data.get("user_type") != SELF_REGISTER_ROLE:
         raise ValueError("public registration creates user accounts only")
 
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    try:
-        cursor.execute(
-            """SELECT user_id, username, email, email_verified_at
-               FROM user WHERE email = %s LIMIT 1 FOR UPDATE""",
-            (email,),
-        )
-        email_user = cursor.fetchone()
-        if username is None:
-            if email_user:
-                username = email_user["username"]
-            else:
-                # Use a schema-compatible random name, retrying existing collisions.
-                while True:
-                    username = "user_" + secrets.token_hex(16)
-                    cursor.execute("SELECT user_id FROM user WHERE username = %s LIMIT 1", (username,))
-                    if not cursor.fetchone():
-                        break
-        cursor.execute(
-            """SELECT user_id, username, email, email_verified_at
-               FROM user WHERE username = %s LIMIT 1 FOR UPDATE""",
-            (username,),
-        )
-        username_user = cursor.fetchone()
-
-        if email_user and (
-            email_user["email_verified_at"] is not None
-            or email_user["username"] != username
-        ):
-            return _auth_error("Unable to create account", 409, email="Unable to create account")
-        if username_user and (
-            not email_user or username_user["user_id"] != email_user["user_id"]
-        ):
-            return _auth_error("Unable to create account", 409, username="Unable to create account")
-
+    canonical = canonical_email(email)
+    blocked = _request_throttle("register", canonical)
+    if blocked:
+        return blocked
+    with MailReservation() as reservation:
+        if not reservation.available or not (_mail_available() or (DEV_MODE and EXPOSE_REGISTRATION_OTP)):
+            return _mail_unavailable()
+        decision = auth_throttle.reserve_otp_send("registration", canonical)
+        if not decision.allowed:
+            return throttled_response(decision)
+        decision = auth_throttle.reserve_otp_sender(device_id=request_device_id(), ip=client_ip())
+        if not decision.allowed:
+            return throttled_response(decision)
         password_hash = password_hasher.hash(password)
-        if email_user:
-            user_id = email_user["user_id"]
-            cursor.execute(
-                """UPDATE user
-                   SET username = %s, first_name = %s, last_name = %s,
-                       password = %s, address = %s, city = %s,
-                       state_province = %s, area_code = %s, country = %s,
-                       country_code = %s,
-                       phone_number = %s, birthday = %s,
-                       profile_image = %s, profile_image_mime = %s,
-                       role = 'user'
-                   WHERE user_id = %s AND email_verified_at IS NULL""",
-                (
-                    username,
-                    first_name,
-                    last_name,
-                    password_hash,
-                    address,
-                    city,
-                    state_province,
-                    area_code,
-                    country,
-                    country_code,
-                    phone_number,
-                    birthday,
-                    profile_image,
-                    profile_image_mime,
-                    user_id,
-                ),
-            )
-        else:
-            cursor.execute(
-                """INSERT INTO user
-                   (username, first_name, last_name, email, password, address,
-                    city, state_province, area_code, country, country_code,
-                    phone_number, birthday, profile_image, profile_image_mime,
-                    role, email_verified_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                           %s, %s, %s, %s, 'user', NULL)""",
-                (
-                    username,
-                    first_name,
-                    last_name,
-                    email,
-                    password_hash,
-                    address,
-                    city,
-                    state_province,
-                    area_code,
-                    country,
-                    country_code,
-                    phone_number,
-                    birthday,
-                    profile_image,
-                    profile_image_mime,
-                ),
-            )
-            user_id = cursor.lastrowid
-
-        code = f"{secrets.randbelow(1_000_000):06d}"
-        cursor.execute(
-            "DELETE FROM registration_otp WHERE user_id = %s",
-            (user_id,),
-        )
-        cursor.execute(
-            """INSERT INTO registration_otp
-               (user_id, code_hash, expires_at)
-               VALUES (%s, %s, UTC_TIMESTAMP() + INTERVAL %s MINUTE)""",
-            (user_id, token_hash(code), OTP_MINUTES),
-        )
-        if SMTP_HOST and SMTP_USERNAME and SMTP_PASSWORD and SMTP_FROM:
-            send_registration_otp(email, code)
-        elif not (DEV_MODE and EXPOSE_REGISTRATION_OTP):
-            raise RuntimeError("SMTP is not configured")
-        conn.commit()
-    except IntegrityError:
-        conn.rollback()
-        return _auth_error("Unable to create account", 409, form="Unable to create account")
-    except (OSError, smtplib.SMTPException, RuntimeError):
-        conn.rollback()
-        app.logger.exception("Registration OTP delivery failed")
-        return _auth_error("Unable to send verification email", 503)
-    finally:
-        cursor.close()
-        conn.close()
-    response = {
-        "message": "Verification code sent to the supplied email",
-        "email": email,
-    }
-    if DEV_MODE and EXPOSE_REGISTRATION_OTP:
-        response["development_code"] = code
-    g.authenticated_user_id = int(user_id)
-    return jsonify(response), 202
+        existing_email = None
+        try:
+            with _transaction() as cursor:
+                cursor.execute(
+                    """SELECT user_id, username, email, email_verified_at, role FROM user
+                       WHERE email_canonical = %s OR email = %s
+                       ORDER BY email_verified_at IS NULL, email <> %s, user_id FOR UPDATE""",
+                    (canonical, email, email),
+                )
+                candidate = cursor.fetchone()
+                # This query can find multiple historical aliases.
+                cursor.fetchall()
+                if candidate and (candidate["email"] != email or candidate["email_verified_at"]
+                                  or candidate["role"] != SELF_REGISTER_ROLE
+                                  or username not in (None, candidate["username"])):
+                    if candidate["email_verified_at"]:
+                        existing_email = candidate["email"]
+                    challenge = decoy_challenge()
+                else:
+                    username = username or (candidate["username"] if candidate else _new_username(cursor))
+                    profile = (first_name, last_name, password_hash, address, city, state_province,
+                               area_code, country, country_code, phone_number, birthday,
+                               profile_image, profile_image_mime)
+                    if candidate:
+                        user_id = candidate["user_id"]
+                        cursor.execute(
+                            """UPDATE user SET email_canonical=%s, first_name=%s, last_name=%s,
+                               password=%s, address=%s, city=%s, state_province=%s, area_code=%s,
+                               country=%s, country_code=%s, phone_number=%s, birthday=%s,
+                               profile_image=%s, profile_image_mime=%s WHERE user_id=%s""",
+                            (canonical, *profile, user_id),
+                        )
+                    else:
+                        cursor.execute(
+                            """INSERT INTO user (username, email, email_canonical, first_name,
+                               last_name, password, address, city, state_province, area_code,
+                               country, country_code, phone_number, birthday, profile_image,
+                               profile_image_mime, role, email_verified_at)
+                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'user',NULL)""",
+                            (username, email, canonical, *profile),
+                        )
+                        user_id = cursor.lastrowid
+                    challenge = issue_challenge(cursor, purpose="registration", user_id=user_id, email=email)
+        except IntegrityError:
+            # A concurrent insert or an older client's taken username uses the same response.
+            challenge = decoy_challenge()
+        except ResendTooSoon as error:
+            return throttled_response(ThrottleDecision(False, error.retry_after))
+        if not _submit_otp_mail(reservation, "registration", email, challenge, existing_email):
+            return _mail_unavailable()
+    return _otp_response("registration", email, challenge)
 
 
 @_field_errors
-@limiter.limit("10 per hour")
+@limiter.limit(AUTH_FLOOD_LIMIT)
 def verify_registration():
-    data = json_body()
-    email = clean_email(data.get("email"))
+    data, email, challenge_id = _challenge_form()
+    blocked = _request_throttle("register_verify", canonical_email(email))
+    if blocked:
+        return blocked
     code = data.get("code")
-    if not isinstance(code, str) or not re.fullmatch(r"\d{6}", code):
-        raise ValueError("verification code must be six digits")
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute(
-        """SELECT registration_otp.registration_id,
-                  registration_otp.code_hash,
-                  registration_otp.attempts,
-                  user.user_id, user.username, user.first_name, user.last_name,
-                  user.email, user.address, user.city, user.state_province,
-                  user.area_code, user.country, user.country_code,
-                  user.phone_number, user.birthday, user.profile_image,
-                  user.profile_image_mime, user.role
-           FROM registration_otp
-           JOIN user ON user.user_id = registration_otp.user_id
-           WHERE user.email = %s AND user.email_verified_at IS NULL
-             AND registration_otp.expires_at > UTC_TIMESTAMP()
-             AND registration_otp.attempts < 5
-           FOR UPDATE""",
-        (email,),
-    )
-    pending = cursor.fetchone()
-    if not pending or not secrets.compare_digest(pending["code_hash"], token_hash(code)):
-        if pending:
-            cursor.execute(
-                "UPDATE registration_otp SET attempts = attempts + 1 WHERE registration_id = %s",
-                (pending["registration_id"],),
-            )
-            conn.commit()
-        cursor.close()
-        conn.close()
-        return _auth_error("Invalid or expired verification code", 400, code="Invalid or expired verification code")
-    try:
-        cursor.execute(
-            """UPDATE user SET email_verified_at = UTC_TIMESTAMP()
-               WHERE user_id = %s AND email_verified_at IS NULL""",
-            (pending["user_id"],),
-        )
-        cursor.execute(
-            "DELETE FROM registration_otp WHERE registration_id = %s",
-            (pending["registration_id"],),
-        )
-        conn.commit()
-    except IntegrityError:
-        conn.rollback()
-        cursor.close()
-        conn.close()
-        return _auth_error("Unable to create account", 409, form="Unable to create account")
-    cursor.close()
-    conn.close()
-    user = {
-        "user_id": pending["user_id"],
-        "username": pending["username"],
-        "first_name": pending["first_name"],
-        "last_name": pending["last_name"],
-        "email": pending["email"],
-        "address": pending["address"],
-        "city": pending["city"],
-        "state_province": pending["state_province"],
-        "area_code": pending["area_code"],
-        "country": pending["country"],
-        "country_code": pending["country_code"],
-        "phone_number": pending["phone_number"],
-        "birthday": pending["birthday"],
-        "profile_image": pending["profile_image"],
-        "profile_image_mime": pending["profile_image_mime"],
-        "user_type": pending["role"],
-    }
-    audit(
-        "registration",
-        "success",
-        user_id=pending["user_id"],
-        resource_type="user",
-        resource_id=pending["user_id"],
-    )
-    return auth_response(user, 201)
+    if not challenge_id or not _valid_code(code):
+        return _invalid_code("registration")
+    with _transaction() as cursor:
+        user = _select_user(cursor, email, "registration", include_profile=True)
+        if not user or not verify_challenge(
+            cursor, purpose="registration", challenge_id=challenge_id, email=email, code=code,
+        ):
+            return _invalid_code("registration")
+        cursor.execute("UPDATE user SET email_verified_at = UTC_TIMESTAMP() WHERE user_id = %s", (user["user_id"],))
+        response = auth_response(user, 201, cursor=cursor)
+    audit("registration", "success", user_id=user["user_id"], resource_type="user", resource_id=user["user_id"])
+    return response
+
+
+def _request_otp(purpose, action, *, resend=False):
+    _, email, challenge_id = _challenge_form()
+    canonical = canonical_email(email)
+    blocked = _request_throttle(action, canonical)
+    if blocked:
+        return blocked
+    if resend and not challenge_id:
+        return _invalid_code(purpose)
+    if not resend:
+        challenge_id = None
+    with MailReservation() as reservation:
+        if not reservation.available or not (_mail_available() or (DEV_MODE and EXPOSE_REGISTRATION_OTP)):
+            return _mail_unavailable()
+        decision = auth_throttle.reserve_otp_send(purpose, canonical if purpose == "registration" else email)
+        if not decision.allowed:
+            return throttled_response(decision)
+        decision = auth_throttle.reserve_otp_sender(device_id=request_device_id(), ip=client_ip())
+        if not decision.allowed:
+            return throttled_response(decision)
+        try:
+            with _transaction() as cursor:
+                user = _select_user(cursor, email, purpose)
+                if not user:
+                    challenge = decoy_challenge(challenge_id)
+                elif resend:
+                    challenge = resend_challenge(
+                        cursor, purpose=purpose, user_id=user["user_id"], email=email, challenge_id=challenge_id,
+                    )
+                else:
+                    challenge = issue_challenge(cursor, purpose=purpose, user_id=user["user_id"], email=email)
+        except ResendTooSoon as error:
+            return throttled_response(ThrottleDecision(False, error.retry_after))
+        if not _submit_otp_mail(reservation, purpose, email, challenge):
+            return _mail_unavailable()
+    if purpose == "password_reset" and not resend:
+        audit("password_reset_requested", "success", user_id=user["user_id"] if user else None)
+    return _otp_response(purpose, email, challenge)
 
 
 @_field_errors
-@limiter.limit("5 per minute")
+@limiter.limit(AUTH_FLOOD_LIMIT)
+def resend_registration():
+    return _request_otp("registration", "register_resend", resend=True)
+
+
+@_field_errors
+@limiter.limit(AUTH_FLOOD_LIMIT)
 def login():
     data = json_body()
     identifier = clean_text(
@@ -371,82 +404,96 @@ def login():
     if not isinstance(password, str) or not password or len(password) > 128:
         raise ValueError("password is invalid")
 
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute(
-        f"""SELECT u.user_id, u.username, u.first_name, u.last_name, u.email,
-                   u.address, u.city, u.state_province, u.area_code,
-                   u.country, u.country_code, u.phone_number,
-                   u.birthday, u.profile_image, u.profile_image_mime,
-                   u.role AS user_type,
-                   u.password AS password_hash, u.is_active, u.email_verified_at,
-                   u.requires_password_change
-            FROM user u
-            WHERE u.{"email" if is_email else "username"} = %s LIMIT 1""",
-        (identifier,),
-    )
-    user = cursor.fetchone()
-    cursor.close()
-    conn.close()
+    throttle_identity = canonical_email(identifier) if is_email else identifier.lower()
+    blocked = _request_throttle("login", throttle_identity)
+    if blocked:
+        return blocked
 
-    valid = False
-    if user and user["is_active"] and user["email_verified_at"] is not None:
-        try:
-            valid = password_hasher.verify(user["password_hash"], password)
-        except (VerifyMismatchError, InvalidHashError):
-            valid = False
+    with _transaction() as cursor:
+        cursor.execute(
+            f"""SELECT u.user_id, u.username, u.first_name, u.last_name, u.email,
+                       u.address, u.city, u.state_province, u.area_code,
+                       u.country, u.country_code, u.phone_number,
+                       u.birthday, u.profile_image, u.profile_image_mime,
+                       u.role AS user_type,
+                       u.password AS password_hash, u.is_active, u.email_verified_at,
+                       u.requires_password_change
+                FROM user u
+                WHERE u.{"email" if is_email else "username"} = %s LIMIT 1 FOR UPDATE""",
+            (identifier,),
+        )
+        user = cursor.fetchone()
+
+        valid = False
+        if user and user["is_active"] and user["email_verified_at"] is not None:
+            try:
+                valid = password_hasher.verify(user["password_hash"], password)
+            except (VerifyMismatchError, InvalidHashError):
+                valid = False
+        if valid:
+            if password_hasher.check_needs_rehash(user["password_hash"]):
+                cursor.execute(
+                    "UPDATE user SET password = %s WHERE user_id = %s",
+                    (password_hasher.hash(password), user["user_id"]),
+                )
+            response = auth_response(user, cursor=cursor)
     if not valid:
         audit("login", "failure", user_id=user["user_id"] if user else None)
+        decision = auth_throttle.check(
+            "login_fail_account", email=throttle_identity, device_id=None, ip="*",
+            burst_limit=config.LOGIN_ACCOUNT_FAIL_LIMIT,
+            burst_window=config.LOGIN_ACCOUNT_FAIL_WINDOW_SECONDS,
+            fixed_lock_seconds=config.AUTH_LOCKOUT_REPEAT_SECONDS,
+        )
+        if not decision.allowed:
+            return throttled_response(decision)
         return _auth_error("Invalid email or password", 401, identifier="Invalid email or password", password="Invalid email or password")
-    if password_hasher.check_needs_rehash(user["password_hash"]):
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("UPDATE user SET password = %s WHERE user_id = %s", (password_hasher.hash(password), user["user_id"]))
-        conn.commit()
-        cursor.close()
-        conn.close()
     audit("login", "success", user_id=user["user_id"])
-    return auth_response(user)
+    return response
 
 
-@limiter.limit("20 per hour")
+@limiter.limit(AUTH_FLOOD_LIMIT)
 def refresh():
+    blocked = _request_throttle("refresh")
+    if blocked:
+        return blocked
     raw_token = json_body().get("refresh_token")
     if not isinstance(raw_token, str) or len(raw_token) > 200:
         return jsonify({"error": "Invalid refresh token"}), 401
     hashed = token_hash(raw_token)
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute(
-        """SELECT rt.refresh_token_id AS token_id, rt.user_id, rt.expires_at, rt.revoked_at,
-                  u.username, u.first_name, u.last_name, u.email, u.address,
-                  u.city, u.state_province, u.area_code, u.country,
-                  u.country_code, u.phone_number, u.birthday, u.profile_image,
-                  u.profile_image_mime, u.role AS user_type, u.is_active,
-                  u.email_verified_at,
-                  u.requires_password_change
-           FROM refresh_token rt JOIN user u ON u.user_id = rt.user_id
-           WHERE rt.token_hash = %s FOR UPDATE""",
-        (hashed,),
-    )
-    row = cursor.fetchone()
-    if (
-        not row
-        or row["revoked_at"]
-        or row["expires_at"] <= datetime.utcnow()
-        or not row["is_active"]
-        or row["email_verified_at"] is None
-    ):
-        cursor.close()
-        conn.close()
+    with _transaction() as cursor:
+        cursor.execute(
+            """SELECT rt.refresh_token_id AS token_id, rt.user_id, rt.expires_at, rt.revoked_at,
+                      u.username, u.first_name, u.last_name, u.email, u.address,
+                      u.city, u.state_province, u.area_code, u.country,
+                      u.country_code, u.phone_number, u.birthday, u.profile_image,
+                      u.profile_image_mime, u.role AS user_type, u.is_active,
+                      u.email_verified_at,
+                      u.requires_password_change
+               FROM refresh_token rt JOIN user u ON u.user_id = rt.user_id
+               WHERE rt.token_hash = %s FOR UPDATE""",
+            (hashed,),
+        )
+        row = cursor.fetchone()
+        if (
+            not row
+            or row["revoked_at"]
+            or row["expires_at"] <= datetime.now(timezone.utc).replace(tzinfo=None)
+            or not row["is_active"]
+            or row["email_verified_at"] is None
+        ):
+            response = None
+        else:
+            cursor.execute(
+                "UPDATE refresh_token SET revoked_at = UTC_TIMESTAMP() WHERE refresh_token_id = %s",
+                (row["token_id"],),
+            )
+            response = auth_response(row, cursor=cursor)
+    if response is None:
         audit("token_refresh", "failure")
         return jsonify({"error": "Invalid or expired refresh token"}), 401
-    cursor.execute("UPDATE refresh_token SET revoked_at = UTC_TIMESTAMP() WHERE refresh_token_id = %s", (row["token_id"],))
-    conn.commit()
-    cursor.close()
-    conn.close()
     audit("token_refresh", "success", user_id=row["user_id"])
-    return auth_response(row)
+    return response
 
 
 def logout():
@@ -487,53 +534,59 @@ def logout():
 
 
 @_field_errors
-@limiter.limit("3 per hour", exempt_when=lambda: DEV_MODE)
+@limiter.limit(AUTH_FLOOD_LIMIT)
 def forgot_password():
-    email = clean_email(json_body().get("email"))
-    audit_result = "success"
-    audit_details = "Password reset request accepted"
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute(
-        """SELECT user_id AS id FROM user
-           WHERE email = %s AND is_active = TRUE
-             AND email_verified_at IS NOT NULL""",
-        (email,),
-    )
-    user = cursor.fetchone()
-    if user:
-        temporary_password = generate_temporary_password()
-        try:
+    return _request_otp("password_reset", "forgot")
+
+
+@_field_errors
+@limiter.limit(AUTH_FLOOD_LIMIT)
+def resend_password_reset():
+    return _request_otp("password_reset", "forgot_resend", resend=True)
+
+
+@_field_errors
+@limiter.limit(AUTH_FLOOD_LIMIT)
+def reset_password():
+    data, email, challenge_id = _challenge_form()
+    blocked = _request_throttle("forgot_reset", email)
+    if blocked:
+        return blocked
+    try:
+        password = validate_password(data.get("new_password"))
+    except ValueError as error:
+        return _auth_error(str(error), new_password=str(error))
+    code = data.get("code")
+    if not challenge_id or not _valid_code(code):
+        return _invalid_code("password_reset")
+    password_hash = password_hasher.hash(password)
+    try:
+        with _transaction() as cursor:
+            user = _select_user(cursor, email, "password_reset")
+            if not user or not verify_challenge(
+                cursor, purpose="password_reset", challenge_id=challenge_id, email=email, code=code,
+            ):
+                return _invalid_code("password_reset")
+            try:
+                if password_hasher.verify(user["password"], password):
+                    raise ValueError("Choose a password you have not used for this account.")
+            except (VerifyMismatchError, InvalidHashError):
+                pass
             cursor.execute(
-                """UPDATE user
-                   SET password = %s, requires_password_change = TRUE
-                   WHERE user_id = %s""",
-                (password_hasher.hash(temporary_password), user["id"]),
+                """UPDATE user SET password = %s, requires_password_change = FALSE,
+                       security_updated_at = CURRENT_TIMESTAMP(6) WHERE user_id = %s""",
+                (password_hash, user["user_id"]),
             )
             cursor.execute(
                 """UPDATE refresh_token SET revoked_at = UTC_TIMESTAMP()
                    WHERE user_id = %s AND revoked_at IS NULL""",
-                (user["id"],),
+                (user["user_id"],),
             )
-            if SMTP_HOST and SMTP_USERNAME and SMTP_PASSWORD and SMTP_FROM:
-                send_temporary_password_email(email, temporary_password)
-            else:
-                raise RuntimeError("SMTP is not configured")
-            conn.commit()
-        except (smtplib.SMTPException, OSError, RuntimeError):
-            conn.rollback()
-            audit_result = "failure"
-            audit_details = "Password reset email delivery failed"
-            app.logger.exception("Password reset email delivery failed")
-    cursor.close()
-    conn.close()
-    audit(
-        "password_reset_requested",
-        audit_result,
-        user_id=user["id"] if user else None,
-        details=audit_details,
-    )
-    return jsonify({"message": "If the account exists, a temporary password has been sent."})
+    except ValueError as error:
+        return _auth_error(str(error), new_password=str(error))
+    enqueue_mail(lambda: send_password_changed_notice(email), description="password changed notice")
+    audit("password_reset_completed", "success", user_id=user["user_id"])
+    return jsonify(message="Password updated. Sign in with your new password.")
 
 
 @_field_errors
@@ -547,7 +600,7 @@ def change_password():
         not isinstance(current_password, str) or not current_password or len(current_password) > 128
     ):
         raise ValueError("current password is invalid")
-    if isinstance(current_password, str) and secrets.compare_digest(current_password, new_password):
+    if current_password == new_password:
         raise ValueError("new password must be different from the current password")
 
     conn = get_db()
@@ -578,7 +631,7 @@ def change_password():
 
     cursor.execute(
         """UPDATE user
-           SET password = %s, requires_password_change = FALSE
+           SET password = %s, requires_password_change = FALSE, security_updated_at = CURRENT_TIMESTAMP(6)
            WHERE user_id = %s""",
         (password_hasher.hash(new_password), g.user_id),
     )

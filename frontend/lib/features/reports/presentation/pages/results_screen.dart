@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/adaptive_layout.dart';
 import 'package:karaok_app/features/reports/presentation/pages/glossary_screen.dart';
 import 'package:karaok_app/features/reports/domain/measurement_glossary.dart';
 import 'package:karaok_app/features/reports/presentation/widgets/what_this_means_card.dart';
@@ -239,96 +240,105 @@ class _ResultsScreenState extends State<ResultsScreen> {
                       if (failed)
                         QualityFailureCard(messages: widget.qualityFailures)
                       else ...[
-                        // Score card
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(AppSpacing.xl),
-                          decoration: BoxDecoration(
-                            color: AppColors.surface,
-                            borderRadius: BorderRadius.circular(AppRadii.card),
-                          ),
-                          child: Column(
-                            children: [
-                              Text(
-                                widget.testName,
-                                textAlign: TextAlign.center,
-                                style: Theme.of(context).textTheme.titleSmall,
+                        AdaptiveColumns(
+                          primary: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(AppSpacing.xl),
+                            decoration: BoxDecoration(
+                              color: AppColors.surface,
+                              borderRadius: BorderRadius.circular(
+                                AppRadii.card,
                               ),
-                              Text(
-                                'Audio quality score',
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(color: AppColors.muted),
-                              ),
-                              const SizedBox(height: AppSpacing.sm),
-                              RichText(
-                                textScaler: MediaQuery.textScalerOf(context),
-                                text: TextSpan(
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                  children: [
-                                    TextSpan(
-                                      text: _scoreLabel,
-                                      style: TextStyle(
-                                        color: _gradeColor,
-                                        fontSize: 56,
-                                        height: 1.1,
-                                        letterSpacing: 0,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    TextSpan(
-                                      text: '/100',
-                                      style: TextStyle(
-                                        color: _gradeColor.withValues(
-                                          alpha: 0.7,
-                                        ),
-                                        fontSize: 28,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  widget.testName,
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(context).textTheme.titleSmall,
                                 ),
+                                Text(
+                                  'Audio quality score',
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(color: AppColors.muted),
+                                ),
+                                const SizedBox(height: AppSpacing.sm),
+                                RichText(
+                                  textScaler: MediaQuery.textScalerOf(context),
+                                  text: TextSpan(
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodyMedium,
+                                    children: [
+                                      TextSpan(
+                                        text: _scoreLabel,
+                                        style: TextStyle(
+                                          color: _gradeColor,
+                                          fontSize: 56,
+                                          height: 1.1,
+                                          letterSpacing: 0,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      TextSpan(
+                                        text: '/100',
+                                        style: TextStyle(
+                                          color: _gradeColor.withValues(
+                                            alpha: 0.7,
+                                          ),
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: AppSpacing.sm),
+                                Text(
+                                  reportGradeLabel(_grade),
+                                  style: Theme.of(context).textTheme.titleMedium
+                                      ?.copyWith(color: _gradeColor),
+                                ),
+                                const SizedBox(height: AppSpacing.sm),
+                                Text(
+                                  widget.isSample
+                                      ? 'Example quality score. These are not measurements of your audio.'
+                                      : _interpretation,
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(color: AppColors.muted),
+                                ),
+                              ],
+                            ),
+                          ),
+                          secondary: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              WhatThisMeansCard(
+                                features: widget.featureResults,
+                                isSample: widget.isSample,
+                                flatnessReliable:
+                                    widget.flatnessReliabilityNote == null,
                               ),
-                              const SizedBox(height: AppSpacing.sm),
-                              Text(
-                                reportGradeLabel(_grade),
-                                style: Theme.of(context).textTheme.titleMedium
-                                    ?.copyWith(color: _gradeColor),
-                              ),
-                              const SizedBox(height: AppSpacing.sm),
-                              Text(
-                                widget.isSample
-                                    ? 'Example quality score. These are not measurements of your audio.'
-                                    : _interpretation,
-                                textAlign: TextAlign.center,
-                                style: Theme.of(context).textTheme.bodyMedium
-                                    ?.copyWith(color: AppColors.muted),
+                              const SizedBox(height: AppSpacing.lg),
+                              if (showFeatures) ...[
+                                EmpiricalFeatureTable(
+                                  isSample: widget.isSample,
+                                  features: widget.featureResults,
+                                  flatnessReliabilityNote:
+                                      widget.flatnessReliabilityNote,
+                                  referenceRecordingCount:
+                                      widget.referenceRecordingCount,
+                                ),
+                                const SizedBox(height: AppSpacing.lg),
+                              ],
+                              ReportMeasurements(
+                                noiseLevelDb: widget.noiseLevelDb,
+                                noiseReliable: widget.noiseReliable,
+                                distortionLevel: widget.distortionLevel,
                               ),
                             ],
                           ),
-                        ),
-                        const SizedBox(height: AppSpacing.lg),
-                        WhatThisMeansCard(
-                          features: widget.featureResults,
-                          isSample: widget.isSample,
-                          flatnessReliable:
-                              widget.flatnessReliabilityNote == null,
-                        ),
-                        const SizedBox(height: AppSpacing.lg),
-                        if (showFeatures) ...[
-                          EmpiricalFeatureTable(
-                            isSample: widget.isSample,
-                            features: widget.featureResults,
-                            flatnessReliabilityNote:
-                                widget.flatnessReliabilityNote,
-                            referenceRecordingCount:
-                                widget.referenceRecordingCount,
-                          ),
-                          const SizedBox(height: AppSpacing.lg),
-                        ],
-                        ReportMeasurements(
-                          noiseLevelDb: widget.noiseLevelDb,
-                          noiseReliable: widget.noiseReliable,
-                          distortionLevel: widget.distortionLevel,
                         ),
                         const SizedBox(height: AppSpacing.lg),
                         // Status row
