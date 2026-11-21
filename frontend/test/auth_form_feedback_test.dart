@@ -186,15 +186,15 @@ void main() {
     final checklist = find.byType(PasswordChecklist);
     Finder checks(IconData icon) =>
         find.descendant(of: checklist, matching: find.byIcon(icon));
-    expect(checks(Icons.circle_outlined), findsNWidgets(5));
+    expect(checks(Icons.close_rounded), findsNWidgets(5));
     await tester.enterText(field(1), 'lowercase');
     await tester.pump();
-    expect(checks(Icons.check_circle), findsNWidgets(2));
-    expect(checks(Icons.circle_outlined), findsNWidgets(3));
+    expect(checks(Icons.check_rounded), findsNWidgets(2));
+    expect(checks(Icons.close_rounded), findsNWidgets(3));
     await tester.enterText(field(1), 'Example123!');
     await tester.pump();
-    expect(checks(Icons.check_circle), findsNWidgets(5));
-    expect(checks(Icons.circle_outlined), findsNothing);
+    expect(checks(Icons.check_rounded), findsNWidgets(5));
+    expect(checks(Icons.close_rounded), findsNothing);
   });
 
   testWidgets(

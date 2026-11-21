@@ -421,7 +421,7 @@ Widget _testApp(Widget home) => MaterialApp(home: home);
 void _screenTest(String description, WidgetTesterCallback callback) {
   testWidgets(description, (tester) async {
     tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.physicalSize = const Size(400, 2400);
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.view.resetPhysicalSize);
     await callback(tester);

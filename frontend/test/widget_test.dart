@@ -4,6 +4,7 @@ import 'package:karaok_app/features/auth/presentation/pages/login_screen.dart';
 import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:karaok_app/app/app_shell.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:karaok_app/main.dart';
@@ -153,6 +154,12 @@ void main() {
   testWidgets('quality evaluation opens directly while suggestions use setup', (
     tester,
   ) async {
+    // The recorder plugin has no test implementation; answer its setup call.
+    const recordChannel = MethodChannel('com.llfbandit.record/messages');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(recordChannel, (_) async => null);
+    addTearDown(() => messenger.setMockMethodCallHandler(recordChannel, null));
     UserSession.instance.setGuest('user');
     await tester.pumpWidget(
       MaterialApp(home: UserHomeScreen(resultsLoader: () async => [])),
@@ -169,12 +176,33 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     await tester.tap(find.text('Generate Audio Settings Suggestion'));
+    // The setup screen loads metadata over real async I/O before showing its form.
+    for (
+      var attempt = 0;
+      attempt < 50 &&
+          find
+              .text('Continue to Recording', skipOffstage: false)
+              .evaluate()
+              .isEmpty;
+      attempt++
+    ) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+    }
     await tester.pumpAndSettle();
     expect(find.text('Set Up Your Amplifier'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('Continue to Recording'),
       300,
-      scrollable: find.byType(Scrollable).last,
+      scrollable: find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          )
+          .last,
     );
     expect(find.text('Continue to Recording'), findsOneWidget);
     expect(find.text('Record Audio'), findsNothing);

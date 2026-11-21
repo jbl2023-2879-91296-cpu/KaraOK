@@ -36,7 +36,7 @@ void main() {
       checks[outcome] ??
           'Record Again uses microphone and handles $outcome replacement',
       (tester) async {
-        tester.view.physicalSize = const Size(900, 2200);
+        tester.view.physicalSize = const Size(400, 2200);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
@@ -268,7 +268,12 @@ void main() {
           await tester.pump(const Duration(seconds: 1));
           for (
             var attempt = 0;
-            attempt < 100 && staging.current?.duration != audio.duration;
+            attempt < 100 &&
+                (staging.current?.duration != audio.duration ||
+                    find
+                        .text('Recording stopped at the 5-minute limit.')
+                        .evaluate()
+                        .isEmpty);
             attempt++
           ) {
             await tester.runAsync(

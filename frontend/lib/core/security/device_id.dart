@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:karaok_app/core/security/secure_token_store.dart';
 
 class DeviceId {
@@ -7,6 +9,11 @@ class DeviceId {
   static Future<String>? _initialization;
 
   static Future<String> get() => _initialization ??= _initialize();
+
+  /// Widget tests run each test in its own fake-async zone; a lookup started in
+  /// an earlier test may never complete in a later one, so tests reset it.
+  @visibleForTesting
+  static void resetForTesting() => _initialization = null;
 
   static Future<String> _initialize() async {
     final store = SecureTokenStore.instance;
