@@ -1,3 +1,5 @@
+import 'package:karaok_app/shared/widgets/adaptive_layout.dart';
+import 'package:karaok_app/shared/widgets/stage_progress.dart';
 import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:karaok_app/app/app_shell.dart';
 import 'package:karaok_app/app/app_theme.dart';
@@ -242,6 +244,7 @@ class _AudioTestScreenState extends State<AudioTestScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
+    _analysisTicker?.cancel();
     _noiseCheckTimer?.cancel();
     _limitTimer?.cancel();
     _amplitudes?.cancel();
@@ -662,6 +665,34 @@ class _AudioTestScreenState extends State<AudioTestScreen>
     );
   }
 
+  AnalysisStage _analysisStage = AnalysisStage.preparing;
+  double _uploadFraction = 0;
+  final _analysisElapsed = Stopwatch();
+  Timer? _analysisTicker;
+
+  void _uploadProgress(int sent, int total) {
+    if (!mounted || total <= 0) return;
+    final fraction = sent / total;
+    if (sent >= total) {
+      _analysisElapsed
+        ..reset()
+        ..start();
+      _analysisTicker ??= Timer.periodic(const Duration(milliseconds: 500), (
+        _,
+      ) {
+        if (mounted) setState(() {});
+      });
+      setState(() => _analysisStage = AnalysisStage.analyzing);
+    } else if (_analysisStage != AnalysisStage.uploading ||
+        (fraction - _uploadFraction).abs() >= .01) {
+      _analysisElapsed.stop();
+      setState(() {
+        _analysisStage = AnalysisStage.uploading;
+        _uploadFraction = fraction;
+      });
+    }
+  }
+
   Future<void> _send() async {
     final item = _staging.current;
     if (item == null ||
@@ -680,9 +711,11 @@ class _AudioTestScreenState extends State<AudioTestScreen>
       setState(() => _message = error.message);
       return;
     }
-    if (!await _guestCanAssess()) return;
+    if (!await _guestCanAssess() || !mounted || _busy) return;
     final isGuest = UserSession.instance.isGuest;
-    if (!await _staging.currentIsAvailable()) {
+    final available = await _staging.currentIsAvailable();
+    if (!mounted || _busy || _staging.current != item) return;
+    if (!available) {
       setState(() {
         _state = AudioInputState.failed;
         _message = 'The staged file is no longer available.';
@@ -691,6 +724,8 @@ class _AudioTestScreenState extends State<AudioTestScreen>
     }
     setState(() {
       _state = AudioInputState.uploading;
+      _analysisStage = AnalysisStage.preparing;
+      _uploadFraction = 0;
       _message = null;
     });
     try {
@@ -705,7 +740,9 @@ class _AudioTestScreenState extends State<AudioTestScreen>
         analysisPurpose: widget.purpose.requestValue,
         guest: isGuest,
         settingsSuggestion: widget.settingsSuggestion,
+        onUploadProgress: _uploadProgress,
       );
+      if (mounted) setState(() => _analysisStage = AnalysisStage.finishing);
       final completed = response['status'] == 'Completed';
       final result = Map<String, dynamic>.from(response)
         ..['test_name'] = item.fileName
@@ -781,7 +818,9 @@ class _AudioTestScreenState extends State<AudioTestScreen>
         setState(() {
           _state = AudioInputState.failed;
           _message = e.statusCode == 401
-              ? 'Your session expired. Sign in and retry.'
+              ? e is SessionExpiredException
+                    ? e.message
+                    : 'We could not confirm your sign-in. Retry.'
               : e.message;
         });
       }
@@ -798,6 +837,10 @@ class _AudioTestScreenState extends State<AudioTestScreen>
               'Could not complete the request. Check your connection and Records before retrying. Your audio has been kept.';
         });
       }
+    } finally {
+      _analysisTicker?.cancel();
+      _analysisTicker = null;
+      _analysisElapsed.stop();
     }
   }
 
@@ -808,253 +851,274 @@ class _AudioTestScreenState extends State<AudioTestScreen>
   Widget build(BuildContext context) {
     final item = _staging.current;
     final recording = _recording;
+    final controls = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppRadii.card),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                widget.purpose == AudioAnalysisPurpose.qualityEvaluation
+                    ? Icons.graphic_eq
+                    : Icons.tune,
+                color: widget.purpose == AudioAnalysisPurpose.qualityEvaluation
+                    ? AppColors.primary
+                    : AppColors.orangeInk,
+                size: 28,
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  widget.purpose.description,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (!recording && !_busy) ...[
+          const SizedBox(height: AppSpacing.md),
+          const RecordingChecklist(),
+          const SizedBox(height: AppSpacing.sm),
+          const Text(
+            'Play the song from a separate device or karaoke machine.',
+          ),
+        ],
+        const SizedBox(height: AppSpacing.xl),
+        Text(
+          '${_time(_elapsed)} / 05:00',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.headlineLarge,
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        Text(
+          'Record at least 10 seconds of music after the 3-second noise check. Maximum 5 minutes total. For better results, record 20–30 seconds of continuous music.',
+          textAlign: TextAlign.center,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        if (recording) ...[
+          if (_state == AudioInputState.noiseCheck)
+            const Text(
+              "Stay quiet, checking background noise. Don't start the song yet.",
+            ),
+          if (_noisy)
+            const Text(
+              "It's noisy here. Hold the phone about 30 cm (1 ft) from the speaker, pointed at it.",
+            ),
+          LinearProgressIndicator(
+            value: _elapsed.inSeconds / _limit.inSeconds,
+            color: AppColors.orangeInk,
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _state == AudioInputState.noiseCheck
+                      ? null
+                      : _pauseResume,
+                  icon: Icon(
+                    _state == AudioInputState.paused
+                        ? Icons.play_arrow
+                        : Icons.pause,
+                  ),
+                  label: Text(
+                    _state == AudioInputState.paused ? 'Resume' : 'Pause',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _stop,
+                  icon: const Icon(Icons.stop),
+                  label: const Text('Stop'),
+                ),
+              ),
+            ],
+          ),
+          TextButton.icon(
+            onPressed: _cancelRecording,
+            icon: const Icon(Icons.close),
+            label: const Text('Cancel recording'),
+          ),
+        ] else if (item == null) ...[
+          AppPrimaryButton(
+            onPressed: _busy ? null : _start,
+            icon: Icons.mic,
+            label: 'Record Audio',
+          ),
+          const SizedBox(height: AppSpacing.md),
+          AppSecondaryButton(
+            onPressed: _busy ? null : _selectFile,
+            icon: Icons.audio_file,
+            label: 'Select Audio File',
+          ),
+        ],
+        if (_busy)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+            child: StageProgress(
+              stage: _state == AudioInputState.uploading
+                  ? _analysisStage
+                  : AnalysisStage.preparing,
+              value: analysisProgress(
+                stage: _state == AudioInputState.uploading
+                    ? _analysisStage
+                    : AnalysisStage.preparing,
+                uploadFraction: _uploadFraction,
+                elapsedAnalyzing: _analysisElapsed.elapsed,
+                audioLength: item?.duration ?? Duration.zero,
+              ),
+              label: switch (_state) {
+                AudioInputState.uploading => switch (_analysisStage) {
+                  AnalysisStage.preparing => 'Preparing audio.',
+                  AnalysisStage.uploading => 'Uploading audio…',
+                  AnalysisStage.analyzing =>
+                    'Analyzing audio. Keep this screen open.',
+                  AnalysisStage.finishing => 'Preparing your results.',
+                },
+                AudioInputState.requestingPermission =>
+                  'Waiting for microphone permission.',
+                AudioInputState.selecting =>
+                  'Preparing the selected audio file.',
+                _ => 'Preparing your recording.',
+              },
+            ),
+          ),
+      ],
+    );
+    final showStaged =
+        item != null &&
+        !recording &&
+        (!_busy || _state == AudioInputState.uploading);
     return AppPageScaffold(
       title: widget.purpose.pageTitle,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(AppRadii.card),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  widget.purpose == AudioAnalysisPurpose.qualityEvaluation
-                      ? Icons.graphic_eq
-                      : Icons.tune,
-                  color:
-                      widget.purpose == AudioAnalysisPurpose.qualityEvaluation
-                      ? AppColors.primary
-                      : AppColors.orangeInk,
-                  size: 28,
-                ),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Text(
-                    widget.purpose.description,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (!recording && !_busy) ...[
-            const SizedBox(height: AppSpacing.md),
-            const RecordingChecklist(),
-            const SizedBox(height: AppSpacing.sm),
-            const Text(
-              'Play the song from a separate device or karaoke machine.',
-            ),
-          ],
-          const SizedBox(height: AppSpacing.xl),
-          Text(
-            '${_time(_elapsed)} / 05:00',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineLarge,
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Text(
-            'Record at least 10 seconds of music after the 3-second noise check. Maximum 5 minutes total. For better results, record 20–30 seconds of continuous music.',
-            textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          if (recording) ...[
-            if (_state == AudioInputState.noiseCheck)
-              const Text(
-                "Stay quiet, checking background noise. Don't start the song yet.",
-              ),
-            if (_noisy)
-              const Text(
-                "It's noisy here. Hold the phone about 30 cm (1 ft) from the speaker, pointed at it.",
-              ),
-            LinearProgressIndicator(
-              value: _elapsed.inSeconds / _limit.inSeconds,
-              color: AppColors.orangeInk,
-            ),
-            const SizedBox(height: AppSpacing.xl),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _state == AudioInputState.noiseCheck
-                        ? null
-                        : _pauseResume,
-                    icon: Icon(
-                      _state == AudioInputState.paused
-                          ? Icons.play_arrow
-                          : Icons.pause,
-                    ),
-                    label: Text(
-                      _state == AudioInputState.paused ? 'Resume' : 'Pause',
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _stop,
-                    icon: const Icon(Icons.stop),
-                    label: const Text('Stop'),
-                  ),
-                ),
-              ],
-            ),
-            TextButton.icon(
-              onPressed: _cancelRecording,
-              icon: const Icon(Icons.close),
-              label: const Text('Cancel recording'),
-            ),
-          ] else if (item == null) ...[
-            AppPrimaryButton(
-              onPressed: _busy ? null : _start,
-              icon: Icons.mic,
-              label: 'Record Audio',
-            ),
-            const SizedBox(height: AppSpacing.md),
-            AppSecondaryButton(
-              onPressed: _busy ? null : _selectFile,
-              icon: Icons.audio_file,
-              label: 'Select Audio File',
-            ),
-          ],
-          if (_busy)
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Semantics(
-                liveRegion: true,
-                child: Column(
-                  children: [
-                    const CircularProgressIndicator(),
-                    const SizedBox(height: 12),
-                    Text(switch (_state) {
-                      AudioInputState.uploading =>
-                        'Uploading and analyzing audio. Keep this screen open.',
-                      AudioInputState.requestingPermission =>
-                        'Waiting for microphone permission.',
-                      AudioInputState.selecting =>
-                        'Preparing the selected audio file.',
-                      _ => 'Preparing your recording.',
-                    }, textAlign: TextAlign.center),
-                  ],
-                ),
-              ),
-            ),
-          if (item != null &&
-              !recording &&
-              (!_busy || _state == AudioInputState.uploading)) ...[
-            const SizedBox(height: AppSpacing.xl),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    AppSectionHeader(title: item.fileName),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${item.source == AudioSourceType.recording ? 'Recorded' : 'Selected'} • ${item.format} • ${(item.sizeBytes / 1024 / 1024).toStringAsFixed(2)} MB • ${_time(item.duration)}',
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Text(_time(_previewPosition)),
-                        Expanded(
-                          child: Slider(
-                            value: _previewDuration.inMilliseconds == 0
-                                ? 0
-                                : _previewPosition.inMilliseconds
-                                      .clamp(0, _previewDuration.inMilliseconds)
-                                      .toDouble(),
-                            max: _previewDuration.inMilliseconds > 0
-                                ? _previewDuration.inMilliseconds.toDouble()
-                                : item.duration.inMilliseconds.toDouble(),
-                            onChanged: _previewPath == item.path
-                                ? _seekPreview
+          if (showStaged)
+            AdaptiveColumns(
+              primary: controls,
+              secondary: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      AppSectionHeader(title: item.fileName),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${item.source == AudioSourceType.recording ? 'Recorded' : 'Selected'} • ${item.format} • ${(item.sizeBytes / 1024 / 1024).toStringAsFixed(2)} MB • ${_time(item.duration)}',
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Text(_time(_previewPosition)),
+                          Expanded(
+                            child: Slider(
+                              value: _previewDuration.inMilliseconds == 0
+                                  ? 0
+                                  : _previewPosition.inMilliseconds
+                                        .clamp(
+                                          0,
+                                          _previewDuration.inMilliseconds,
+                                        )
+                                        .toDouble(),
+                              max: _previewDuration.inMilliseconds > 0
+                                  ? _previewDuration.inMilliseconds.toDouble()
+                                  : item.duration.inMilliseconds.toDouble(),
+                              onChanged: _previewPath == item.path
+                                  ? _seekPreview
+                                  : null,
+                            ),
+                          ),
+                          Text(
+                            _time(
+                              _previewDuration == Duration.zero
+                                  ? item.duration
+                                  : _previewDuration,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          TextButton.icon(
+                            onPressed: _busy ? null : _preview,
+                            icon: Icon(
+                              _player.playing ? Icons.pause : Icons.play_arrow,
+                            ),
+                            label: Text(
+                              _player.playing
+                                  ? 'Pause'
+                                  : _previewPosition > Duration.zero
+                                  ? 'Resume'
+                                  : 'Play',
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: _busy ? null : _start,
+                            icon: const Icon(Icons.mic),
+                            label: const Text('Record Again'),
+                          ),
+                          TextButton.icon(
+                            onPressed:
+                                _previewPath == item.path &&
+                                    _previewPosition > Duration.zero
+                                ? _stopPreview
                                 : null,
+                            icon: const Icon(Icons.stop),
+                            label: const Text('Stop'),
                           ),
-                        ),
-                        Text(
-                          _time(
-                            _previewDuration == Duration.zero
-                                ? item.duration
-                                : _previewDuration,
+                          TextButton.icon(
+                            onPressed: _state == AudioInputState.uploading
+                                ? null
+                                : _remove,
+                            icon: const Icon(Icons.delete_outline),
+                            label: const Text('Remove'),
                           ),
-                        ),
-                      ],
-                    ),
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        TextButton.icon(
-                          onPressed: _busy ? null : _preview,
-                          icon: Icon(
-                            _player.playing ? Icons.pause : Icons.play_arrow,
+                          TextButton.icon(
+                            onPressed: _state == AudioInputState.uploading
+                                ? null
+                                : _selectFile,
+                            icon: const Icon(Icons.swap_horiz),
+                            label: const Text('Choose Another File'),
                           ),
+                        ],
+                      ),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: _state == AudioInputState.uploading
+                              ? null
+                              : _send,
+                          icon: const Icon(Icons.cloud_upload),
                           label: Text(
-                            _player.playing
-                                ? 'Pause'
-                                : _previewPosition > Duration.zero
-                                ? 'Resume'
-                                : 'Play',
+                            _state == AudioInputState.uploading
+                                ? 'Uploading…'
+                                : widget.purpose.submitLabel,
                           ),
-                        ),
-                        TextButton.icon(
-                          onPressed: _busy ? null : _start,
-                          icon: const Icon(Icons.mic),
-                          label: const Text('Record Again'),
-                        ),
-                        TextButton.icon(
-                          onPressed:
-                              _previewPath == item.path &&
-                                  _previewPosition > Duration.zero
-                              ? _stopPreview
-                              : null,
-                          icon: const Icon(Icons.stop),
-                          label: const Text('Stop'),
-                        ),
-                        TextButton.icon(
-                          onPressed: _state == AudioInputState.uploading
-                              ? null
-                              : _remove,
-                          icon: const Icon(Icons.delete_outline),
-                          label: const Text('Remove'),
-                        ),
-                        TextButton.icon(
-                          onPressed: _state == AudioInputState.uploading
-                              ? null
-                              : _selectFile,
-                          icon: const Icon(Icons.swap_horiz),
-                          label: const Text('Choose Another File'),
-                        ),
-                      ],
-                    ),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: _state == AudioInputState.uploading
-                            ? null
-                            : _send,
-                        icon: const Icon(Icons.cloud_upload),
-                        label: Text(
-                          _state == AudioInputState.uploading
-                              ? 'Uploading…'
-                              : widget.purpose.submitLabel,
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            )
+          else
+            controls,
           AnimatedSize(
             duration: MediaQuery.disableAnimationsOf(context)
                 ? Duration.zero

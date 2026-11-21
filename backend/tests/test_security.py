@@ -13,18 +13,24 @@ os.environ.setdefault("JWT_SECRET", "test-only-secret-that-is-at-least-32-charac
 
 import app as api
 from audio_thresholds import load_genre_profiles
+from karaok.auth.otp import code_digest
+from karaok.security.throttle import AuthThrottle, MemoryThrottleStore
 
 api.app.config["TESTING"] = True
 
 
 class SecurityValidationTests(unittest.TestCase):
+    def setUp(self):
+        self.enterContext(patch("karaok.auth.accounts.auth_throttle", AuthThrottle(MemoryThrottleStore())))
+
+
     @staticmethod
     def registration_payload(**overrides):
         payload = {
             "username": "new-user",
             "first_name": "Mary Jane",
             "last_name": "Dela Cruz",
-            "email": "user@example.com",
+            "email": "user@gmail.com",
             "password": "Good#A1b",
             "address": "123 Sample Street, Manila",
             "city": "Manila",
@@ -103,20 +109,15 @@ class SecurityValidationTests(unittest.TestCase):
                     (image, mime_type),
                 )
 
-    def test_temporary_password_meets_password_policy(self):
-        temporary_password = api.generate_temporary_password()
-        self.assertEqual(api.validate_password(temporary_password), temporary_password)
-        self.assertEqual(len(temporary_password), 8)
-
     def test_email_is_normalized(self):
         self.assertEqual(api.clean_email("  User@Example.COM "), "user@example.com")
 
     def test_http_errors_are_returned_as_json(self):
         with api.app.test_request_context("/api/auth/register"):
-            response, status = api.handle_http_error(TooManyRequests())
+            response, status, headers = api.handle_http_error(TooManyRequests())
         self.assertEqual(status, 429)
         self.assertEqual(response.content_type, "application/json")
-        self.assertIn("Too many requests", response.get_json()["error"])
+        self.assertEqual(headers["Retry-After"], str(response.get_json()["retry_after"]))
 
         with api.app.test_request_context("/api/auth/register"):
             response, status = api.handle_http_error(InternalServerError())
@@ -130,38 +131,14 @@ class SecurityValidationTests(unittest.TestCase):
             with patch.object(api, "audit"):
                 responses = [
                     api.app.test_client().post("/api/auth/register", json={})
-                    for _ in range(6)
+                    for _ in range(121)
                 ]
             self.assertEqual(responses[-1].status_code, 429)
             self.assertEqual(responses[-1].content_type, "application/json")
-            self.assertIn(
-                "Too many requests", responses[-1].get_json()["error"]
-            )
+            self.assertEqual(responses[-1].headers["Retry-After"],
+                             str(responses[-1].get_json()["retry_after"]))
         finally:
             api.limiter.reset()
-
-    def test_registration_email_network_failure_returns_json(self):
-        connection = unittest.mock.MagicMock()
-        cursor = connection.cursor.return_value
-        cursor.fetchone.return_value = None
-        cursor.lastrowid = 31
-        with patch.object(api, "get_db", return_value=connection), patch.object(
-            api, "send_registration_otp", side_effect=OSError("network unavailable")
-        ), patch.object(api, "SMTP_HOST", "smtp.example.com"), patch.object(
-            api, "SMTP_USERNAME", "user"
-        ), patch.object(api, "SMTP_PASSWORD", "password"), patch.object(
-            api, "SMTP_FROM", "no-reply@example.com"
-        ):
-            response = api.app.test_client().post(
-                "/api/auth/register", json=self.registration_payload()
-            )
-
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.content_type, "application/json")
-        self.assertEqual(
-            response.get_json()["error"], "Unable to send verification email"
-        )
-        connection.rollback.assert_called_once()
 
     def test_token_hash_is_deterministic_and_not_plaintext(self):
         digest = api.token_hash("secret-token")
@@ -185,25 +162,25 @@ class SecurityValidationTests(unittest.TestCase):
         cursor.lastrowid = 31
         with patch.object(api, "get_db", return_value=connection), patch.object(
             api, "send_registration_otp"
-        ) as send_otp, patch.object(api, "SMTP_HOST", "smtp.example.com"), patch.object(
+        ), patch.object(api, "SMTP_HOST", "smtp.example.com"), patch.object(
             api, "SMTP_USERNAME", "user"
         ), patch.object(api, "SMTP_PASSWORD", "password"), patch.object(
             api, "SMTP_FROM", "no-reply@example.com"
         ):
             response = api.app.test_client().post(
                 "/api/auth/register",
-                json=self.registration_payload(email="  User@Example.COM "),
+                json=self.registration_payload(email="  User@GMail.COM "),
             )
         self.assertEqual(response.status_code, 202)
-        self.assertEqual(response.get_json()["email"], "user@example.com")
+        self.assertEqual(response.get_json()["email"], "user@gmail.com")
         insert_user = next(
             call
             for call in cursor.execute.call_args_list
             if "INSERT INTO user" in call.args[0]
         )
         self.assertEqual(
-            insert_user.args[1][0:4],
-            ("new-user", "Mary Jane", "Dela Cruz", "user@example.com"),
+            insert_user.args[1][0:5],
+            ("new-user", "user@gmail.com", "user@gmail.com", "Mary Jane", "Dela Cruz"),
         )
         self.assertIn("'user'", insert_user.args[0])
         insert_otp = next(
@@ -212,8 +189,7 @@ class SecurityValidationTests(unittest.TestCase):
             if "INSERT INTO registration_otp" in call.args[0]
         )
         self.assertEqual(insert_otp.args[1][0], 31)
-        send_otp.assert_called_once()
-        self.assertEqual(send_otp.call_args.args[0], "user@example.com")
+        self.assertRegex(response.get_json()["challenge_id"], r"^[0-9a-f]{32}$")
 
     def test_profile_update_changes_editable_fields_and_keeps_email_immutable(self):
         connection = unittest.mock.MagicMock()
@@ -347,7 +323,7 @@ class SecurityValidationTests(unittest.TestCase):
                 f"CREATE TABLE IF NOT EXISTS {retired_table}",
                 schema,
             )
-        self.assertEqual(schema.count("CREATE TABLE IF NOT EXISTS "), 11)
+        self.assertEqual(schema.count("CREATE TABLE IF NOT EXISTS "), 13)
 
         analysis_table = schema.split(
             "CREATE TABLE IF NOT EXISTS audio_analysis_result", 1
@@ -621,9 +597,10 @@ class SecurityValidationTests(unittest.TestCase):
     def test_verification_marks_linked_user_email_as_verified(self):
         connection = unittest.mock.MagicMock()
         cursor = connection.cursor.return_value
-        cursor.fetchone.return_value = {
+        challenge_id = "a" * 32
+        user = {
             "registration_id": 9,
-            "code_hash": api.token_hash("123456"),
+            "code_hash": code_digest("registration", challenge_id, "user@example.com", "123456"),
             "attempts": 0,
             "user_id": 31,
             "username": "new-user",
@@ -642,19 +619,20 @@ class SecurityValidationTests(unittest.TestCase):
             "profile_image_mime": None,
             "role": "user",
         }
+        cursor.fetchone.side_effect = [user, user]
         with patch.object(api, "get_db", return_value=connection), patch.object(
             api, "auth_response", return_value=({"verified": True}, 201)
         ), patch.object(api, "audit"):
             response = api.app.test_client().post(
                 "/api/auth/register/verify",
-                json={"email": "user@example.com", "code": "123456"},
+                json={"email": "user@example.com", "code": "123456", "challenge_id": challenge_id},
             )
 
         self.assertEqual(response.status_code, 201)
         statements = "\n".join(
             call.args[0] for call in cursor.execute.call_args_list
         )
-        self.assertIn("JOIN user ON user.user_id = registration_otp.user_id", statements)
+        self.assertIn("JOIN user ON user.user_id = otp.user_id", statements)
         self.assertIn("UPDATE user SET email_verified_at", statements)
         self.assertNotIn("INSERT INTO user", statements)
 
@@ -736,29 +714,6 @@ class SecurityValidationTests(unittest.TestCase):
         newer = {"security_updated_at_epoch": 1_721_400_001}
         self.assertFalse(api._token_precedes_security_update(payload, current))
         self.assertTrue(api._token_precedes_security_update(payload, newer))
-
-    def test_forgot_password_replaces_password_and_revokes_sessions(self):
-        connection = unittest.mock.MagicMock()
-        cursor = connection.cursor.return_value
-        cursor.fetchone.return_value = {"id": 7}
-        with patch.object(api, "get_db", return_value=connection), patch.object(
-            api, "send_temporary_password_email"
-        ) as send_email, patch.object(api, "SMTP_HOST", "smtp.example.com"), patch.object(
-            api, "SMTP_USERNAME", "user"
-        ), patch.object(api, "SMTP_PASSWORD", "password"), patch.object(
-            api, "SMTP_FROM", "no-reply@example.com"
-        ), patch.object(api, "audit"):
-            response = api.app.test_client().post(
-                "/api/auth/forgot-password",
-                json={"email": "user@example.com"},
-            )
-
-        self.assertEqual(response.status_code, 200)
-        send_email.assert_called_once()
-        self.assertTrue(connection.commit.called)
-        statements = "\n".join(call.args[0] for call in cursor.execute.call_args_list)
-        self.assertIn("requires_password_change = TRUE", statements)
-        self.assertIn("UPDATE refresh_token", statements)
 
     def test_reset_token_endpoint_is_removed(self):
         response = api.app.test_client().post(

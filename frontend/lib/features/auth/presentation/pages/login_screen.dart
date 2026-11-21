@@ -1,3 +1,4 @@
+import 'package:karaok_app/core/security/submit_guard.dart';
 import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:karaok_app/shared/widgets/form_feedback.dart';
 import 'package:karaok_app/app/app_theme.dart';
@@ -21,7 +22,10 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen>
+    with GuardedSubmit<LoginScreen> {
+  @override
+  Iterable<String> get submitActions => ['login'];
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _identifierCtrl;
   final _passCtrl = TextEditingController();
@@ -63,7 +67,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
-    if (_loading) return;
+    if (_loading || guard('login').isLocked) return;
     setState(_feedback.clear);
     if (!_formKey.currentState!.validate()) {
       _feedback.reveal();
@@ -74,6 +78,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
+      if (await guard('login').recordAttempt() != null || !mounted) return;
       final res = await (widget.authApi ?? AuthApi()).login(
         identifier: _identifierCtrl.text.trim(),
         password: _passCtrl.text,
@@ -100,6 +105,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       _navigateHome();
     } on ApiException catch (e) {
+      await applyRetryAfter('login', e);
       if (!mounted) return;
       setState(() {
         _feedback.receive(e, aliases: const {'identifier': 'email'});
@@ -111,8 +117,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       setState(() {
         _error = 'Could not connect to server.';
-        _loading = false;
       });
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -145,6 +152,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return AppPageScaffold(
       title: 'Sign in',
+      maxContentWidth: 480,
       automaticallyImplyLeading: false,
       leading: IconButton(
         tooltip: 'Back',
@@ -235,8 +243,8 @@ class _LoginScreenState extends State<LoginScreen> {
             SizedBox(
               width: double.infinity,
               child: AppPrimaryButton(
-                label: 'Log In',
-                onPressed: _login,
+                label: guard('login').label('Log In'),
+                onPressed: guard('login').isLocked ? null : _login,
                 isLoading: _loading,
               ),
             ),

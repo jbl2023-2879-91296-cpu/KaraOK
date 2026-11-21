@@ -41,7 +41,7 @@ void main() {
 
       final suffix = DateTime.now().microsecondsSinceEpoch.toString();
       final uniquePart = suffix.substring(suffix.length - 12);
-      final email = 'settings-e2e-$uniquePart@example.test';
+      final email = 'settings-e2e-$uniquePart@gmail.com';
       final registration = await authApi.startRegistration(
         username: 'e2e_$uniquePart',
         email: email,
@@ -56,6 +56,7 @@ void main() {
       );
       final user = await authApi.verifyRegistration(
         email: email,
+        challengeId: registration['challenge_id'] as String,
         code: developmentCode as String,
       );
       UserSession.instance.setUserFromMap(user);

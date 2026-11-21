@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS user (
     first_name VARCHAR(80) NULL,
     last_name VARCHAR(80) NULL,
     email VARCHAR(100) NOT NULL UNIQUE,
+    email_canonical VARCHAR(254) NULL,
     password VARCHAR(255) NOT NULL,
     email_verified_at DATETIME NULL,
 
@@ -47,9 +48,10 @@ CREATE TABLE IF NOT EXISTS user (
     -- Merged from the former user_security table.
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     requires_password_change BOOLEAN NOT NULL DEFAULT FALSE,
-    security_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    security_updated_at TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP(6),
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_user_email_canonical (email_canonical),
     KEY idx_user_role_created (role, created_at)
 );
 
@@ -336,12 +338,47 @@ CREATE TABLE IF NOT EXISTS api_request_log (
 CREATE TABLE IF NOT EXISTS registration_otp (
     registration_id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
+    email VARCHAR(254) NOT NULL,
+    challenge_id CHAR(32) NOT NULL,
+    last_sent_at DATETIME NOT NULL,
+    send_count_window_start DATETIME NOT NULL,
+    send_count TINYINT UNSIGNED NOT NULL DEFAULT 0,
     code_hash CHAR(64) NOT NULL,
     expires_at DATETIME NOT NULL,
     attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_registration_otp_challenge (challenge_id),
     UNIQUE KEY uq_registration_otp_user (user_id),
     KEY idx_registration_otp_expires (expires_at),
     CONSTRAINT fk_registration_otp_user
         FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS password_reset_otp (
+    reset_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    email VARCHAR(254) NOT NULL,
+    challenge_id CHAR(32) NOT NULL,
+    last_sent_at DATETIME NOT NULL,
+    send_count_window_start DATETIME NOT NULL,
+    send_count TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    code_hash CHAR(64) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_password_reset_otp_challenge (challenge_id),
+    UNIQUE KEY uq_password_reset_otp_user (user_id),
+    KEY idx_password_reset_otp_expires (expires_at),
+    CONSTRAINT fk_password_reset_otp_user
+        FOREIGN KEY (user_id) REFERENCES user(user_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS auth_throttle (
+    throttle_key CHAR(64) PRIMARY KEY,
+    window_started_at DOUBLE NOT NULL,
+    hits INT UNSIGNED NOT NULL DEFAULT 0,
+    strikes TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    locked_until DOUBLE NOT NULL DEFAULT 0,
+    last_seen_at DOUBLE NOT NULL,
+    KEY idx_auth_throttle_last_seen (last_seen_at)
 );

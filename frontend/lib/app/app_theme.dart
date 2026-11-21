@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+abstract final class AppBreakpoints {
+  static const medium = 600.0;
+  static const expanded = 840.0;
+  static const expandedContentWidth = 1080.0;
+}
+
 /// Colors drawn from the supplied KaraOK logo, with darker ink tones for
 /// readable text and controls on light surfaces.
 abstract final class AppColors {

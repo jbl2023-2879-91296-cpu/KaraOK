@@ -242,6 +242,22 @@
       "auth.forgot_password"
     ],
     [
+      "/api/auth/forgot-password/resend",
+      [
+        "OPTIONS",
+        "POST"
+      ],
+      "auth.resend_password_reset"
+    ],
+    [
+      "/api/auth/forgot-password/reset",
+      [
+        "OPTIONS",
+        "POST"
+      ],
+      "auth.reset_password"
+    ],
+    [
       "/api/auth/login",
       [
         "OPTIONS",
@@ -272,6 +288,14 @@
         "POST"
       ],
       "auth.register"
+    ],
+    [
+      "/api/auth/register/resend",
+      [
+        "OPTIONS",
+        "POST"
+      ],
+      "auth.resend_registration"
     ],
     [
       "/api/auth/register/verify",
@@ -402,14 +426,13 @@
     "persist_audio_analysis": "(assessment_id: 'int', upload_id: 'int', dump: 'dict[str, Any]', *, recommendation: 'settings_recommendation_service.SettingsRecommendation | None' = None, recommendation_context: 'settings_recommendation_service.SuggestionContext | None' = None) -> 'dict[str, Any]'",
     "mark_audio_analysis_failed": "(assessment_id: 'int', upload_id: 'int', duration_seconds: 'float | None' = None) -> 'None'",
     "send_registration_otp": "(email: 'str', code: 'str') -> 'None'",
-    "send_temporary_password_email": "(email: 'str', temporary_password: 'str') -> 'None'",
     "client_ip": "() -> 'str'",
     "begin_api_request_log": "() -> 'None'",
     "complete_api_request_log": "(response)",
     "audit": "(action: 'str', result: 'str', *, user_id: 'int | None' = None, resource_type: 'str | None' = None, resource_id: 'int | None' = None, details: 'str | None' = None) -> 'None'",
     "issue_access_token": "(user: 'dict[str, Any]') -> 'tuple[str, int]'",
     "create_refresh_token": "(user_id: 'int') -> 'tuple[str, datetime]'",
-    "auth_response": "(user: 'dict[str, Any]', status: 'int' = 200)",
+    "auth_response": "(user: 'dict[str, Any]', status: 'int' = 200, *, cursor=None)",
     "_token_precedes_security_update": "(payload: 'dict[str, Any]', account: 'dict[str, Any]') -> 'bool'",
     "require_auth": "(*roles: 'str') -> 'Callable'",
     "handle_validation_error": "(error: 'ValueError')",

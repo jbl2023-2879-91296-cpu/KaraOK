@@ -2,6 +2,12 @@
 
 All notable changes to KaraOK are documented here.
 
+## Unreleased
+
+- Harden account authentication with device-scoped throttling and email-bound verification codes.
+- Replace temporary-password emails with password reset codes and add OTP expiry and resend countdowns.
+- Improve session refresh during audio uploads, analysis progress, and tablet layouts.
+
 ## 2026-11-19 - 1.12.0+18 - Noise Guard
 
 Backend deployed to production the same day from `main` (PR #6; migrations

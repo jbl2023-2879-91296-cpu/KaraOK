@@ -46,6 +46,7 @@ class AssessmentApi {
     String analysisPurpose = 'quality_evaluation',
     bool guest = false,
     SettingsSuggestionInput? settingsSuggestion,
+    void Function(int sent, int total)? onUploadProgress,
   }) {
     if (analysisPurpose == 'settings_suggestion') {
       if (settingsSuggestion == null) {
@@ -73,6 +74,7 @@ class AssessmentApi {
       genre: genre,
       analysisPurpose: analysisPurpose,
       guest: guest,
+      onUploadProgress: onUploadProgress,
       settingsSuggestionFields: analysisPurpose == 'settings_suggestion'
           ? settingsSuggestion!.toMultipartFields()
           : null,

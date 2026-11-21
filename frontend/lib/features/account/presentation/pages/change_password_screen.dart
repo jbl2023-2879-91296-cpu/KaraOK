@@ -937,7 +937,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               ],
               Text(
                 widget.forceChange
-                    ? 'You signed in with a temporary password. Change it now before continuing.'
+                    ? 'Your account requires a new password before you can continue.'
                     : 'Enter your current password, then choose a new secure password.',
                 style: const TextStyle(color: AppColors.muted, height: 1.4),
               ),

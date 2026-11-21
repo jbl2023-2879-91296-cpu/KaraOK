@@ -7,6 +7,39 @@ import 'package:karaok_app/core/network/api_service.dart';
 
 void main() {
   test(
+    'API sends a stable device ID and uses the server countdown verbatim',
+    () async {
+      String? previous;
+      final api = ApiService.withClient(
+        MockClient((request) async {
+          final id = request.headers['X-KaraOK-Device'];
+          expect(id, matches(r'^[0-9a-f]{32}$'));
+          if (previous != null) expect(id, previous);
+          previous = id;
+          return http.Response(
+            '{"error":"Too many attempts. Try again in 30 seconds.","retry_after":30}',
+            429,
+          );
+        }),
+      );
+      for (var i = 0; i < 2; i++) {
+        await expectLater(
+          api.requestPasswordReset('a@gmail.com'),
+          throwsA(
+            isA<ApiException>()
+                .having((error) => error.retryAfterSeconds, 'seconds', 30)
+                .having(
+                  (error) => error.message,
+                  'copy',
+                  'Too many attempts. Try again in 30 seconds.',
+                ),
+          ),
+        );
+      }
+    },
+  );
+
+  test(
     'maps single and multiple server field errors without losing message',
     () async {
       for (final body in [

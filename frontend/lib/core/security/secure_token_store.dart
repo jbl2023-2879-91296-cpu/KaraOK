@@ -2,14 +2,21 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// The only component allowed to persist API credentials on the device.
 class SecureTokenStore {
-  SecureTokenStore._();
+  SecureTokenStore([this._storage = const FlutterSecureStorage()]);
 
-  static final SecureTokenStore instance = SecureTokenStore._();
+  static final SecureTokenStore instance = SecureTokenStore();
 
   static const _accessTokenKey = 'karaok_access_token';
   static const _refreshTokenKey = 'karaok_refresh_token';
   static const _lastIdentifierKey = 'karaok_last_identifier';
-  static const _storage = FlutterSecureStorage();
+  final FlutterSecureStorage _storage;
+
+  Future<String?> readAuthState(String key) => _storage.read(key: key);
+
+  Future<void> writeAuthState(String key, String value) =>
+      _storage.write(key: key, value: value);
+
+  Future<void> deleteAuthState(String key) => _storage.delete(key: key);
 
   Future<String?> readAccessToken() => _storage.read(key: _accessTokenKey);
 

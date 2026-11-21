@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:karaok_app/app/app_theme.dart';
+import 'package:karaok_app/shared/widgets/adaptive_layout.dart';
 
 // Hallmark · existing brand, light utility UI; hierarchy through type and space.
 // Pre-emit critique: Philosophy 4, Hierarchy 4, Execution 4,
@@ -17,6 +18,7 @@ class AppPageScaffold extends StatelessWidget {
     this.floatingActionButton,
     this.automaticallyImplyLeading = true,
     this.leading,
+    this.maxContentWidth,
   });
 
   final String title;
@@ -27,6 +29,7 @@ class AppPageScaffold extends StatelessWidget {
   final Widget? floatingActionButton;
   final bool automaticallyImplyLeading;
   final Widget? leading;
+  final double? maxContentWidth;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -39,35 +42,52 @@ class AppPageScaffold extends StatelessWidget {
     bottomNavigationBar: bottomNavigationBar,
     floatingActionButton: floatingActionButton,
     body: SafeArea(
-      child: SingleChildScrollView(
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: const EdgeInsets.all(AppSpacing.page),
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: AppSpacing.contentWidth,
-            ),
-            child: SizedBox(
-              width: double.infinity,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (subtitle != null) ...[
-                    Text(
-                      subtitle!,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodyLarge?.copyWith(color: AppColors.muted),
-                    ),
-                    const SizedBox(height: AppSpacing.xl),
-                  ],
-                  child,
-                ],
+      child: LayoutBuilder(
+        builder: (context, viewport) {
+          final maxWidth =
+              maxContentWidth ??
+              (windowSizeOf(context) == WindowSize.expanded
+                  ? AppBreakpoints.expandedContentWidth
+                  : AppSpacing.contentWidth);
+          const padding = EdgeInsets.all(AppSpacing.page);
+          return SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: padding,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: maxContentWidth == null
+                    ? 0
+                    : (viewport.maxHeight - padding.vertical).clamp(
+                        0.0,
+                        double.infinity,
+                      ),
+              ),
+              child: Align(
+                alignment: maxContentWidth == null
+                    ? Alignment.topCenter
+                    : Alignment.center,
+                child: SizedBox(
+                  width: maxWidth,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (subtitle != null) ...[
+                        Text(
+                          subtitle!,
+                          style: Theme.of(context).textTheme.bodyLarge
+                              ?.copyWith(color: AppColors.muted),
+                        ),
+                        const SizedBox(height: AppSpacing.xl),
+                      ],
+                      child,
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     ),
   );

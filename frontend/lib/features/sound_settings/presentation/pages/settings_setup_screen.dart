@@ -502,8 +502,10 @@ class _SettingsSetupScreenState extends State<SettingsSetupScreen> {
         if (error.statusCode == 409) {
           _nameError = error.message;
         } else {
-          _positionError = error.statusCode == 401
-              ? 'Your session expired. Sign in and retry.'
+          _positionError = error is SessionExpiredException
+              ? error.message
+              : error.statusCode == 401
+              ? 'We could not confirm your sign-in. Retry.'
               : 'Could not save the amplifier setup. Try again.';
         }
       });

@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/otp_countdown.dart';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -15,6 +16,7 @@ class _Auth extends AuthApi {
   int calls = 0;
   String? email;
   String? submittedCode;
+  String? submittedChallenge;
   String? submittedPassword;
   Future<Map<String, dynamic>> fail() async {
     calls++;
@@ -45,9 +47,11 @@ class _Auth extends AuthApi {
   @override
   Future<Map<String, dynamic>> verifyRegistration({
     required String email,
+    required String challengeId,
     required String code,
   }) {
     this.email = email;
+    submittedChallenge = challengeId;
     submittedCode = code;
     return fail();
   }
@@ -58,6 +62,14 @@ class _Auth extends AuthApi {
     return fail();
   }
 }
+
+OtpChallenge fixtureChallenge() => OtpChallenge(
+  email: 'singer@gmail.com',
+  challengeId: 'fixture-challenge',
+  expiresAt: DateTime.now().millisecondsSinceEpoch ~/ 1000 + 600,
+  resendAvailableAt: DateTime.now().millisecondsSinceEpoch ~/ 1000 + 300,
+  skewSeconds: 0,
+);
 
 Finder field(int index) => find.byType(TextFormField).at(index);
 TextField fieldWidget(WidgetTester tester, int index) =>
@@ -81,7 +93,7 @@ Future<void> submit(WidgetTester tester, String label) async {
 }
 
 Future<void> signupValues(WidgetTester tester) async {
-  await tester.enterText(field(0), '  singer@example.com  ');
+  await tester.enterText(field(0), '  singer@gmail.com  ');
   await tester.enterText(field(1), 'Example123!');
   await tester.enterText(field(2), 'Example123!');
 }
@@ -111,7 +123,7 @@ void main() {
         if (signup) {
           expect(fieldWidget(tester, 2).decoration?.errorText, isNull);
         }
-        await tester.enterText(field(0), 'singer@example.com');
+        await tester.enterText(field(0), 'singer@gmail.com');
         await tester.enterText(field(1), signup ? 'weak' : 'fixture');
         await tester.pumpAndSettle();
         expect(fieldWidget(tester, 0).decoration?.errorText, isNull);
@@ -162,7 +174,7 @@ void main() {
       await signupValues(tester);
       await submit(tester, 'Send Verification Code');
       expect(api.calls, 1);
-      expect(api.email, 'singer@example.com');
+      expect(api.email, 'singer@gmail.com');
       expect(api.submittedPassword, 'Example123!');
     },
   );
@@ -210,7 +222,7 @@ void main() {
       );
       expect(fieldWidget(tester, 0).focusNode!.hasFocus, isTrue);
       expect(find.byType(FormErrorBanner), findsNothing);
-      await tester.enterText(field(0), 'other@example.com');
+      await tester.enterText(field(0), 'other@gmail.com');
       await tester.pumpAndSettle();
       expect(fieldWidget(tester, 0).decoration?.errorText, isNull);
       expect(
@@ -220,30 +232,20 @@ void main() {
     },
   );
 
-  for (final structured in [false, true]) {
-    testWidgets(
-      'signup 409 offers account recovery (field errors: $structured)',
-      (tester) async {
-        final api = _Auth()
-          ..failure = ApiException(
-            409,
-            'Account already exists.',
-            fieldErrors: structured ? {'email': 'Account already exists.'} : {},
-          );
-        await show(tester, SignUpScreen(authApi: api));
-        await signupValues(tester);
-        await submit(tester, 'Send Verification Code');
-        expect(
-          fieldWidget(tester, 0).decoration?.errorText,
-          'Account already exists.',
-        );
-        expect(find.text('Sign in'), findsOneWidget);
-        expect(find.text('Reset password'), findsOneWidget);
-        expect(find.byType(FormErrorBanner), findsNothing);
-        expect(api.calls, 1);
-      },
+  testWidgets('signup rejects an unsupported email provider before sending', (
+    tester,
+  ) async {
+    final api = _Auth();
+    await show(tester, SignUpScreen(authApi: api));
+    await signupValues(tester);
+    await tester.enterText(field(0), 'person@sub.gmail.com');
+    await submit(tester, 'Send Verification Code');
+    expect(
+      find.textContaining('Use an email from a supported provider'),
+      findsOneWidget,
     );
-  }
+    expect(api.calls, 0);
+  });
 
   testWidgets('login client validation blocks missing and invalid email', (
     tester,
@@ -273,10 +275,10 @@ void main() {
           },
         );
       await show(tester, LoginScreen(authApi: api));
-      await tester.enterText(field(0), '  singer@example.com  ');
+      await tester.enterText(field(0), '  singer@gmail.com  ');
       await tester.enterText(field(1), 'fixture');
       await submit(tester, 'Log In');
-      expect(api.email, 'singer@example.com');
+      expect(api.email, 'singer@gmail.com');
       expect(
         fieldWidget(tester, 0).decoration?.errorText,
         'Email is not verified.',
@@ -305,7 +307,7 @@ void main() {
     testWidgets('login preserves specific failure: $failure', (tester) async {
       final api = _Auth()..failure = failure;
       await show(tester, LoginScreen(authApi: api));
-      await tester.enterText(field(0), 'singer@example.com');
+      await tester.enterText(field(0), 'singer@gmail.com');
       await tester.enterText(field(1), 'fixture');
       await submit(tester, 'Log In');
       final message = failure is ApiException
@@ -316,7 +318,11 @@ void main() {
       await tester.ensureVisible(find.text('Retry'));
       await tester.tap(find.text('Retry'));
       await tester.pumpAndSettle();
-      expect(api.calls, 2);
+      final throttled = failure is ApiException && failure.statusCode == 429;
+      expect(api.calls, throttled ? 1 : 2);
+      if (throttled) {
+        expect(find.textContaining('Try again in'), findsOneWidget);
+      }
       expect(find.text(message), findsOneWidget);
     });
   }
@@ -332,7 +338,7 @@ void main() {
         );
       await show(
         tester,
-        OtpVerificationScreen(email: 'singer@example.com', authApi: api),
+        OtpVerificationScreen(challenge: fixtureChallenge(), authApi: api),
       );
       await tester.enterText(field(0), '123');
       await submit(tester, 'Verify Email');
@@ -343,8 +349,9 @@ void main() {
       expect(api.calls, 0);
       await tester.enterText(field(0), '123456');
       await submit(tester, 'Verify Email');
-      expect(api.email, 'singer@example.com');
+      expect(api.email, 'singer@gmail.com');
       expect(api.submittedCode, '123456');
+      expect(api.submittedChallenge, 'fixture-challenge');
       expect(
         fieldWidget(tester, 0).decoration?.errorText,
         'This code has expired.',
@@ -366,22 +373,22 @@ void main() {
           fieldErrors: {'email': 'Use a verified email address.'},
         );
       await show(tester, ForgotPasswordScreen(authApi: api));
-      await submit(tester, 'Send temporary password');
+      await submit(tester, 'Send reset code');
       expect(find.text('Enter your email address.'), findsOneWidget);
       await tester.enterText(field(0), 'invalid');
-      await submit(tester, 'Send temporary password');
+      await submit(tester, 'Send reset code');
       expect(find.text('Enter a valid email address.'), findsOneWidget);
       expect(api.calls, 0);
-      await tester.enterText(field(0), '  singer@example.com  ');
-      await submit(tester, 'Send temporary password');
-      expect(api.email, 'singer@example.com');
+      await tester.enterText(field(0), '  singer@gmail.com  ');
+      await submit(tester, 'Send reset code');
+      expect(api.email, 'singer@gmail.com');
       expect(api.calls, 1);
       expect(
         fieldWidget(tester, 0).decoration?.errorText,
         'Use a verified email address.',
       );
       expect(fieldWidget(tester, 0).focusNode!.hasFocus, isTrue);
-      await tester.enterText(field(0), 'other@example.com');
+      await tester.enterText(field(0), 'other@gmail.com');
       await tester.pumpAndSettle();
       expect(fieldWidget(tester, 0).decoration?.errorText, isNull);
     },
@@ -395,11 +402,14 @@ void main() {
         await show(
           tester,
           otp
-              ? OtpVerificationScreen(email: 'singer@example.com', authApi: api)
+              ? OtpVerificationScreen(
+                  challenge: fixtureChallenge(),
+                  authApi: api,
+                )
               : ForgotPasswordScreen(authApi: api),
         );
-        await tester.enterText(field(0), otp ? '123456' : 'singer@example.com');
-        await submit(tester, otp ? 'Verify Email' : 'Send temporary password');
+        await tester.enterText(field(0), otp ? '123456' : 'singer@gmail.com');
+        await submit(tester, otp ? 'Verify Email' : 'Send reset code');
         expect(
           find.text(
             otp
@@ -427,13 +437,13 @@ void main() {
     (tester) async {
       final api = _Auth();
       await show(tester, LoginScreen(authApi: api));
-      await tester.enterText(field(0), 'singer@example.com');
+      await tester.enterText(field(0), 'singer@gmail.com');
       await tester.enterText(field(1), 'Example123!');
       expect(fieldWidget(tester, 1).textInputAction, TextInputAction.done);
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
       expect(api.calls, 1);
-      expect(api.email, 'singer@example.com');
+      expect(api.email, 'singer@gmail.com');
       expect(api.submittedPassword, 'Example123!');
       expect(find.byType(FormErrorBanner), findsOneWidget);
     },
@@ -498,7 +508,7 @@ void main() {
       expect(api.calls, 2);
       expect(
         fieldWidget(tester, 0).controller!.text.trim(),
-        'singer@example.com',
+        'singer@gmail.com',
       );
     },
   );
@@ -520,7 +530,7 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(api.calls, 1);
-    expect(api.email, 'singer@example.com');
+    expect(api.email, 'singer@gmail.com');
     expect(api.submittedPassword, 'Example123!');
     expect(find.byType(FormErrorBanner), findsOneWidget);
   });

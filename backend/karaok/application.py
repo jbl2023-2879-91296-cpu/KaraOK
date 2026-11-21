@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sys
+import math
+import time
 
 from flask import g, jsonify
 from mysql.connector import Error
@@ -14,6 +16,7 @@ from .core.audit import audit
 from .core.runtime import app
 from .request_logging import begin_api_request_log, complete_api_request_log
 from .security.headers import apply_security_headers
+from .security.throttle import ThrottleDecision, throttled_response
 
 # Existing scripts/tests import helpers from app; their implementations now live
 # in the owning packages. Preserve that surface without reverse feature imports.
@@ -39,7 +42,12 @@ def handle_database_error(error: Error):
 def handle_http_error(error: HTTPException):
     status_code = error.code or 500
     if status_code == 429:
-        message = "Too many requests. Please wait before trying again."
+        header = error.get_response().headers.get("Retry-After")
+        current_limit = limiter.current_limit
+        seconds = int(header) if header and header.isdecimal() else (
+            math.ceil(current_limit.reset_at - time.time()) if current_limit else 60
+        )
+        return throttled_response(ThrottleDecision(False, seconds))
     elif status_code >= 500:
         message = "Internal server error"
     else:

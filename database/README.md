@@ -1,7 +1,7 @@
 # KaraOK Database
 
 `schema.sql` is the authoritative MySQL fresh-install schema for KaraOK. It
-creates the database, 11 tables, foreign keys, and indexes. Versioned JSON
+creates the database, 13 tables, foreign keys, and indexes. Versioned JSON
 artifacts provide quality thresholds, genre profiles, and control priors.
 
 ## Important installation rule
@@ -31,6 +31,8 @@ SHOW CREATE TABLE settings_recommendation;
 | --- | --- |
 | `user` | Login identity, required profile, optional image, and account state |
 | `registration_otp` | One pending hashed email-verification code per user |
+| `password_reset_otp` | One pending email-bound password reset challenge per user |
+| `auth_throttle` | Worker-shared auth attempt windows, lockouts, and OTP send limits |
 | `refresh_token` | Hashed renewable sessions and revocation time |
 | `revoked_access_token` | Explicitly revoked JWT identifiers |
 | `assessment` | User-owned evaluation lifecycle and summary metadata |
@@ -122,6 +124,7 @@ matching backend is deployed. Each file is safe to run more than once.
 | `migrations/20261118_01_noise_guard.sql` | Noise Guard columns on `audio_analysis_result` (`noise_guard_usable_pct`, `noise_guard_confidence`, `preroll_noise_dbfs`) | Noise check before recording |
 | `migrations/20261119_01_flatness_reliability.sql` | `audio_analysis_result.flatness_reliable`, `flatness_reliability_note` | Flatness reliability labels |
 | `migrations/20261119_02_retention_indexes.sql` | Date and expiry indexes on `user`, `assessment`, `settings_recommendation` and the token tables | Fast admin reports and the nightly retention cleanup (optional, no column changes) |
+| `migrations/20261120_01_auth_hardening.sql` | Auth throttle, email-bound OTPs, canonical email and explicit password security timestamps | Coordinated API and mobile auth upgrade |
 
 ```bash
 sudo mysql < database/migrations/20261017_01_deferred_profile.sql
@@ -130,6 +133,7 @@ sudo mysql < database/migrations/20261025_02_noise_reliable.sql
 sudo mysql < database/migrations/20261118_01_noise_guard.sql
 sudo mysql < database/migrations/20261119_01_flatness_reliability.sql
 sudo mysql < database/migrations/20261119_02_retention_indexes.sql
+sudo mysql < database/migrations/20261120_01_auth_hardening.sql
 ```
 
 The backend health check (`/api/health`) returns HTTP 503 with
@@ -140,7 +144,7 @@ skipped migration shows up immediately after a restart.
 
 See [the compatibility migration](migrations/20260908_01_server_compatibility.md)
 for the specific legacy server schema. It preserves retired structures and
-expects 14 tables, unlike the 11-table fresh install. Validate against a
+expects 14 tables in the historical schema. Validate against a
 disposable MySQL copy before use; it is not a generic or repeatable migration.
 
 ## Retention cleanup
@@ -154,7 +158,8 @@ scores or analysis details.
 | `api_request_log` rows | 90 days | `REQUEST_LOG_RETENTION_DAYS` |
 | `audit_log` rows | 365 days | `AUDIT_LOG_RETENTION_DAYS` |
 | Waveform and spectrogram PNGs (~1.1 MB per recording) | forever | `VISUALIZATION_RETENTION_DAYS` (0 = keep) |
-| Expired `refresh_token`, `revoked_access_token`, `registration_otp` | 1 day after expiry | always on |
+| Expired `refresh_token`, `revoked_access_token`, `registration_otp`, `password_reset_otp` | 1 day after expiry | always on |
+| `auth_throttle` | 1 day after the last activity | always on |
 
 Set any window to `0` to keep that data forever. When images are removed, their
 paths are cleared and the report shows "Visualization is unavailable" for that
@@ -169,7 +174,8 @@ sudo systemctl daemon-reload && sudo systemctl enable --now karaok-retention.tim
 ```
 
 The app's MySQL user needs `DELETE` on `api_request_log`, `audit_log`,
-`refresh_token`, `revoked_access_token` and `registration_otp`, and `UPDATE` on
+`refresh_token`, `revoked_access_token`, `registration_otp`,
+`password_reset_otp` and `auth_throttle`, and `UPDATE` on
 `audio_analysis_result` (check with `SHOW GRANTS`). Admin queries should filter
 on the flat result columns (`quality_score`, `noise_level`, ...) rather than
 `JSON_EXTRACT` on `empirical_details`, which cannot use an index.

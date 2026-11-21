@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/otp_countdown.dart';
 import 'support/settle_with_storage.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -96,7 +97,14 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: OtpVerificationScreen(
-          email: 'saved@example.com',
+          challenge: OtpChallenge(
+            email: 'saved@example.com',
+            challengeId: 'challenge-1',
+            expiresAt: DateTime.now().millisecondsSinceEpoch ~/ 1000 + 600,
+            resendAvailableAt:
+                DateTime.now().millisecondsSinceEpoch ~/ 1000 + 300,
+            skewSeconds: 0,
+          ),
           authApi: _RegistrationAuthApi(),
         ),
       ),
@@ -312,6 +320,7 @@ class _RegistrationAuthApi extends AuthApi {
   @override
   Future<Map<String, dynamic>> verifyRegistration({
     required String email,
+    required String challengeId,
     required String code,
   }) async => _user();
 }

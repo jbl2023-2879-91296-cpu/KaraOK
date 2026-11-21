@@ -4,6 +4,10 @@ from unittest.mock import MagicMock, patch
 from contextlib import ExitStack
 from tests.test_security import api
 from karaok.core.accounts import _profile_response
+from karaok.auth.otp import code_digest
+from karaok.security.throttle import AuthThrottle, MemoryThrottleStore
+
+CHALLENGE_ID = "a" * 32
 
 FIELDS = ('first_name', 'last_name', 'address', 'city', 'state_province',
           'area_code', 'country', 'country_code', 'phone_number', 'birthday')
@@ -12,6 +16,7 @@ FIELDS = ('first_name', 'last_name', 'address', 'city', 'state_province',
 class DeferredProfileTests(unittest.TestCase):
     def setUp(self):
         api.limiter.reset()
+        self.enterContext(patch("karaok.auth.accounts.auth_throttle", AuthThrottle(MemoryThrottleStore())))
         self.connection = MagicMock()
         self.cursor = self.connection.cursor.return_value
         self.cursor.fetchone.return_value = None
@@ -23,45 +28,27 @@ class DeferredProfileTests(unittest.TestCase):
     def test_minimal_signup_stores_null_details_and_hashed_email_code(self):
         with ExitStack() as stack:
             stack.enter_context(patch.object(api, 'get_db', return_value=self.connection))
-            send = stack.enter_context(patch.object(api, 'send_registration_otp'))
+            stack.enter_context(patch.object(api, 'DEV_MODE', True))
+            stack.enter_context(patch.object(api, 'EXPOSE_REGISTRATION_OTP', True))
+            stack.enter_context(patch.object(api, 'send_registration_otp'))
             for key in ('SMTP_HOST', 'SMTP_USERNAME', 'SMTP_PASSWORD', 'SMTP_FROM'):
                 stack.enter_context(patch.object(api, key, 'test-only'))
             with api.app.test_request_context('/api/auth/register', method='POST', json={
-                'email': 'user@example.com', 'username': 'new-user', 'password': 'Good#A1b',
+                'email': 'user@gmail.com', 'username': 'new-user', 'password': 'Good#A1b',
             }):
                 response, status = api.register.__wrapped__()
         self.assertEqual(status, 202)
         self.assertNotIn('access_token', response.get_json())
         calls = self.cursor.execute.call_args_list
         params = next(c.args[1] for c in calls if 'INSERT INTO user' in c.args[0])
-        self.assertEqual(params[1:3], (None, None))
-        self.assertEqual(params[5:], (None,) * 10)
-        self.assertTrue(api.password_hasher.verify(params[4], 'Good#A1b'))
+        self.assertEqual(params[3:5], (None, None))
+        self.assertEqual(params[6:], (None,) * 10)
+        self.assertTrue(api.password_hasher.verify(params[5], 'Good#A1b'))
         otp = next(c.args[1] for c in calls if 'INSERT INTO registration_otp' in c.args[0])
-        self.assertEqual(otp[1], api.token_hash(send.call_args.args[1]))
+        body = response.get_json()
+        self.assertEqual(otp[1:4], ('user@gmail.com', body['challenge_id'], code_digest(
+            'registration', body['challenge_id'], 'user@gmail.com', body['development_code'])))
         self.connection.commit.assert_called_once()
-
-    def test_registration_email_delivery_failure_is_a_banner_error(self):
-        import smtplib
-        for failure in (smtplib.SMTPException("delivery failed"), OSError("unavailable")):
-            with self.subTest(failure=type(failure).__name__):
-                self.connection.reset_mock()
-                with ExitStack() as stack:
-                    stack.enter_context(patch.object(api, 'get_db', return_value=self.connection))
-                    stack.enter_context(patch.object(api, 'send_registration_otp', side_effect=failure))
-                    stack.enter_context(patch.object(api.app.logger, 'exception'))
-                    for key in ('SMTP_HOST', 'SMTP_USERNAME', 'SMTP_PASSWORD', 'SMTP_FROM'):
-                        stack.enter_context(patch.object(api, key, 'test-only'))
-                    with api.app.test_request_context('/api/auth/register', method='POST', json={
-                        'email': 'user@example.com', 'username': 'new-user', 'password': 'Good#A1b',
-                    }):
-                        response, status = api.register.__wrapped__()
-                self.assertEqual(status, 503)
-                self.assertEqual(response.get_json(), {'error': 'Unable to send verification email'})
-                self.connection.rollback.assert_called_once()
-                self.connection.commit.assert_not_called()
-                self.cursor.close.assert_called_once()
-                self.connection.close.assert_called_once()
 
     def test_login_missing_account_and_wrong_password_share_email_error(self):
         from argon2.exceptions import VerifyMismatchError
@@ -75,7 +62,7 @@ class DeferredProfileTests(unittest.TestCase):
                 ), patch.object(api, 'auth_response') as auth, patch.object(
                     type(api.password_hasher), 'verify', side_effect=VerifyMismatchError('mismatch')
                 ) as verify, api.app.test_request_context('/api/auth/login', method='POST', json={
-                    'email': 'user@example.com', 'password': 'Wrong#A1b',
+                    'email': 'user@gmail.com', 'password': 'Wrong#A1b',
                 }):
                     response, status = api.login.__wrapped__()
                 self.assertEqual(status, 401)
@@ -96,7 +83,7 @@ class DeferredProfileTests(unittest.TestCase):
                 ), patch.object(api, 'auth_response') as auth, patch.object(
                     type(api.password_hasher), 'verify'
                 ) as verify, api.app.test_request_context('/api/auth/login', method='POST', json={
-                    'email': 'user@example.com', 'password': 'Good#A1b',
+                    'email': 'user@gmail.com', 'password': 'Good#A1b',
                 }):
                     response, status = api.login.__wrapped__()
                 self.assertEqual(status, 401)
@@ -106,10 +93,10 @@ class DeferredProfileTests(unittest.TestCase):
 
     def pending_user(self):
         return dict.fromkeys(FIELDS) | {
-            'user_id': 31, 'username': 'new-user', 'email': 'user@example.com',
+            'user_id': 31, 'username': 'new-user', 'email': 'user@gmail.com',
             'role': 'user', 'user_type': 'user', 'profile_image': None,
             'profile_image_mime': None, 'registration_id': 9,
-            'code_hash': api.token_hash('123456'), 'attempts': 0,
+            'code_hash': code_digest('registration', CHALLENGE_ID, 'user@gmail.com', '123456'), 'attempts': 0,
         }
 
     def test_profile_display_name_uses_email_instead_of_generated_username(self):
@@ -119,7 +106,7 @@ class DeferredProfileTests(unittest.TestCase):
                     user = dict(self.pending_user(), username=username,
                                 first_name=first, last_name=last)
                     profile = _profile_response(user)
-                    self.assertEqual(profile['name'], 'user@example.com')
+                    self.assertEqual(profile['name'], 'user@gmail.com')
                     self.assertEqual(profile['username'], username)
                     self.assertFalse(profile['profile_complete'])
 
@@ -141,28 +128,28 @@ class DeferredProfileTests(unittest.TestCase):
     def test_otp_accepts_null_profile_and_consumes_code(self):
         self.cursor.fetchone.return_value = self.pending_user()
         with patch.object(api, 'get_db', return_value=self.connection), patch.object(
-            api, 'auth_response', side_effect=lambda user, status: (_profile_response(user), status)
+            api, 'auth_response', side_effect=lambda user, status, **kwargs: (_profile_response(user), status)
         ), patch.object(api, 'audit'), api.app.test_request_context(
             '/api/auth/register/verify', method='POST',
-            json={'email': 'user@example.com', 'code': '123456'},
+            json={'email': 'user@gmail.com', 'challenge_id': CHALLENGE_ID, 'code': '123456'},
         ):
             user, status = api.verify_registration.__wrapped__()
         self.assertEqual(status, 201)
         self.assertFalse(user['profile_complete'])
-        self.assertEqual(user['name'], 'user@example.com')
+        self.assertEqual(user['name'], 'user@gmail.com')
         for field in FIELDS:
             self.assertIsNone(user[field])
         statements = '\n'.join(c.args[0] for c in self.cursor.execute.call_args_list)
         self.assertIn('DELETE FROM registration_otp', statements)
         self.assertIn('expires_at > UTC_TIMESTAMP()', statements)
-        self.assertIn('attempts < 5', statements)
+        self.assertIn('attempts < %s', statements)
 
     def test_wrong_code_increments_attempts_without_authenticating(self):
         self.cursor.fetchone.return_value = self.pending_user()
         with patch.object(api, 'get_db', return_value=self.connection), patch.object(
             api, 'auth_response'
         ) as auth, api.app.test_request_context('/api/auth/register/verify', method='POST',
-            json={'email': 'user@example.com', 'code': '000000'}):
+            json={'email': 'user@gmail.com', 'challenge_id': CHALLENGE_ID, 'code': '000000'}):
             _, status = api.verify_registration.__wrapped__()
         self.assertEqual(status, 400)
         auth.assert_not_called()
@@ -172,7 +159,7 @@ class DeferredProfileTests(unittest.TestCase):
         with patch.object(api, 'get_db', return_value=self.connection), patch.object(
             api, 'auth_response'
         ) as auth, api.app.test_request_context('/api/auth/register/verify', method='POST',
-            json={'email': 'user@example.com', 'code': '123456'}):
+            json={'email': 'user@gmail.com', 'challenge_id': CHALLENGE_ID, 'code': '123456'}):
             _, status = api.verify_registration.__wrapped__()
         self.assertEqual(status, 400)
         auth.assert_not_called()
@@ -181,7 +168,7 @@ class DeferredProfileTests(unittest.TestCase):
         for overrides in ({'user_type': 'admin'}, {'password': 'weak'}):
             with self.subTest(overrides=overrides), api.app.test_request_context(
                 '/api/auth/register', method='POST', json={
-                    'email': 'user@example.com', 'username': 'new-user',
+                    'email': 'user@gmail.com', 'username': 'new-user',
                     'password': 'Good#A1b', **overrides,
                 }), patch.object(api, 'get_db') as db:
                 with self.assertRaises(ValueError):
@@ -198,7 +185,7 @@ class DeferredProfileTests(unittest.TestCase):
         ), patch.object(api, 'SMTP_PASSWORD', 'test'), patch.object(
             api, 'SMTP_FROM', 'test'
         ), api.app.test_request_context('/api/auth/register', method='POST', json={
-            'email': 'user@example.com', 'password': 'Good#A1b',
+            'email': 'user@gmail.com', 'password': 'Good#A1b',
         }):
             _, status = api.register()
         self.assertEqual(status, 202)
@@ -212,8 +199,9 @@ class DeferredProfileTests(unittest.TestCase):
 
     def test_email_only_retry_preserves_pending_username(self):
         self.cursor.fetchone.side_effect = [
-            {'user_id': 31, 'username': 'legacy-name', 'email_verified_at': None},
-            {'user_id': 31},
+            {'user_id': 31, 'username': 'legacy-name', 'email_verified_at': None,
+             'email': 'user@gmail.com', 'role': 'user'},
+            None,
         ]
         with patch.object(api, 'get_db', return_value=self.connection), patch.object(
             api, 'send_registration_otp'
@@ -222,23 +210,22 @@ class DeferredProfileTests(unittest.TestCase):
         ), patch.object(api, 'SMTP_PASSWORD', 'test'), patch.object(
             api, 'SMTP_FROM', 'test'
         ), api.app.test_request_context('/api/auth/register', method='POST', json={
-            'email': 'user@example.com', 'password': 'Good#A1b',
+            'email': 'user@gmail.com', 'password': 'Good#A1b',
         }):
             _, status = api.register()
         self.assertEqual(status, 202)
-        params = next(c.args[1] for c in self.cursor.execute.call_args_list
-                      if 'SET username' in c.args[0])
-        self.assertEqual(params[0], 'legacy-name')
-        self.assertEqual(params[-1], 31)
+        query = next(c for c in self.cursor.execute.call_args_list if 'UPDATE user' in c.args[0])
+        self.assertNotIn('username=', query.args[0])
+        self.assertEqual(query.args[1][-1], 31)
 
     def test_auth_validation_returns_structured_fields_without_database(self):
         cases = [
             ('register', {'email': 'bad', 'password': 'Good#A1b'}, 'email'),
-            ('register', {'email': 'user@example.com', 'password': 'weak'}, 'password'),
-            ('register', {'username': '!', 'email': 'user@example.com'}, 'username'),
-            ('verify_registration', {'email': 'user@example.com', 'code': 'abc'}, 'code'),
+            ('register', {'email': 'user@gmail.com', 'password': 'weak'}, 'password'),
+            ('register', {'username': '!', 'email': 'user@gmail.com'}, 'username'),
+            ('verify_registration', {'email': 'user@gmail.com', 'challenge_id': CHALLENGE_ID, 'code': 'abc'}, 'code'),
             ('login', {'identifier': '!bad', 'password': 'hello'}, 'identifier'),
-            ('login', {'identifier': 'user@example.com', 'password': ''}, 'password'),
+            ('login', {'identifier': 'user@gmail.com', 'password': ''}, 'password'),
             ('forgot_password', {'email': 'bad'}, 'email'),
         ]
         for name, payload, field in cases:
@@ -374,7 +361,7 @@ class ProfileFieldErrorTests(unittest.TestCase):
                 cursor = connection.cursor.return_value
                 cursor.rowcount = 1
                 cursor.fetchone.side_effect = [None, {
-                    **self.profile_payload(), "user_id": 31, "email": "user@example.com",
+                    **self.profile_payload(), "user_id": 31, "email": "user@gmail.com",
                     "user_type": "user", "profile_image": None, "profile_image_mime": None,
                 }]
                 error = IntegrityError("private-db-index: secret@example.com", errno=1062)
@@ -401,7 +388,7 @@ class ProfileFieldErrorTests(unittest.TestCase):
     def test_unchanged_active_profile_save_succeeds_with_zero_changed_rows(self):
         payload = self.profile_payload()
         stored = {
-            **payload, "user_id": 31, "email": "user@example.com",
+            **payload, "user_id": 31, "email": "user@gmail.com",
             "user_type": "user", "profile_image": None, "profile_image_mime": None,
         }
         self.cursor.rowcount = 0

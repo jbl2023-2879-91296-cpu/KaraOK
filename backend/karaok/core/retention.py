@@ -85,6 +85,18 @@ _PURGES: tuple[tuple[str, str, str], ...] = (
         "DELETE FROM registration_otp "
         "WHERE expires_at < UTC_TIMESTAMP() - INTERVAL %s DAY LIMIT {limit}",
     ),
+    (
+        "password_reset_otp",
+        "",
+        "DELETE FROM password_reset_otp "
+        "WHERE expires_at < UTC_TIMESTAMP() - INTERVAL %s DAY LIMIT {limit}",
+    ),
+    (
+        "auth_throttle",
+        "",
+        "DELETE FROM auth_throttle "
+        "WHERE last_seen_at < UNIX_TIMESTAMP() - %s * 86400 LIMIT {limit}",
+    ),
 )
 
 _COUNTS = {

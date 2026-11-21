@@ -56,6 +56,29 @@ SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME)
 OTP_MINUTES = int(os.getenv("REGISTRATION_OTP_MINUTES", "10"))
+OTP_RESEND_COOLDOWN_SECONDS = int(os.getenv("OTP_RESEND_COOLDOWN_SECONDS", "300"))
+OTP_MAX_SENDS_PER_EMAIL_PER_HOUR = int(os.getenv("OTP_MAX_SENDS_PER_EMAIL_PER_HOUR", "4"))
+OTP_MAX_SENDS_PER_DEVICE_PER_HOUR = int(os.getenv("OTP_MAX_SENDS_PER_DEVICE_PER_HOUR", "10"))
+OTP_MAX_SENDS_PER_IP_PER_HOUR = int(os.getenv("OTP_MAX_SENDS_PER_IP_PER_HOUR", "30"))
+OTP_MAX_VERIFY_ATTEMPTS = int(os.getenv("OTP_MAX_VERIFY_ATTEMPTS", "5"))
+AUTH_BURST_LIMIT = int(os.getenv("AUTH_BURST_LIMIT", "5"))
+AUTH_BURST_WINDOW_SECONDS = int(os.getenv("AUTH_BURST_WINDOW_SECONDS", "30"))
+AUTH_LOCKOUT_FIRST_SECONDS = int(os.getenv("AUTH_LOCKOUT_FIRST_SECONDS", "30"))
+AUTH_LOCKOUT_REPEAT_SECONDS = int(os.getenv("AUTH_LOCKOUT_REPEAT_SECONDS", "60"))
+AUTH_STRIKE_RESET_SECONDS = int(os.getenv("AUTH_STRIKE_RESET_SECONDS", "900"))
+AUTH_IP_CEILING_PER_MINUTE = int(os.getenv("AUTH_IP_CEILING_PER_MINUTE", "120"))
+LOGIN_ACCOUNT_FAIL_LIMIT = int(os.getenv("LOGIN_ACCOUNT_FAIL_LIMIT", "20"))
+LOGIN_ACCOUNT_FAIL_WINDOW_SECONDS = int(os.getenv("LOGIN_ACCOUNT_FAIL_WINDOW_SECONDS", "900"))
+ALLOWED_EMAIL_DOMAINS = tuple(
+    domain.strip().lower()
+    for domain in os.getenv(
+        "ALLOWED_EMAIL_DOMAINS",
+        "gmail.com,googlemail.com,yahoo.com,yahoo.com.ph,ymail.com,rocketmail.com,"
+        "outlook.com,hotmail.com,live.com,msn.com,icloud.com,me.com,mac.com,"
+        "proton.me,protonmail.com,aol.com,zoho.com,gmx.com,mail.com,yandex.com",
+    ).split(",")
+    if domain.strip()
+)
 DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
 EXPOSE_REGISTRATION_OTP = (
     os.getenv("EXPOSE_REGISTRATION_OTP", "false").lower() == "true"

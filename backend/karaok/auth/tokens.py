@@ -28,21 +28,30 @@ def issue_access_token(user: dict[str, Any]) -> tuple[str, int]:
     )
 
 
-def create_refresh_token(user_id: int) -> tuple[str, datetime]:
+def insert_refresh_token(cursor, user_id: int) -> tuple[str, datetime]:
     raw_token = secrets.token_urlsafe(48)
     expires = utcnow() + timedelta(days=REFRESH_TOKEN_DAYS)
-    conn = get_db()
-    cursor = conn.cursor()
     cursor.execute(
         """INSERT INTO refresh_token
            (user_id, token_hash, expires_at, ip_address, user_agent)
            VALUES (%s, %s, %s, %s, %s)""",
         (user_id, token_hash(raw_token), expires.replace(tzinfo=None), client_ip(), request.headers.get("User-Agent", "")[:255]),
     )
-    conn.commit()
-    cursor.close()
-    conn.close()
     return raw_token, expires
+
+
+def create_refresh_token(user_id: int) -> tuple[str, datetime]:
+    conn = get_db()
+    try:
+        cursor = conn.cursor()
+        try:
+            token = insert_refresh_token(cursor, user_id)
+            conn.commit()
+            return token
+        finally:
+            cursor.close()
+    finally:
+        conn.close()
 
 
 def _token_precedes_security_update(

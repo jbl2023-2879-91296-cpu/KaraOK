@@ -20,8 +20,35 @@ class AuthApi {
 
   Future<Map<String, dynamic>> verifyRegistration({
     required String email,
+    required String challengeId,
     required String code,
-  }) => _client.verifyRegistration(email: email, code: code);
+  }) => _client.verifyRegistration(
+    email: email,
+    challengeId: challengeId,
+    code: code,
+  );
+
+  Future<Map<String, dynamic>> resendRegistration({
+    required String email,
+    required String challengeId,
+  }) => _client.resendRegistration(email: email, challengeId: challengeId);
+
+  Future<Map<String, dynamic>> resendPasswordReset({
+    required String email,
+    required String challengeId,
+  }) => _client.resendPasswordReset(email: email, challengeId: challengeId);
+
+  Future<void> resetPassword({
+    required String email,
+    required String challengeId,
+    required String code,
+    required String newPassword,
+  }) => _client.resetPassword(
+    email: email,
+    challengeId: challengeId,
+    code: code,
+    newPassword: newPassword,
+  );
 
   Future<Map<String, dynamic>> login({
     required String identifier,
