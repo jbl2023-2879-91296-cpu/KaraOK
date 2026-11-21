@@ -1,6 +1,7 @@
 import 'package:karaok_app/features/auth/presentation/pages/login_screen.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:karaok_app/shared/widgets/adaptive_layout.dart';
 
 import 'package:karaok_app/core/security/guest_assessment_service.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
@@ -58,29 +59,34 @@ class GuestBanner extends StatelessWidget {
                 ),
               ),
               Flexible(
-                child: Wrap(
-                  alignment: WrapAlignment.end,
-                  children: [
-                    TextButton(
-                      style: buttonStyle,
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const SignUpScreen()),
-                      ),
-                      child: const Text('Create Account'),
-                    ),
-                    if (showSignIn)
+                child: _alignEnd(
+                  context,
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    children: [
                       TextButton(
                         style: buttonStyle,
                         onPressed: () => Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const LoginScreen(),
+                            builder: (_) => const SignUpScreen(),
                           ),
                         ),
-                        child: const Text('Sign in'),
+                        child: const Text('Create Account'),
                       ),
-                  ],
+                      if (showSignIn)
+                        TextButton(
+                          style: buttonStyle,
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const LoginScreen(),
+                            ),
+                          ),
+                          child: const Text('Sign in'),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -89,4 +95,10 @@ class GuestBanner extends StatelessWidget {
       },
     );
   }
+
+  /// Tablets pin the actions to the trailing edge of the wider banner;
+  /// phones keep the original layout.
+  Widget _alignEnd(BuildContext context, Widget child) => isTabletOf(context)
+      ? Align(alignment: AlignmentDirectional.centerEnd, child: child)
+      : child;
 }

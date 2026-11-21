@@ -13,6 +13,7 @@ import 'package:karaok_app/features/assessments/presentation/pages/audio_setting
 import 'package:karaok_app/features/assessments/presentation/pages/audio_test_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/user_previous_results_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/results_screen.dart';
+import 'package:karaok_app/shared/widgets/adaptive_layout.dart';
 import 'package:karaok_app/shared/widgets/guest_banner.dart';
 
 class UserHomeScreen extends StatefulWidget {
@@ -105,8 +106,115 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     }
   }
 
+  bool get _showingSamples =>
+      _recentAnalysis.any((item) => item is Map && isSampleAssessment(item));
+
+  Future<void> _openEvaluate() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AudioTestScreen()),
+    );
+    if (mounted) _loadAnalysis();
+  }
+
+  Future<void> _openSettingsSuggestion() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AudioSettingsSuggestionScreen()),
+    );
+    if (mounted) _loadAnalysis();
+  }
+
+  void _openAllRecords() {
+    if (widget.onOpenRecords != null) {
+      widget.onOpenRecords!();
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const UserPreviousResultsScreen()),
+    );
+  }
+
+  void _openRecord(dynamic item) => Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) =>
+          ResultsScreen.fromRecord(item, isGuest: UserSession.instance.isGuest),
+    ),
+  );
+
+  Widget _profilePrompt({EdgeInsetsGeometry? margin}) => Card(
+    margin: margin ?? const EdgeInsets.only(bottom: AppSpacing.xl),
+    child: Padding(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const AppSectionHeader(title: 'Complete your profile'),
+          const Text(
+            'Add your personal details in Account. You can do this later.',
+          ),
+          Wrap(
+            children: [
+              TextButton(
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          const ChangePasswordScreen(editProfile: true),
+                    ),
+                  );
+                  if (mounted) setState(() {});
+                },
+                child: const Text('Complete profile'),
+              ),
+              TextButton(
+                onPressed: () => setState(() => _profilePromptDismissed = true),
+                child: const Text('Not now'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+
+  bool get _showProfilePrompt =>
+      !_profilePromptDismissed && UserSession.instance.needsProfileCompletion;
+
+  /// Loading, error, empty or sample note: everything except the record list.
+  Widget? _recentStatus() {
+    if (_loading) return const AppLoadingSkeleton();
+    if (_loadError != null) {
+      return AppErrorState(
+        title: _loadError!,
+        message: '',
+        onRetry: _loadAnalysis,
+      );
+    }
+    if (_recentAnalysis.isEmpty) {
+      return const AppEmptyState(
+        title: 'No analyses yet. Evaluate your first audio recording!',
+        message: '',
+        icon: Icons.graphic_eq,
+      );
+    }
+    return null;
+  }
+
+  AppSectionHeader _recentHeader() => AppSectionHeader(
+    title: _showingSamples ? 'Sample assessments' : 'Recent Analysis',
+    action: TextButton(
+      onPressed: _openAllRecords,
+      child: const Text('View all'),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
+    if (isTabletOf(context)) return _buildTablet(context);
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -132,64 +240,13 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (!_profilePromptDismissed &&
-                        UserSession.instance.needsProfileCompletion)
-                      Card(
-                        margin: const EdgeInsets.only(bottom: AppSpacing.xl),
-                        child: Padding(
-                          padding: const EdgeInsets.all(AppSpacing.lg),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const AppSectionHeader(
-                                title: 'Complete your profile',
-                              ),
-                              const Text(
-                                'Add your personal details in Account. You can do this later.',
-                              ),
-                              Wrap(
-                                children: [
-                                  TextButton(
-                                    onPressed: () async {
-                                      await Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) =>
-                                              const ChangePasswordScreen(
-                                                editProfile: true,
-                                              ),
-                                        ),
-                                      );
-                                      if (mounted) setState(() {});
-                                    },
-                                    child: const Text('Complete profile'),
-                                  ),
-                                  TextButton(
-                                    onPressed: () => setState(
-                                      () => _profilePromptDismissed = true,
-                                    ),
-                                    child: const Text('Not now'),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                    if (_showProfilePrompt) _profilePrompt(),
                     _ActionCard(
                       icon: Icons.graphic_eq,
                       title: 'Evaluate Audio Quality',
                       subtitle: 'Evaluate playback sound quality',
                       color: AppColors.mint,
-                      onTap: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const AudioTestScreen(),
-                          ),
-                        );
-                        if (mounted) _loadAnalysis();
-                      },
+                      onTap: _openEvaluate,
                     ),
                     const SizedBox(height: AppSpacing.md),
                     _ActionCard(
@@ -197,85 +254,158 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                       title: 'Generate Audio Settings Suggestion',
                       subtitle: 'Enter your positions, evaluate, then adjust',
                       color: AppColors.peach,
-                      onTap: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                const AudioSettingsSuggestionScreen(),
-                          ),
-                        );
-                        if (mounted) _loadAnalysis();
-                      },
+                      onTap: _openSettingsSuggestion,
                     ),
-                    ...[
-                      const SizedBox(height: AppSpacing.xl),
-                      AppSectionHeader(
-                        title:
-                            _recentAnalysis.any(
-                              (item) => item is Map && isSampleAssessment(item),
-                            )
-                            ? 'Sample assessments'
-                            : 'Recent Analysis',
-                        action: TextButton(
-                          onPressed:
-                              widget.onOpenRecords ??
-                              () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      const UserPreviousResultsScreen(),
-                                ),
-                              ),
-                          child: const Text('View all'),
+                    const SizedBox(height: AppSpacing.xl),
+                    _recentHeader(),
+                    if (_showingSamples)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          sampleAssessmentExplanation,
+                          style: TextStyle(color: AppColors.muted),
                         ),
                       ),
-                      if (_recentAnalysis.any(
-                        (item) => item is Map && isSampleAssessment(item),
-                      ))
-                        const Padding(
-                          padding: EdgeInsets.only(bottom: 12),
-                          child: Text(
-                            sampleAssessmentExplanation,
-                            style: TextStyle(color: AppColors.muted),
-                          ),
-                        ),
-                      if (_loading)
-                        const AppLoadingSkeleton()
-                      else if (_loadError != null)
-                        AppErrorState(
-                          title: _loadError!,
-                          message: '',
-                          onRetry: _loadAnalysis,
-                        )
-                      else if (_recentAnalysis.isEmpty)
-                        const AppEmptyState(
-                          title:
-                              'No analyses yet. Evaluate your first audio recording!',
-                          message: '',
-                          icon: Icons.graphic_eq,
-                        )
-                      else
-                        ..._recentAnalysis.map(
-                          (item) => _AnalysisListItem(
-                            test: Map<String, dynamic>.from(item as Map),
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ResultsScreen.fromRecord(
-                                  item,
-                                  isGuest: UserSession.instance.isGuest,
-                                ),
+                    _recentStatus() ??
+                        Column(
+                          children: [
+                            for (final item in _recentAnalysis)
+                              _AnalysisListItem(
+                                test: Map<String, dynamic>.from(item as Map),
+                                onTap: () => _openRecord(item),
                               ),
-                            ),
-                          ),
+                          ],
                         ),
-                    ],
                   ],
                 ),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// Tablet dashboard: a greeting header, the two main tasks side by side as
+  /// large tiles, and recent analyses in a responsive grid.
+  Widget _buildTablet(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final session = UserSession.instance;
+    final firstName = (session.firstName ?? '').trim();
+    final greeting = session.isGuest || firstName.isEmpty
+        ? 'Welcome to KaraOK'
+        : 'Welcome back, $firstName';
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: _loadAnalysis,
+          color: AppColors.orangeInk,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.xxl,
+              AppSpacing.xxl,
+              AppSpacing.xxl,
+              AppSpacing.xxl,
+            ),
+            child: AdaptiveWidth(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final wide = constraints.maxWidth >= 880;
+                  final columns = wide ? 3 : 2;
+                  const gap = AppSpacing.lg;
+                  final tileWidth =
+                      (constraints.maxWidth - gap * (columns - 1)) / columns;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Semantics(
+                        header: true,
+                        child: Text(greeting, style: text.headlineMedium),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        'Check how your karaoke system sounds, then fine-tune it.',
+                        style: text.bodyLarge?.copyWith(color: AppColors.muted),
+                      ),
+                      const SizedBox(height: AppSpacing.xl),
+                      if (session.isGuest)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(AppRadii.card),
+                          child: const GuestBanner(showSignIn: true),
+                        ),
+                      if (session.isGuest)
+                        const SizedBox(height: AppSpacing.xl),
+                      if (_showProfilePrompt) _profilePrompt(),
+                      IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          spacing: gap,
+                          children: [
+                            Expanded(
+                              child: _FeatureTile(
+                                icon: Icons.graphic_eq,
+                                eyebrow: 'Evaluate',
+                                title: 'Evaluate Audio Quality',
+                                subtitle:
+                                    'Record a song and get a quality score with a detailed report.',
+                                color: AppColors.mint,
+                                accent: AppColors.primary,
+                                onTap: _openEvaluate,
+                              ),
+                            ),
+                            Expanded(
+                              child: _FeatureTile(
+                                icon: Icons.tune,
+                                eyebrow: 'Tune',
+                                title: 'Generate Audio Settings Suggestion',
+                                subtitle:
+                                    'Enter your knob positions, evaluate, then adjust.',
+                                color: AppColors.peach,
+                                accent: AppColors.orangeInk,
+                                onTap: _openSettingsSuggestion,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xxl),
+                      _recentHeader(),
+                      if (_showingSamples)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                          child: Text(
+                            sampleAssessmentExplanation,
+                            style: text.bodyMedium?.copyWith(
+                              color: AppColors.muted,
+                            ),
+                          ),
+                        ),
+                      _recentStatus() ??
+                          Wrap(
+                            spacing: gap,
+                            runSpacing: gap,
+                            children: [
+                              for (final item in _recentAnalysis)
+                                SizedBox(
+                                  width: tileWidth,
+                                  child: _AnalysisListItem(
+                                    test: Map<String, dynamic>.from(
+                                      item as Map,
+                                    ),
+                                    margin: EdgeInsets.zero,
+                                    onTap: () => _openRecord(item),
+                                  ),
+                                ),
+                            ],
+                          ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -340,9 +470,14 @@ class _ActionCard extends StatelessWidget {
 }
 
 class _AnalysisListItem extends StatelessWidget {
-  const _AnalysisListItem({required this.test, required this.onTap});
+  const _AnalysisListItem({
+    required this.test,
+    required this.onTap,
+    this.margin = const EdgeInsets.only(bottom: AppSpacing.md),
+  });
   final Map<String, dynamic> test;
   final VoidCallback onTap;
+  final EdgeInsetsGeometry margin;
 
   @override
   Widget build(BuildContext context) {
@@ -362,7 +497,7 @@ class _AnalysisListItem extends StatelessWidget {
       button: true,
       label: 'View analysis $name',
       child: Card(
-        margin: const EdgeInsets.only(bottom: AppSpacing.md),
+        margin: margin,
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(AppRadii.card),
@@ -417,6 +552,94 @@ class _AnalysisListItem extends StatelessWidget {
                           context,
                         ).textTheme.titleSmall?.copyWith(color: color),
                       ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Large tablet entry point for one of the app's two main tasks.
+class _FeatureTile extends StatelessWidget {
+  const _FeatureTile({
+    required this.icon,
+    required this.eyebrow,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String eyebrow;
+  final String title;
+  final String subtitle;
+  final Color color;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Semantics(
+      button: true,
+      label: title,
+      hint: subtitle,
+      excludeSemantics: true,
+      child: Material(
+        color: color,
+        borderRadius: BorderRadius.circular(AppRadii.dialog),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius: BorderRadius.circular(AppRadii.card),
+                      ),
+                      child: Icon(icon, color: accent, size: 28),
+                    ),
+                    const Spacer(),
+                    Text(
+                      eyebrow.toUpperCase(),
+                      style: text.labelMedium?.copyWith(
+                        color: accent,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.xl),
+                Text(title, style: text.titleLarge),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  subtitle,
+                  style: text.bodyMedium?.copyWith(color: AppColors.muted),
+                ),
+                const Spacer(),
+                const SizedBox(height: AppSpacing.lg),
+                Row(
+                  children: [
+                    Text(
+                      'Start',
+                      style: text.labelLarge?.copyWith(color: accent),
+                    ),
+                    const SizedBox(width: AppSpacing.xs),
+                    Icon(Icons.arrow_forward, size: 18, color: accent),
                   ],
                 ),
               ],

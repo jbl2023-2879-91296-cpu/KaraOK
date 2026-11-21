@@ -1,4 +1,5 @@
 import 'package:karaok_app/shared/widgets/adaptive_layout.dart';
+import 'package:karaok_app/shared/widgets/app_sidebar.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
@@ -80,28 +81,30 @@ class _AppShellState extends State<AppShell> {
             destinations: destinations,
           );
         }
-        final extended = window == WindowSize.expanded;
-        return SafeArea(
-          right: false,
-          child: NavigationRail(
-            extended: extended,
-            scrollable: true,
-            labelType: extended
-                ? NavigationRailLabelType.none
-                : NavigationRailLabelType.all,
-            backgroundColor: AppColors.background,
-            indicatorColor: AppColors.mint,
-            selectedIndex: _currentIndex,
-            onDestinationSelected: _selectTab,
-            destinations: [
-              for (final item in destinations)
-                NavigationRailDestination(
-                  icon: item.icon,
-                  selectedIcon: item.selectedIcon,
-                  label: Text(item.label),
-                ),
-            ],
-          ),
+        return AppSidebar(
+          key: const Key('appSidebar'),
+          extended: window == WindowSize.expanded,
+          selectedIndex: _currentIndex,
+          onSelected: _selectTab,
+          onOpenAccount: () => _selectTab(2),
+          items: [
+            const AppSidebarItem(
+              icon: Icons.home_outlined,
+              selectedIcon: Icons.home,
+              label: 'Home',
+            ),
+            const AppSidebarItem(
+              icon: Icons.receipt_long_outlined,
+              selectedIcon: Icons.receipt_long,
+              label: 'Records',
+            ),
+            AppSidebarItem(
+              icon: Icons.settings_outlined,
+              selectedIcon: Icons.settings,
+              label: 'Settings',
+              showBadge: settingsBadge,
+            ),
+          ],
         );
       },
     );

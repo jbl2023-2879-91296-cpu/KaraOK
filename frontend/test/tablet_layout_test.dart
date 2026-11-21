@@ -12,6 +12,7 @@ import 'package:karaok_app/features/auth/presentation/pages/signup_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/detailed_report_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/results_screen.dart';
 import 'package:karaok_app/shared/widgets/adaptive_layout.dart';
+import 'package:karaok_app/shared/widgets/app_sidebar.dart';
 import 'package:karaok_app/shared/widgets/otp_countdown.dart';
 
 import 'support/audio_platform_stub.dart';
@@ -66,7 +67,7 @@ void main() {
           );
           if (page is AppShell) {
             expect(
-              find.byType(NavigationRail),
+              find.byType(AppSidebar),
               size.width >= 600 ? findsOneWidget : findsNothing,
             );
             expect(

@@ -10,6 +10,40 @@ WindowSize windowSizeOf(BuildContext context) {
   return WindowSize.expanded;
 }
 
+/// True on tablets and larger windows, where the app shows its sidebar.
+bool isTabletOf(BuildContext context) =>
+    windowSizeOf(context) != WindowSize.compact;
+
+/// Centres [child] in a readable column on tablets. Phones get [child]
+/// untouched, so their layout never changes.
+class AdaptiveWidth extends StatelessWidget {
+  const AdaptiveWidth({
+    super.key,
+    required this.child,
+    this.maxWidth = AppBreakpoints.expandedContentWidth,
+  });
+
+  final Widget child;
+  final double maxWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isTabletOf(context)) return child;
+    return LayoutBuilder(
+      builder: (context, constraints) => Align(
+        alignment: Alignment.topCenter,
+        child: SizedBox(
+          width: constraints.maxWidth < maxWidth
+              ? constraints.maxWidth
+              : maxWidth,
+          height: constraints.hasBoundedHeight ? constraints.maxHeight : null,
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
 class AdaptiveColumns extends StatelessWidget {
   const AdaptiveColumns({
     super.key,

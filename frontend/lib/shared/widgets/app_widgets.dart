@@ -31,66 +31,103 @@ class AppPageScaffold extends StatelessWidget {
   final Widget? leading;
   final double? maxContentWidth;
 
+  /// Top-level tab pages on tablets drop the toolbar and show a large title
+  /// aligned with their content, which sits beside the sidebar.
+  bool _inlineTitle(BuildContext context) =>
+      isTabletOf(context) &&
+      leading == null &&
+      !automaticallyImplyLeading &&
+      actions == null &&
+      maxContentWidth == null;
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      leading: leading,
-      title: Text(title),
-      actions: actions,
-      automaticallyImplyLeading: automaticallyImplyLeading,
-    ),
-    bottomNavigationBar: bottomNavigationBar,
-    floatingActionButton: floatingActionButton,
-    body: SafeArea(
-      child: LayoutBuilder(
-        builder: (context, viewport) {
-          final maxWidth =
-              maxContentWidth ??
-              (windowSizeOf(context) == WindowSize.expanded
-                  ? AppBreakpoints.expandedContentWidth
-                  : AppSpacing.contentWidth);
-          const padding = EdgeInsets.all(AppSpacing.page);
-          return SingleChildScrollView(
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: padding,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: maxContentWidth == null
-                    ? 0
-                    : (viewport.maxHeight - padding.vertical).clamp(
-                        0.0,
-                        double.infinity,
-                      ),
-              ),
-              child: Align(
-                alignment: maxContentWidth == null
-                    ? Alignment.topCenter
-                    : Alignment.center,
-                child: SizedBox(
-                  width: maxWidth,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (subtitle != null) ...[
-                        Text(
-                          subtitle!,
-                          style: Theme.of(context).textTheme.bodyLarge
-                              ?.copyWith(color: AppColors.muted),
+  Widget build(BuildContext context) {
+    final inlineTitle = _inlineTitle(context);
+    return Scaffold(
+      appBar: inlineTitle
+          ? null
+          : AppBar(
+              leading: leading,
+              title: Text(title),
+              actions: actions,
+              automaticallyImplyLeading: automaticallyImplyLeading,
+            ),
+      bottomNavigationBar: bottomNavigationBar,
+      floatingActionButton: floatingActionButton,
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, viewport) {
+            final maxWidth =
+                maxContentWidth ??
+                (inlineTitle
+                    ? AppBreakpoints.expanded
+                    : windowSizeOf(context) == WindowSize.expanded
+                    ? AppBreakpoints.expandedContentWidth
+                    : AppSpacing.contentWidth);
+            final padding = inlineTitle
+                ? const EdgeInsets.fromLTRB(
+                    AppSpacing.page,
+                    AppSpacing.xxl,
+                    AppSpacing.page,
+                    AppSpacing.page,
+                  )
+                : const EdgeInsets.all(AppSpacing.page);
+            return SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: padding,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: maxContentWidth == null
+                      ? 0
+                      : (viewport.maxHeight - padding.vertical).clamp(
+                          0.0,
+                          double.infinity,
                         ),
-                        const SizedBox(height: AppSpacing.xl),
+                ),
+                child: Align(
+                  alignment: maxContentWidth == null
+                      ? Alignment.topCenter
+                      : Alignment.center,
+                  child: SizedBox(
+                    width: maxWidth,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (inlineTitle) ...[
+                          Semantics(
+                            header: true,
+                            child: Text(
+                              title,
+                              style: Theme.of(context).textTheme.headlineMedium,
+                            ),
+                          ),
+                          SizedBox(
+                            height: subtitle == null
+                                ? AppSpacing.xl
+                                : AppSpacing.xs,
+                          ),
+                        ],
+                        if (subtitle != null) ...[
+                          Text(
+                            subtitle!,
+                            style: Theme.of(context).textTheme.bodyLarge
+                                ?.copyWith(color: AppColors.muted),
+                          ),
+                          const SizedBox(height: AppSpacing.xl),
+                        ],
+                        child,
                       ],
-                      child,
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class AppSectionHeader extends StatelessWidget {
