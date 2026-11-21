@@ -320,6 +320,21 @@ class _SettingsRecommendationScreenState
                       onSelected: _savingFeedback || _applying
                           ? null
                           : (_) => _saveFeedback(value),
+                      backgroundColor: AppColors.mint,
+                      selectedColor: AppColors.primary,
+                      disabledColor: AppColors.mint,
+                      checkmarkColor: AppColors.onPrimary,
+                      side: BorderSide(
+                        color: _recommendation.feedback == value
+                            ? AppColors.primary
+                            : AppColors.teal,
+                      ),
+                      labelStyle: TextStyle(
+                        color: _recommendation.feedback == value
+                            ? AppColors.onPrimary
+                            : AppColors.ink,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                 ],
               ),
