@@ -1,3 +1,4 @@
+import 'package:karaok_app/features/calibration/data/mic_calibration_store.dart';
 import '../support/settle_with_storage.dart';
 import 'dart:convert';
 import 'package:karaok_app/app/app_shell.dart';
@@ -17,6 +18,7 @@ import 'package:karaok_app/shared/widgets/app_widgets.dart';
 void main() {
   setUp(() async {
     FlutterSecureStorage.setMockInitialValues({});
+    await MicCalibrationStore.instance.skip();
     UserSession.instance.setGuest('user');
     await GuestAssessmentService.instance.resetForTesting();
     await GuestAssessmentStore.instance.clearAll();

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .calibration import calibrate_guest, calibrate_user
 from . import recommendations as settings_recommendation_service
 from .execution import SHORT_SONG_MESSAGE, AudioAnalyzerExecutionError
 from .execution import _execute_analyzer_command
@@ -51,6 +52,7 @@ from karaok.results.records import save_audio_analysis
 from collections.abc import Mapping
 from typing import Any
 from werkzeug.utils import secure_filename
+import json
 import mimetypes
 import os
 import secrets
@@ -68,6 +70,23 @@ def _parse_noise_preroll(form: Mapping[str, str]) -> float:
     return seconds
 
 
+def _parse_mic_fields(form: Mapping[str, str]) -> dict[str, Any]:
+    fields = {}
+    if "mic_calibration" in form:
+        from audio_engine.mic_calibration import validate_correction
+
+        fields["mic_calibration"] = validate_correction(json.loads(form["mic_calibration"]))
+    if "mic_noise_floor_dbfs" in form:
+        try:
+            floor = float(form["mic_noise_floor_dbfs"])
+        except ValueError:
+            floor = float("nan")
+        if not -120 <= floor <= -20:
+            raise ValueError("mic_noise_floor_dbfs must be between -120 and -20")
+        fields["mic_noise_floor_dbfs"] = floor
+    return fields
+
+
 def _noise_guard_response(summary: dict[str, Any] | None) -> dict[str, Any]:
     summary = summary or {}
     return {
@@ -75,6 +94,8 @@ def _noise_guard_response(summary: dict[str, Any] | None) -> dict[str, Any]:
         "noise_guard_confidence": summary.get("noise_guard_confidence"),
         "preroll_noise_dbfs": summary.get("preroll_noise_dbfs"),
         "noise_guard_warnings": summary.get("noise_guard_warnings", []),
+        "mic_calibration": summary.get("mic_calibration"),
+        "noise_source": summary.get("noise_source"),
     }
 
 
@@ -126,6 +147,12 @@ def create_guest_audio_analysis():
         noise_preroll_seconds = _parse_noise_preroll(request.form)
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
+    try:
+        mic_fields = _parse_mic_fields(request.form)
+    except ValueError as error:
+        field = "mic_noise_floor_dbfs" if str(error).startswith("mic_noise_floor_dbfs") else "mic_calibration"
+        message = "mic_calibration must be valid JSON" if isinstance(error, json.JSONDecodeError) else str(error)
+        return jsonify(error=message, field=field), 400
     if client_duration < 1:
         return jsonify({"error": "duration_seconds is required"}), 400
     analysis_purpose = request.form.get("analysis_purpose", "quality_evaluation")
@@ -174,6 +201,7 @@ def create_guest_audio_analysis():
                 assessment_id=work_id,
                 original_name=original_name,
                 noise_preroll_seconds=noise_preroll_seconds,
+                **mic_fields,
                 analysis_purpose=analysis_purpose,
             )
             apply_genre_evaluation(analysis_dump, suggestion_context.genre if suggestion_context else request.form.get("genre"))
@@ -310,6 +338,12 @@ def create_audio_upload():
         noise_preroll_seconds = _parse_noise_preroll(request.form)
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
+    try:
+        mic_fields = _parse_mic_fields(request.form)
+    except ValueError as error:
+        field = "mic_noise_floor_dbfs" if str(error).startswith("mic_noise_floor_dbfs") else "mic_calibration"
+        message = "mic_calibration must be valid JSON" if isinstance(error, json.JSONDecodeError) else str(error)
+        return jsonify(error=message, field=field), 400
     if client_duration < 1:
         return jsonify({"error": "duration_seconds is required"}), 400
     genre_value = request.form.get("genre")
@@ -365,6 +399,7 @@ def create_audio_upload():
             assessment_id=assessment_id,
             original_name=original_name,
             noise_preroll_seconds=noise_preroll_seconds,
+            **mic_fields,
             analysis_purpose=analysis_purpose,
         )
         apply_genre_evaluation(analysis_dump, genre)

@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:karaok_app/app/app_shell.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
+import 'package:karaok_app/features/calibration/data/mic_calibration_store.dart';
 import 'package:karaok_app/features/sound_settings/domain/settings_recommendation.dart';
 import 'package:karaok_app/features/sound_settings/presentation/pages/settings_recommendation_screen.dart';
 
@@ -247,6 +248,7 @@ void main() {
     tester,
   ) async {
     FlutterSecureStorage.setMockInitialValues({});
+    await MicCalibrationStore.instance.skip();
     UserSession.instance.setGuest('user');
     addTearDown(UserSession.instance.clear);
     final navigator = GlobalKey<NavigatorState>();

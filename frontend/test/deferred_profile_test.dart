@@ -1,3 +1,4 @@
+import 'package:karaok_app/features/calibration/data/mic_calibration_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -45,6 +46,7 @@ void main() {
     'Settings dot refreshes on profile completion without recreating shell',
     (tester) async {
       FlutterSecureStorage.setMockInitialValues({});
+      await MicCalibrationStore.instance.skip();
       await tester.pumpWidget(
         const MaterialApp(home: AppShell(initialIndex: 2)),
       );

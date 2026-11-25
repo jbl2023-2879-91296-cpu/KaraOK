@@ -3,6 +3,20 @@ from flask import Blueprint
 blueprint = Blueprint("audio_analysis", __name__, url_prefix="/api")
 
 
+@blueprint.post("/mic-calibration")
+def calibrate_user():
+    from ...audio_pipeline import pipeline
+
+    return pipeline.calibrate_user()
+
+
+@blueprint.post("/guest/mic-calibration")
+def calibrate_guest():
+    from ...audio_pipeline import pipeline
+
+    return pipeline.calibrate_guest()
+
+
 @blueprint.get("/audio-uploads")
 def get_audio_uploads():
     from ...results import assessments

@@ -5,6 +5,11 @@ abstract final class AppBreakpoints {
   static const medium = 600.0;
   static const expanded = 840.0;
   static const expandedContentWidth = 1080.0;
+
+  /// Width of the tablet sidebar: icon-and-label rail on portrait tablets,
+  /// a labelled sidebar on landscape tablets.
+  static const railWidth = 96.0;
+  static const sidebarWidth = 248.0;
 }
 
 /// Colors drawn from the supplied KaraOK logo, with darker ink tones for

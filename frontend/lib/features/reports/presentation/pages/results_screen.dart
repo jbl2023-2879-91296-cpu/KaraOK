@@ -1,3 +1,4 @@
+import 'package:karaok_app/features/reports/presentation/widgets/mic_calibration_chip.dart';
 import 'package:karaok_app/shared/widgets/adaptive_layout.dart';
 import 'package:karaok_app/features/reports/presentation/pages/glossary_screen.dart';
 import 'package:karaok_app/features/reports/domain/measurement_glossary.dart';
@@ -28,6 +29,8 @@ class ResultsScreen extends StatefulWidget {
     this.noiseGuardUsablePercentage,
     this.noiseGuardConfidence,
     this.prerollNoiseDbfs,
+    this.micCalibrated = false,
+    this.noiseSource,
     this.noiseGuardWarnings = const [],
     this.qualityFailures = const [],
     this.distortionLevel,
@@ -70,6 +73,8 @@ class ResultsScreen extends StatefulWidget {
       )?.toDouble(),
       noiseGuardConfidence: confidence is String ? confidence : null,
       prerollNoiseDbfs: reportNumber(record['preroll_noise_dbfs'])?.toDouble(),
+      micCalibrated: reportMap(record['mic_calibration'])['applied'] == true,
+      noiseSource: record['noise_source']?.toString(),
       noiseGuardWarnings: warnings is List
           ? warnings.whereType<String>().toList()
           : const [],
@@ -105,6 +110,8 @@ class ResultsScreen extends StatefulWidget {
   final double? noiseGuardUsablePercentage;
   final String? noiseGuardConfidence;
   final double? prerollNoiseDbfs;
+  final bool micCalibrated;
+  final String? noiseSource;
   final List<String> noiseGuardWarnings;
   final List<String> qualityFailures;
   final num? distortionLevel;
@@ -216,6 +223,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
                   ),
                   child: Column(
                     children: [
+                      if (!widget.isSample)
+                        MicCalibrationChip(applied: widget.micCalibrated),
                       if (widget.isSample) ...[
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -379,6 +388,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
                                     noiseGuardConfidence:
                                         widget.noiseGuardConfidence,
                                     prerollNoiseDbfs: widget.prerollNoiseDbfs,
+                                    micCalibrated: widget.micCalibrated,
+                                    noiseSource: widget.noiseSource,
                                     noiseGuardWarnings:
                                         widget.noiseGuardWarnings,
                                     qualityFailures: widget.qualityFailures,

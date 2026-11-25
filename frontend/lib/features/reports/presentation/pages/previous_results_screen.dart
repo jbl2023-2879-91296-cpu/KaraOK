@@ -1,3 +1,4 @@
+import 'package:karaok_app/shared/widgets/adaptive_layout.dart';
 import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:karaok_app/core/security/guest_assessment_service.dart';
 import 'package:karaok_app/features/reports/domain/sample_assessments.dart';
@@ -357,225 +358,250 @@ class _PreviousResultsScreenState extends State<PreviousResultsScreen> {
   Widget build(BuildContext context) {
     final filtered = _filtered;
     final query = _query;
+    final tablet = isTabletOf(context);
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        backgroundColor: AppColors.background,
-        elevation: 0,
-        title: Text(widget.title),
-      ),
+      appBar: tablet
+          ? null
+          : AppBar(
+              automaticallyImplyLeading: false,
+              backgroundColor: AppColors.background,
+              elevation: 0,
+              title: Text(widget.title),
+            ),
       body: SafeArea(
-        child: Column(
-          children: [
-            if (_showingSamples)
+        child: AdaptiveWidth(
+          maxWidth: 960,
+          child: Column(
+            children: [
+              if (tablet)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.page,
+                    AppSpacing.xxl,
+                    AppSpacing.page,
+                    AppSpacing.sm,
+                  ),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Semantics(
+                      header: true,
+                      child: Text(
+                        widget.title,
+                        style: Theme.of(context).textTheme.headlineMedium,
+                      ),
+                    ),
+                  ),
+                ),
+              if (_showingSamples)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.page,
+                    AppSpacing.sm,
+                    AppSpacing.page,
+                    0,
+                  ),
+                  child: Text(
+                    sampleAssessmentExplanation,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+                  ),
+                ),
+              if (UserSession.instance.isGuest &&
+                  _results.isNotEmpty &&
+                  !_showingSamples)
+                const _GuestMigrationPrompt(),
               Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.page,
-                  AppSpacing.sm,
-                  AppSpacing.page,
-                  0,
-                ),
-                child: Text(
-                  sampleAssessmentExplanation,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
-                ),
-              ),
-            if (UserSession.instance.isGuest &&
-                _results.isNotEmpty &&
-                !_showingSamples)
-              const _GuestMigrationPrompt(),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
-              child: TextField(
-                key: const Key('historySearchField'),
-                controller: _searchController,
-                onChanged: (_) => setState(() {}),
-                style: const TextStyle(color: AppColors.ink),
-                decoration: InputDecoration(
-                  hintText: 'Search report names',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _searchController.text.isEmpty
-                      ? null
-                      : IconButton(
-                          tooltip: 'Clear search',
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {});
-                          },
-                          icon: const Icon(Icons.close),
-                        ),
-                  filled: true,
-                  fillColor: AppColors.surface,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppRadii.control),
-                    borderSide: BorderSide.none,
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                child: TextField(
+                  key: const Key('historySearchField'),
+                  controller: _searchController,
+                  onChanged: (_) => setState(() {}),
+                  style: const TextStyle(color: AppColors.ink),
+                  decoration: InputDecoration(
+                    hintText: 'Search report names',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchController.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Clear search',
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {});
+                            },
+                            icon: const Icon(Icons.close),
+                          ),
+                    filled: true,
+                    fillColor: AppColors.surface,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppRadii.control),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
               ),
-            ),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Wrap(
-                spacing: AppSpacing.sm,
-                runSpacing: 0,
-                children: [
-                  _StatusChip(
-                    label: 'All',
-                    selected: _status == null,
-                    accentColor: widget.accentColor,
-                    onSelected: () => setState(() => _status = null),
-                  ),
-                  for (final status in _standardStatuses)
-                    _StatusChip(
-                      label: status,
-                      selected: _status == status,
-                      accentColor: widget.accentColor,
-                      onSelected: () => setState(() => _status = status),
-                    ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 8, 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      filtered.length == _results.length
-                          ? '${_results.length} ${_reportWord(_results.length)}'
-                          : '${filtered.length} of ${_results.length} reports',
-                      style: const TextStyle(
-                        color: AppColors.muted,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                  if (query.hasFilters)
-                    TextButton(
-                      key: const Key('historyClearFilters'),
-                      onPressed: _clearFilters,
-                      child: const Text('Clear'),
-                    ),
-                  TextButton.icon(
-                    key: const Key('historyFiltersButton'),
-                    onPressed: _showFilters,
-                    icon: const Icon(Icons.tune, size: 18),
-                    label: const Text('Filter'),
-                  ),
-                  PopupMenuButton<ReportHistorySort>(
-                    key: const Key('historySort'),
-                    tooltip: 'Sort reports',
-                    initialValue: _sortOrder,
-                    onSelected: (value) => setState(() => _sortOrder = value),
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(
-                        value: ReportHistorySort.newest,
-                        child: Text('Newest first'),
-                      ),
-                      PopupMenuItem(
-                        value: ReportHistorySort.oldest,
-                        child: Text('Oldest first'),
-                      ),
-                    ],
-                    child: SizedBox.square(
-                      dimension: AppSpacing.touchTarget,
-                      child: Icon(
-                        _sortOrder == ReportHistorySort.newest
-                            ? Icons.arrow_downward
-                            : Icons.arrow_upward,
-                        size: 20,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (_loadError != null && _results.isNotEmpty)
-              Padding(
+              Container(
+                width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: 0,
+                  children: [
+                    _StatusChip(
+                      label: 'All',
+                      selected: _status == null,
+                      accentColor: widget.accentColor,
+                      onSelected: () => setState(() => _status = null),
+                    ),
+                    for (final status in _standardStatuses)
+                      _StatusChip(
+                        label: status,
+                        selected: _status == status,
+                        accentColor: widget.accentColor,
+                        onSelected: () => setState(() => _status = status),
+                      ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 8, 4),
                 child: Row(
                   children: [
-                    const Icon(
-                      Icons.cloud_off_outlined,
-                      color: AppColors.orangeInk,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        _loadError!,
+                        filtered.length == _results.length
+                            ? '${_results.length} ${_reportWord(_results.length)}'
+                            : '${filtered.length} of ${_results.length} reports',
                         style: const TextStyle(
-                          color: AppColors.orangeInk,
+                          color: AppColors.muted,
                           fontSize: 12,
                         ),
                       ),
                     ),
-                    TextButton(onPressed: _load, child: const Text('Retry')),
-                  ],
-                ),
-              ),
-            if (!_showingSamples && _results.whereType<Map>().length >= 2)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Wrap(
-                  spacing: 12,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    if (!_selectingReports)
-                      TextButton.icon(
-                        key: const Key('compareReports'),
-                        icon: const Icon(Icons.compare_arrows),
-                        label: const Text('Select reports to compare'),
-                        onPressed: () =>
-                            setState(() => _selectingReports = true),
-                      )
-                    else ...[
-                      Text(
-                        '${_selectedReports.length} of 2 selected',
-                        style: const TextStyle(color: AppColors.muted),
-                      ),
-                      FilledButton(
-                        key: const Key('compareSelectedReports'),
-                        onPressed: _selectedReports.length != 2
-                            ? null
-                            : () {
-                                final entries = _selectedReports
-                                    .map(
-                                      (index) => ReportHistoryEntry.fromRaw(
-                                        _results[index],
-                                        sourceIndex: index,
-                                      ),
-                                    )
-                                    .toList();
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => ReportComparisonScreen(
-                                      entries: entries,
-                                    ),
-                                  ),
-                                );
-                              },
-                        child: const Text('Compare'),
-                      ),
+                    if (query.hasFilters)
                       TextButton(
-                        onPressed: () => setState(() {
-                          _selectingReports = false;
-                          _selectedReports.clear();
-                        }),
-                        child: const Text('Cancel selection'),
+                        key: const Key('historyClearFilters'),
+                        onPressed: _clearFilters,
+                        child: const Text('Clear'),
                       ),
-                    ],
+                    TextButton.icon(
+                      key: const Key('historyFiltersButton'),
+                      onPressed: _showFilters,
+                      icon: const Icon(Icons.tune, size: 18),
+                      label: const Text('Filter'),
+                    ),
+                    PopupMenuButton<ReportHistorySort>(
+                      key: const Key('historySort'),
+                      tooltip: 'Sort reports',
+                      initialValue: _sortOrder,
+                      onSelected: (value) => setState(() => _sortOrder = value),
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: ReportHistorySort.newest,
+                          child: Text('Newest first'),
+                        ),
+                        PopupMenuItem(
+                          value: ReportHistorySort.oldest,
+                          child: Text('Oldest first'),
+                        ),
+                      ],
+                      child: SizedBox.square(
+                        dimension: AppSpacing.touchTarget,
+                        child: Icon(
+                          _sortOrder == ReportHistorySort.newest
+                              ? Icons.arrow_downward
+                              : Icons.arrow_upward,
+                          size: 20,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
-            Expanded(child: _buildResults(filtered, query.hasFilters)),
-          ],
+              if (_loadError != null && _results.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.cloud_off_outlined,
+                        color: AppColors.orangeInk,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _loadError!,
+                          style: const TextStyle(
+                            color: AppColors.orangeInk,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      TextButton(onPressed: _load, child: const Text('Retry')),
+                    ],
+                  ),
+                ),
+              if (!_showingSamples && _results.whereType<Map>().length >= 2)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Wrap(
+                    spacing: 12,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (!_selectingReports)
+                        TextButton.icon(
+                          key: const Key('compareReports'),
+                          icon: const Icon(Icons.compare_arrows),
+                          label: const Text('Select reports to compare'),
+                          onPressed: () =>
+                              setState(() => _selectingReports = true),
+                        )
+                      else ...[
+                        Text(
+                          '${_selectedReports.length} of 2 selected',
+                          style: const TextStyle(color: AppColors.muted),
+                        ),
+                        FilledButton(
+                          key: const Key('compareSelectedReports'),
+                          onPressed: _selectedReports.length != 2
+                              ? null
+                              : () {
+                                  final entries = _selectedReports
+                                      .map(
+                                        (index) => ReportHistoryEntry.fromRaw(
+                                          _results[index],
+                                          sourceIndex: index,
+                                        ),
+                                      )
+                                      .toList();
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ReportComparisonScreen(
+                                        entries: entries,
+                                      ),
+                                    ),
+                                  );
+                                },
+                          child: const Text('Compare'),
+                        ),
+                        TextButton(
+                          onPressed: () => setState(() {
+                            _selectingReports = false;
+                            _selectedReports.clear();
+                          }),
+                          child: const Text('Cancel selection'),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              Expanded(child: _buildResults(filtered, query.hasFilters)),
+            ],
+          ),
         ),
       ),
     );

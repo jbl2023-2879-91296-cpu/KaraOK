@@ -1,3 +1,4 @@
+import 'package:karaok_app/features/calibration/data/mic_calibration_store.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -599,8 +600,55 @@ class ApiService {
         'settingsSuggestionFields are required for settings_suggestion.',
       );
     }
-    final endpoint = guest ? '/guest/audio-analysis' : '/audio-uploads';
+    final calibration = await MicCalibrationStore.instance.load();
+    return _uploadAudio(
+      endpoint: guest ? '/guest/audio-analysis' : '/audio-uploads',
+      guest: guest,
+      filePath: filePath,
+      fileName: fileName,
+      fileBytes: fileBytes,
+      onUploadProgress: onUploadProgress,
+      fields: {
+        'duration_seconds': (durationSeconds < 1 ? 1 : durationSeconds)
+            .toString(),
+        if (noisePrerollSeconds > 0)
+          'noise_preroll_seconds': noisePrerollSeconds.toStringAsFixed(1),
+        'analysis_purpose': analysisPurpose,
+        if (analysisPurpose == 'settings_suggestion')
+          ...settingsSuggestionFields!
+        else if (genre != null && genre.trim().isNotEmpty)
+          'genre': genre.trim(),
+        if (calibration?.correction case final correction?)
+          'mic_calibration': jsonEncode(correction),
+        if (calibration != null)
+          'mic_noise_floor_dbfs': calibration.noiseFloorDbfs.toString(),
+      },
+    );
+  }
 
+  Future<Map<String, dynamic>> uploadMicCalibration({
+    required String filePath,
+    Uint8List? fileBytes,
+    required bool guest,
+    required String deviceLabel,
+  }) => _uploadAudio(
+    endpoint: guest ? '/guest/mic-calibration' : '/mic-calibration',
+    guest: guest,
+    filePath: filePath,
+    fileName: 'calibration.wav',
+    fileBytes: fileBytes,
+    fields: {'device_label': deviceLabel},
+  );
+
+  Future<Map<String, dynamic>> _uploadAudio({
+    required String endpoint,
+    required bool guest,
+    required String filePath,
+    required String fileName,
+    Uint8List? fileBytes,
+    required Map<String, String> fields,
+    void Function(int sent, int total)? onUploadProgress,
+  }) async {
     Future<(http.Response, String?)> upload() async {
       final request = _ProgressMultipartRequest(
         _uri(endpoint),
@@ -609,18 +657,7 @@ class ApiService {
       final headers = await _headers(authenticated: !guest);
       headers.remove('Content-Type');
       request.headers.addAll(headers);
-      request.fields['duration_seconds'] =
-          (durationSeconds < 1 ? 1 : durationSeconds).toString();
-      if (noisePrerollSeconds > 0) {
-        request.fields['noise_preroll_seconds'] = noisePrerollSeconds
-            .toStringAsFixed(1);
-      }
-      request.fields['analysis_purpose'] = analysisPurpose;
-      if (analysisPurpose == 'settings_suggestion') {
-        request.fields.addAll(settingsSuggestionFields!);
-      } else if (genre != null && genre.trim().isNotEmpty) {
-        request.fields['genre'] = genre.trim();
-      }
+      request.fields.addAll(fields);
       request.files.add(
         fileBytes == null
             ? await http.MultipartFile.fromPath('audio', filePath)

@@ -290,6 +290,22 @@ function scoring_details(mixed $value): string
                 </tbody>
             </table>
         </div>
+        <?php $calibration = $details->mic_calibration ?? null;
+        if (is_object($calibration)): ?>
+            <p class="muted mt-3"><?= ($calibration->applied ?? false) ? 'Mic calibrated' : 'Mic not calibrated' ?>
+                <?php if ($calibration->applied ?? false): ?>
+                    · Reference <?= h($label($calibration->reference_id ?? null)) ?>
+                    · Level offset <?= h($number($calibration->level_offset_db ?? null)) ?> dB
+                <?php endif; ?>
+            </p>
+        <?php endif; ?>
+        <?php if (isset($details->noise_source)): ?>
+            <p class="muted">Noise source <?= h(match ($details->noise_source) {
+                'phone_microphone' => 'Phone microphone',
+                'room' => 'Room',
+                default => 'Unknown',
+            }) ?></p>
+        <?php endif; ?>
         <?php $warnings = $details->noise_guard_warnings ?? null;
         if (is_array($warnings) && $warnings): ?>
             <p class="muted mt-3">Noise Guard warnings</p>

@@ -71,6 +71,9 @@ def _stored_empirical_result(row: dict[str, Any]) -> dict[str, Any]:
     """Reconstruct one historical empirical snapshot from typed DB fields."""
 
     empirical = _decoded_object(row.get("empirical_details"))
+    for field in ("mic_calibration", "noise_source"):
+        if field in empirical:
+            row[field] = empirical.pop(field)
     quality = _decoded_object(empirical.pop("quality_assessment", None))
     failures = _decoded_string_list(quality.get("failures"))
     if failures:

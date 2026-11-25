@@ -1,4 +1,11 @@
+import 'dart:io';
+
+import 'package:karaok_app/features/calibration/data/mic_calibration_store.dart';
+import 'package:karaok_app/features/calibration/presentation/pages/mic_calibration_screen.dart';
+import 'package:karaok_app/core/security/role_policy.dart';
+import 'package:flutter/services.dart';
 import 'package:karaok_app/shared/widgets/adaptive_layout.dart';
+import 'package:karaok_app/shared/widgets/app_sidebar.dart';
 import 'package:karaok_app/app/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:karaok_app/core/security/session_manager.dart';
@@ -21,6 +28,7 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
+  static bool _promptedThisLaunch = false;
   late int _currentIndex;
   int _recordsRefreshToken = 0;
 
@@ -28,6 +36,32 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex.clamp(0, 2);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _offerCalibration());
+  }
+
+  Future<void> _offerCalibration() async {
+    if (!mounted ||
+        _promptedThisLaunch ||
+        !RolePolicy.canRunAssessment(UserSession.instance.userType)) {
+      return;
+    }
+    try {
+      if (!await MicCalibrationStore.instance.shouldPrompt() ||
+          !mounted ||
+          _promptedThisLaunch ||
+          ModalRoute.of(context)?.isCurrent != true ||
+          !RolePolicy.canRunAssessment(UserSession.instance.userType)) {
+        return;
+      }
+    } on MissingPluginException {
+      return;
+    } on PlatformException {
+      return;
+    } on FileSystemException {
+      return;
+    }
+    _promptedThisLaunch = true;
+    await MicCalibrationScreen.open(context);
   }
 
   @override
@@ -80,28 +114,30 @@ class _AppShellState extends State<AppShell> {
             destinations: destinations,
           );
         }
-        final extended = window == WindowSize.expanded;
-        return SafeArea(
-          right: false,
-          child: NavigationRail(
-            extended: extended,
-            scrollable: true,
-            labelType: extended
-                ? NavigationRailLabelType.none
-                : NavigationRailLabelType.all,
-            backgroundColor: AppColors.background,
-            indicatorColor: AppColors.mint,
-            selectedIndex: _currentIndex,
-            onDestinationSelected: _selectTab,
-            destinations: [
-              for (final item in destinations)
-                NavigationRailDestination(
-                  icon: item.icon,
-                  selectedIcon: item.selectedIcon,
-                  label: Text(item.label),
-                ),
-            ],
-          ),
+        return AppSidebar(
+          key: const Key('appSidebar'),
+          extended: window == WindowSize.expanded,
+          selectedIndex: _currentIndex,
+          onSelected: _selectTab,
+          onOpenAccount: () => _selectTab(2),
+          items: [
+            const AppSidebarItem(
+              icon: Icons.home_outlined,
+              selectedIcon: Icons.home,
+              label: 'Home',
+            ),
+            const AppSidebarItem(
+              icon: Icons.receipt_long_outlined,
+              selectedIcon: Icons.receipt_long,
+              label: 'Records',
+            ),
+            AppSidebarItem(
+              icon: Icons.settings_outlined,
+              selectedIcon: Icons.settings,
+              label: 'Settings',
+              showBadge: settingsBadge,
+            ),
+          ],
         );
       },
     );

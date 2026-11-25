@@ -1,3 +1,4 @@
+import 'package:karaok_app/features/calibration/data/mic_calibration_store.dart';
 import 'package:karaok_app/shared/widgets/otp_countdown.dart';
 import 'support/settle_with_storage.dart';
 import 'dart:async';
@@ -52,8 +53,9 @@ void main() {
     expect(find.text('Retry'), findsOneWidget);
   });
 
-  setUp(() {
+  setUp(() async {
     FlutterSecureStorage.setMockInitialValues({});
+    await MicCalibrationStore.instance.skip();
     UserSession.instance.clear();
   });
 

@@ -1,3 +1,4 @@
+import 'package:karaok_app/features/reports/presentation/widgets/mic_calibration_chip.dart';
 import 'package:karaok_app/shared/widgets/adaptive_layout.dart';
 import 'package:karaok_app/features/reports/presentation/pages/glossary_screen.dart';
 import 'package:karaok_app/features/reports/domain/measurement_glossary.dart';
@@ -26,6 +27,8 @@ class DetailedReportScreen extends StatefulWidget {
     this.noiseGuardUsablePercentage,
     this.noiseGuardConfidence,
     this.prerollNoiseDbfs,
+    this.micCalibrated = false,
+    this.noiseSource,
     this.noiseGuardWarnings = const [],
     this.qualityFailures = const [],
     this.distortionLevel,
@@ -44,6 +47,8 @@ class DetailedReportScreen extends StatefulWidget {
   final double? noiseGuardUsablePercentage;
   final String? noiseGuardConfidence;
   final double? prerollNoiseDbfs;
+  final bool micCalibrated;
+  final String? noiseSource;
   final List<String> noiseGuardWarnings;
   final List<String> qualityFailures;
   final num? distortionLevel;
@@ -148,6 +153,10 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
       ),
     ];
     final measurements = <Widget>[
+      Align(
+        alignment: Alignment.centerLeft,
+        child: MicCalibrationChip(applied: widget.micCalibrated),
+      ),
       ReportMeasurements(
         noiseLevelDb: widget.noiseLevelDb,
         noiseReliable: widget.noiseReliable,
@@ -158,6 +167,7 @@ class _DetailedReportScreenState extends State<DetailedReportScreen> {
         confidence: widget.noiseGuardConfidence,
         prerollNoiseDbfs: widget.prerollNoiseDbfs,
         warnings: widget.noiseGuardWarnings,
+        noiseSource: widget.noiseSource,
       ),
       if (!failed) ...[
         const SizedBox(height: 20),

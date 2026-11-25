@@ -35,10 +35,14 @@ void main() {
     );
     await tester.tap(find.text('Before you record'));
     await tester.pumpAndSettle();
-    expect(find.text('Hold the phone close to the speaker'), findsOneWidget);
+    expect(find.text('Point the microphone at the speaker'), findsOneWidget);
+    expect(
+      find.text('For uncalibrated recordings, start about 30 cm (1 ft) away.'),
+      findsOneWidget,
+    );
     expect(
       find.text(
-        'About 30 cm (1 ft) away, pointed at the speaker. Being closer cuts background noise more than any filter.',
+        'Phone is in the same spot and distance used for calibration (1 m)',
       ),
       findsOneWidget,
     );

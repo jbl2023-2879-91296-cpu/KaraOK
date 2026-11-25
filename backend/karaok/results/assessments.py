@@ -304,11 +304,15 @@ def get_audio_analysis_dump(upload_id: int):
             "original_file_name": upload_record["file_name"],
         },
         "analysis": {
+            **({"mic_calibration": stored_quality["mic_calibration"]}
+               if "mic_calibration" in stored_quality else {}),
             "noise_guard": {
                 "usable_percentage": upload_record.get("noise_guard_usable_percentage"),
                 "confidence": upload_record.get("noise_guard_confidence"),
                 "preroll_noise_dbfs": upload_record.get("preroll_noise_dbfs"),
                 "warnings": stored_quality.get("noise_guard_warnings", []),
+                **({"noise_source": stored_quality["noise_source"]}
+                   if "noise_source" in stored_quality else {}),
             },
             "noise": {
                 "noise_dbfs": upload_record["noise_level"],

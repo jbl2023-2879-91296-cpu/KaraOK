@@ -48,8 +48,10 @@ import librosa  # noqa: E402
 import librosa.display  # noqa: E402
 
 if __package__:
+    from .mic_calibration import apply_correction, validate_correction
     from .noise_guard import NoiseGuardConfig, apply_noise_guard
 else:
+    from mic_calibration import apply_correction, validate_correction
     from noise_guard import NoiseGuardConfig, apply_noise_guard
 
 
@@ -1698,32 +1700,7 @@ def evaluate_quality(
     }
 
 
-def _analyze_with_context(
-    file_path: str | Path,
-    config: AnalyzerConfig | None = None,
-    safety: SafetyLimits | None = None,
-    noise_preroll_seconds: float = 0.0,
-    noise_guard: NoiseGuardConfig | None = None,
-) -> tuple[dict[str, Any], AnalysisContext]:
-    config = config or AnalyzerConfig()
-    safety = safety or SafetyLimits()
-    _validate_config(config)
-    _validate_safety(safety)
-    raw_audio, sample_rate, container_info = load_audio(file_path, safety)
-    audio = validate_audio(raw_audio, sample_rate, config)
-    if not math.isfinite(noise_preroll_seconds) or noise_preroll_seconds < 0.0:
-        raise AudioAnalysisError("Noise pre-roll seconds must be finite and non-negative.")
-    if noise_preroll_seconds > 0.0:
-        preroll_samples = round(min(noise_preroll_seconds, audio.size / sample_rate) * sample_rate)
-        if audio.size - preroll_samples < 10.0 * sample_rate:
-            raise AudioAnalysisError("Record at least 10 seconds of song after the noise check.")
-    guard_config = noise_guard or NoiseGuardConfig()
-    guard_result = apply_noise_guard(
-        audio, sample_rate, noise_preroll_seconds, guard_config,
-        config.frame_length, config.hop_length,
-    )
-    audio = guard_result.audio
-    keep_frames = guard_result.keep_frames
+def _guarded_feature_context(audio, sample_rate, config, safety, keep_frames, container_info):
     magnitude, power, frequencies, frame_times = compute_stft(
         audio, sample_rate, config.frame_length, config.hop_length
     )
@@ -1777,6 +1754,72 @@ def _analyze_with_context(
         if fallback_active_frames is not None
         else context
     )
+    return context, metrics_context, silence_threshold, insufficient_usable_frames, fallback_active_frames
+
+
+def _identify_noise_source(report, mic_noise_floor_dbfs):
+    preroll = report["preroll_noise_dbfs"]
+    report["noise_source"] = None
+    if preroll is None or mic_noise_floor_dbfs is None:
+        return
+    if preroll > mic_noise_floor_dbfs + 3.0:
+        report["noise_source"] = "room"
+        return
+    report["noise_source"] = "phone_microphone"
+    background_warning = "Background noise is loud compared with the song. Move the phone closer to the speaker."
+    microphone_warning = (
+        "The song was quiet compared with this phone's own microphone hiss. "
+        "Move the phone closer to the speaker or raise the volume."
+    )
+    report["warnings"] = [
+        microphone_warning if warning == background_warning else warning
+        for warning in report["warnings"]
+    ]
+
+
+def _analyze_with_context(
+    file_path: str | Path,
+    config: AnalyzerConfig | None = None,
+    safety: SafetyLimits | None = None,
+    noise_preroll_seconds: float = 0.0,
+    noise_guard: NoiseGuardConfig | None = None,
+    *,
+    mic_calibration: dict[str, Any] | None = None,
+    mic_noise_floor_dbfs: float | None = None,
+) -> tuple[dict[str, Any], AnalysisContext]:
+    config = config or AnalyzerConfig()
+    safety = safety or SafetyLimits()
+    _validate_config(config)
+    _validate_safety(safety)
+    raw_audio, sample_rate, container_info = load_audio(file_path, safety)
+    audio = validate_audio(raw_audio, sample_rate, config)
+    if not math.isfinite(noise_preroll_seconds) or noise_preroll_seconds < 0.0:
+        raise AudioAnalysisError("Noise pre-roll seconds must be finite and non-negative.")
+    if noise_preroll_seconds > 0.0:
+        preroll_samples = round(min(noise_preroll_seconds, audio.size / sample_rate) * sample_rate)
+        if audio.size - preroll_samples < 10.0 * sample_rate:
+            raise AudioAnalysisError("Record at least 10 seconds of song after the noise check.")
+    guard_config = noise_guard or NoiseGuardConfig()
+    guard_result = apply_noise_guard(
+        audio, sample_rate, noise_preroll_seconds, guard_config,
+        config.frame_length, config.hop_length,
+    )
+    audio = guard_result.audio
+    keep_frames = guard_result.keep_frames
+    context, metrics_context, silence_threshold, insufficient_usable_frames, fallback_active_frames = (
+        _guarded_feature_context(audio, sample_rate, config, safety, keep_frames, container_info)
+    )
+    diagnostics_context = metrics_context
+    diagnostics_fallback = fallback_active_frames
+    if mic_calibration is not None:
+        corrected = apply_correction(audio, sample_rate, mic_calibration)
+        context, metrics_context, silence_threshold, insufficient_usable_frames, fallback_active_frames = (
+            _guarded_feature_context(corrected, sample_rate, config, safety, keep_frames, container_info)
+        )
+    active_frames = context.active_frames
+    frame_rms = context.frame_rms
+    guard_report = guard_result.report
+    _identify_noise_source(guard_report, mic_noise_floor_dbfs)
     path = Path(file_path).expanduser().resolve()
     mnr = guard_result.report["music_to_noise_db"]
     flatness_reliable = mnr is None or mnr >= guard_config.mnr_high_db
@@ -1809,12 +1852,20 @@ def _analyze_with_context(
             "reliability_note": None if flatness_reliable else "Background noise may affect this measurement.",
         },
         "sharpness": estimate_sharpness(metrics_context),
-        "noise": estimate_noise(metrics_context, guard_result.report["preroll_noise_dbfs"]),
-        "distortion": estimate_distortion(metrics_context),
-        "noise_guard": guard_result.report,
+        "noise": estimate_noise(diagnostics_context, guard_result.report["preroll_noise_dbfs"]),
+        "distortion": estimate_distortion(diagnostics_context),
+        "noise_guard": guard_report,
+        "mic_calibration": {
+            "applied": mic_calibration is not None,
+            **{key: (mic_calibration or {}).get(key) for key in
+               ("level_offset_db", "band_offsets_db", "reference_id")},
+        },
     }
     if fallback_active_frames is not None:
-        for section in ("bass", "treble", "loudness", "flatness", "sharpness", "noise", "distortion"):
+        for section in ("bass", "treble", "loudness", "flatness", "sharpness"):
+            results[section]["frame_metric_source"] = "ungated_diagnostic"
+    if diagnostics_fallback is not None:
+        for section in ("noise", "distortion"):
             results[section]["frame_metric_source"] = "ungated_diagnostic"
     return results, context
 
@@ -1825,9 +1876,15 @@ def analyze_audio(
     safety: SafetyLimits | None = None,
     quality_thresholds: QualityThresholds | None = None,
     noise_preroll_seconds: float = 0.0,
+    *,
+    mic_calibration: dict[str, Any] | None = None,
+    mic_noise_floor_dbfs: float | None = None,
 ) -> dict[str, Any]:
     """Analyze an audio file and return a JSON-serializable result dictionary."""
-    results, _ = _analyze_with_context(file_path, config, safety, noise_preroll_seconds)
+    results, _ = _analyze_with_context(
+        file_path, config, safety, noise_preroll_seconds,
+        mic_calibration=mic_calibration, mic_noise_floor_dbfs=mic_noise_floor_dbfs,
+    )
     results["quality_assessment"] = evaluate_quality(
         results,
         quality_thresholds or QualityThresholds(),
@@ -2218,6 +2275,8 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Override lowest RMS percentile used as noise",
     )
+    parser.add_argument("--mic-calibration-json", type=Path)
+    parser.add_argument("--mic-noise-floor-dbfs", type=float)
     parser.add_argument(
         "--noise-preroll-seconds",
         type=float,
@@ -2347,8 +2406,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Analyzing: {Path(audio_file).expanduser()}", flush=True)
         print(f"Settings:  {settings.settings_path}", flush=True)
         print("Please wait; long recordings and plot generation may take a minute.", flush=True)
+        correction = None
+        if args.mic_calibration_json is not None:
+            correction = validate_correction(json.loads(args.mic_calibration_json.read_text(encoding="utf-8")))
+        if args.mic_noise_floor_dbfs is not None and not -120 <= args.mic_noise_floor_dbfs <= -20:
+            raise AudioAnalysisError("mic_noise_floor_dbfs must be between -120 and -20")
         results, context = _analyze_with_context(
-            audio_file, config, settings.safety, args.noise_preroll_seconds, settings.noise_guard
+            audio_file, config, settings.safety, args.noise_preroll_seconds, settings.noise_guard,
+            mic_calibration=correction, mic_noise_floor_dbfs=args.mic_noise_floor_dbfs,
         )
         if args.phone_recording:
             if not args.noise_file or not args.tone_file:
