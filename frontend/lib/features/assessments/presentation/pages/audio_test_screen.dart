@@ -1,3 +1,6 @@
+import 'package:karaok_app/features/calibration/data/mic_calibration_store.dart';
+import 'package:karaok_app/features/assessments/data/raw_recording_config.dart';
+import 'dart:math' as math;
 import 'package:karaok_app/shared/widgets/adaptive_layout.dart';
 import 'package:karaok_app/shared/widgets/stage_progress.dart';
 import 'package:karaok_app/shared/widgets/app_widgets.dart';
@@ -27,6 +30,9 @@ import 'package:karaok_app/features/sound_settings/presentation/pages/settings_r
 
 const kNoisePreroll = Duration(seconds: 3);
 const kNoisyPrerollDbfs = -45.0;
+
+double noisyPrerollThreshold(double? floor) =>
+    floor == null ? kNoisyPrerollDbfs : math.max(kNoisyPrerollDbfs, floor + 15);
 
 enum AudioInputState {
   idle,
@@ -326,21 +332,13 @@ class _AudioTestScreenState extends State<AudioTestScreen>
           _interruptRecording();
         },
       );
+      final micFloor =
+          (await MicCalibrationStore.instance.load())?.noiseFloorDbfs;
+      if (!mounted) return;
       _startingRecorder = true;
       _interruptedDuringStart = null;
       try {
-        await _recorder.start(
-          const RecordConfig(
-            encoder: AudioEncoder.wav,
-            sampleRate: 44100,
-            numChannels: 1,
-            autoGain: false,
-            echoCancel: false,
-            noiseSuppress: false,
-            audioInterruption: AudioInterruptionMode.pause,
-          ),
-          path: path,
-        );
+        await _recorder.start(rawRecordingConfig, path: path);
       } finally {
         _startingRecorder = false;
       }
@@ -377,7 +375,9 @@ class _AudioTestScreenState extends State<AudioTestScreen>
         _amplitudes?.cancel();
         _amplitudes = null;
         setState(() {
-          _noisy = samples > 0 && levelSum / samples > kNoisyPrerollDbfs;
+          _noisy =
+              samples > 0 &&
+              levelSum / samples > noisyPrerollThreshold(micFloor);
           _state = AudioInputState.recording;
           _message = 'Start the song now.';
         });

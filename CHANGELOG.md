@@ -8,6 +8,12 @@ All notable changes to KaraOK are documented here.
 - Replace temporary-password emails with password reset codes and add OTP expiry and resend countdowns.
 - Improve session refresh during audio uploads, analysis progress, and tablet layouts.
 
+## 1.14.0+20 - Microphone calibration
+
+- Add a guided calibration against a server reference phone for signed-in users and guests.
+- Apply saved microphone level and frequency corrections to scored features and show calibration status on results.
+- Use the measured microphone floor to identify phone hiss in the noise check.
+
 ## 2026-11-19 - 1.12.0+18 - Noise Guard
 
 Backend deployed to production the same day from `main` (PR #6; migrations

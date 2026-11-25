@@ -97,6 +97,8 @@ def _run_audio_analyzer(
     original_name: str,
     analysis_purpose: str,
     noise_preroll_seconds: float = 0.0,
+    mic_calibration: dict[str, Any] | None = None,
+    mic_noise_floor_dbfs: float | None = None,
 ) -> dict[str, Any]:
     """Run the standalone analyzer and return its transient structured output."""
     if analysis_purpose not in ALLOWED_ANALYSIS_PURPOSES:
@@ -119,6 +121,12 @@ def _run_audio_analyzer(
     ]
     if noise_preroll_seconds > 0:
         command.extend(["--noise-preroll-seconds", str(noise_preroll_seconds)])
+    if mic_calibration is not None:
+        correction_path = destination / "mic_calibration.json"
+        correction_path.write_text(json.dumps(mic_calibration), encoding="utf-8")
+        command.extend(["--mic-calibration-json", str(correction_path)])
+    if mic_noise_floor_dbfs is not None:
+        command.extend(["--mic-noise-floor-dbfs", str(mic_noise_floor_dbfs)])
     started_at = datetime.now(timezone.utc)
     started_clock = time.monotonic()
     environment = os.environ.copy()
@@ -232,6 +240,8 @@ def run_audio_analyzer(
     original_name: str,
     analysis_purpose: str,
     noise_preroll_seconds: float = 0.0,
+    mic_calibration: dict[str, Any] | None = None,
+    mic_noise_floor_dbfs: float | None = None,
 ) -> dict[str, Any]:
     """Analyze an upload and retain only its two report visualizations."""
     dump: dict[str, Any] | None = None
@@ -243,6 +253,8 @@ def run_audio_analyzer(
             original_name=original_name,
             analysis_purpose=analysis_purpose,
             noise_preroll_seconds=noise_preroll_seconds,
+            **({"mic_calibration": mic_calibration} if mic_calibration is not None else {}),
+            **({"mic_noise_floor_dbfs": mic_noise_floor_dbfs} if mic_noise_floor_dbfs is not None else {}),
         )
         return dump
     finally:

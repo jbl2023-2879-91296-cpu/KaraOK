@@ -1,3 +1,4 @@
+import 'package:karaok_app/features/calibration/data/mic_calibration_store.dart';
 import 'support/settle_with_storage.dart';
 import 'package:karaok_app/features/auth/data/auth_api.dart';
 import 'package:karaok_app/features/auth/presentation/pages/login_screen.dart';
@@ -22,6 +23,7 @@ import 'package:karaok_app/features/reports/presentation/pages/results_screen.da
 void main() {
   setUp(() async {
     FlutterSecureStorage.setMockInitialValues({});
+    await MicCalibrationStore.instance.skip();
     await GuestAssessmentService.instance.resetForTesting();
   });
   tearDown(UserSession.instance.clear);
@@ -72,9 +74,10 @@ void main() {
     expect(find.text('Evaluate Audio Quality'), findsOneWidget);
   });
 
-  testWidgets('KaraOK opens in guest mode after the launch screen', (
+  testWidgets('KaraOK offers microphone calibration on first guest launch', (
     tester,
   ) async {
+    await MicCalibrationStore.instance.clear();
     await tester.pumpWidget(const KaraOKApp());
     await tester.pump();
 
@@ -86,6 +89,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1));
     await settleWithStorage(tester);
     expect(find.byType(LaunchAnimation), findsNothing);
+    expect(find.text('Start calibration'), findsOneWidget);
+    await tester.ensureVisible(find.text('Skip for now'));
+    await tester.tap(find.text('Skip for now'));
+    await settleWithStorage(tester);
 
     expect(find.byType(MaterialApp), findsOneWidget);
     expect(UserSession.instance.isGuest, isTrue);

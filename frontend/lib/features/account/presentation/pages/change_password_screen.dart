@@ -1,3 +1,5 @@
+import 'package:karaok_app/features/calibration/data/mic_calibration_store.dart';
+import 'package:karaok_app/features/calibration/presentation/pages/mic_calibration_screen.dart';
 import 'package:karaok_app/features/reports/presentation/pages/glossary_screen.dart';
 import 'package:karaok_app/shared/widgets/app_widgets.dart';
 import 'package:karaok_app/features/assessments/data/audio_staging_service.dart';
@@ -798,6 +800,26 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     );
   }
 
+  Widget _calibrationLink() => FutureBuilder<MicCalibration?>(
+    future: MicCalibrationStore.instance.load(),
+    builder: (context, snapshot) {
+      final record = snapshot.data;
+      final subtitle = record?.correction == null
+          ? 'Not calibrated'
+          : 'Calibrated on ${MaterialLocalizations.of(context).formatMediumDate(record!.calibratedAt.toLocal())}';
+      return ListTile(
+        leading: const Icon(Icons.mic_outlined),
+        title: const Text('Microphone calibration'),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () async {
+          await MicCalibrationScreen.open(context);
+          if (mounted) setState(() {});
+        },
+      );
+    },
+  );
+
   Widget _glossaryLink() => ListTile(
     leading: const Icon(Icons.menu_book_outlined),
     title: const Text('Glossary of terms'),
@@ -869,6 +891,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         Text('Help', style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: AppSpacing.sm),
         Card(clipBehavior: Clip.antiAlias, child: _glossaryLink()),
+        Card(clipBehavior: Clip.antiAlias, child: _calibrationLink()),
       ],
     ),
   );
@@ -930,6 +953,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 ),
               if (!widget.forceChange) ...[
                 _glossaryLink(),
+                if (session.userType == "user") _calibrationLink(),
                 _accountDetails(session),
                 const SizedBox(height: 28),
                 const AppSectionHeader(title: 'Change Password'),

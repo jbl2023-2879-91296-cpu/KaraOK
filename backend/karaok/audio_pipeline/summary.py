@@ -96,6 +96,7 @@ def summarize_audio_analysis(dump: dict[str, Any]) -> dict[str, Any]:
         noise_reliable = None
     guard = analysis.get("noise_guard")
     guard = guard if isinstance(guard, dict) else {}
+    calibration = analysis.get("mic_calibration") or {}
     distortion_level = _nested_number(analysis, "distortion", "estimated_score")
     bass = _nested_number(analysis, "bass", "energy_percentage")
     treble = _nested_number(analysis, "treble", "energy_percentage")
@@ -123,6 +124,12 @@ def summarize_audio_analysis(dump: dict[str, Any]) -> dict[str, Any]:
         "noise_guard_confidence": guard.get("confidence"),
         "preroll_noise_dbfs": _nested_number(guard, "preroll_noise_dbfs"),
         "noise_guard_warnings": guard.get("warnings", []),
+        "noise_source": guard.get("noise_source"),
+        "mic_calibration": {
+            "applied": calibration.get("applied", False),
+            "reference_id": calibration.get("reference_id"),
+            "level_offset_db": calibration.get("level_offset_db"),
+        },
         "distortion_level": distortion_level,
         "bass": bass,
         "treble": treble,

@@ -73,6 +73,8 @@ def save_audio_analysis(
     for field in ("quality_assessment", "noise_guard_warnings"):
         if summary.get(field):
             stored_details[field] = summary[field]
+    for field in ("mic_calibration", "noise_source"):
+        stored_details[field] = summary.get(field)
     empirical_details_json = json.dumps(
         stored_details,
         ensure_ascii=False,

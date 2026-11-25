@@ -19,16 +19,18 @@ class RecordingChecklist extends StatelessWidget {
         ),
         ListTile(
           leading: Icon(Icons.speaker),
-          title: Text('Hold the phone close to the speaker'),
+          title: Text('Point the microphone at the speaker'),
           subtitle: Text(
-            'About 30 cm (1 ft) away, pointed at the speaker. Being closer cuts background noise more than any filter.',
+            'For uncalibrated recordings, start about 30 cm (1 ft) away.',
           ),
         ),
         ListTile(
           leading: Icon(Icons.mic),
-          title: Text('Keep the recording setup consistent'),
+          title: Text(
+            'Phone is in the same spot and distance used for calibration (1 m)',
+          ),
           subtitle: Text(
-            'Use the same phone, microphone, position, and distance. Keep the microphone uncovered.',
+            'If calibrated, match the calibration setup. Keep the microphone uncovered.',
           ),
         ),
         ListTile(
@@ -49,7 +51,7 @@ class RecordingChecklist extends StatelessWidget {
           leading: Icon(Icons.play_arrow),
           title: Text('Listen before evaluating'),
           subtitle: Text(
-            'Preview the recording to check that it contains the intended audio. This checklist does not calibrate the microphone.',
+            'Preview the recording to check that it contains the intended audio.',
           ),
         ),
       ],

@@ -1,3 +1,9 @@
+import 'dart:io';
+
+import 'package:karaok_app/features/calibration/data/mic_calibration_store.dart';
+import 'package:karaok_app/features/calibration/presentation/pages/mic_calibration_screen.dart';
+import 'package:karaok_app/core/security/role_policy.dart';
+import 'package:flutter/services.dart';
 import 'package:karaok_app/shared/widgets/adaptive_layout.dart';
 import 'package:karaok_app/shared/widgets/app_sidebar.dart';
 import 'package:karaok_app/app/app_theme.dart';
@@ -22,6 +28,7 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
+  static bool _promptedThisLaunch = false;
   late int _currentIndex;
   int _recordsRefreshToken = 0;
 
@@ -29,6 +36,32 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex.clamp(0, 2);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _offerCalibration());
+  }
+
+  Future<void> _offerCalibration() async {
+    if (!mounted ||
+        _promptedThisLaunch ||
+        !RolePolicy.canRunAssessment(UserSession.instance.userType)) {
+      return;
+    }
+    try {
+      if (!await MicCalibrationStore.instance.shouldPrompt() ||
+          !mounted ||
+          _promptedThisLaunch ||
+          ModalRoute.of(context)?.isCurrent != true ||
+          !RolePolicy.canRunAssessment(UserSession.instance.userType)) {
+        return;
+      }
+    } on MissingPluginException {
+      return;
+    } on PlatformException {
+      return;
+    } on FileSystemException {
+      return;
+    }
+    _promptedThisLaunch = true;
+    await MicCalibrationScreen.open(context);
   }
 
   @override

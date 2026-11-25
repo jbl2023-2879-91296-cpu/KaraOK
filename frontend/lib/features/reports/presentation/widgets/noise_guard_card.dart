@@ -6,12 +6,14 @@ class NoiseGuardCard extends StatelessWidget {
     required this.usablePercentage,
     required this.confidence,
     required this.prerollNoiseDbfs,
+    this.noiseSource,
     this.warnings = const [],
   });
 
   final double? usablePercentage;
   final String? confidence;
   final double? prerollNoiseDbfs;
+  final String? noiseSource;
   final List<String> warnings;
 
   @override
@@ -22,6 +24,10 @@ class NoiseGuardCard extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    const micWarning =
+        "The song was quiet compared with this phone's own microphone hiss. "
+        'Move the phone closer to the speaker or raise the volume.';
+    final micNoise = noiseSource == 'phone_microphone';
     final title = switch (confidence) {
       'high' => 'Noise guard: High confidence',
       'medium' => 'Noise guard: Medium confidence',
@@ -46,7 +52,9 @@ class NoiseGuardCard extends StatelessWidget {
                 ),
               if (prerollNoiseDbfs == null)
                 const Text('No usable background-noise check'),
-              if (confidence == 'low')
+              if (micNoise && !warnings.contains(micWarning))
+                const Text(micWarning),
+              if (confidence == 'low' && !micNoise)
                 const Text(
                   'Results may be affected by background noise. Try again closer to the speaker.',
                 ),

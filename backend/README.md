@@ -186,3 +186,11 @@ the MySQL server's global timezone do not need to change.
 To include the timestamp round-trip integration test against the configured
 local MySQL database, set `$env:KARAOK_TEST_MYSQL='1'` before running the suite.
 It uses a temporary table and does not modify application records.
+
+## Microphone calibration API
+
+- `POST /api/mic-calibration` accepts authenticated user requests.
+- `POST /api/guest/mic-calibration` accepts guest requests with the guest rate limit.
+- Both endpoints accept multipart `audio` (WAV) and optional `device_label`. A successful response includes the measurement ID, microphone floor, pink-noise LUFS, and a correction when a reference phone has been set. Invalid recordings return 422 with an `error` message.
+- `POST /api/audio-uploads` and `POST /api/guest/audio-analysis` accept optional `mic_calibration` (version 1 correction JSON) and `mic_noise_floor_dbfs` (−120 to −20 dBFS).
+- From this directory, run `python3 scripts/set_mic_calibration_reference.py --measurement-id ab12cd34 --note "Reference phone"` to promote a real measurement. The default input is `$AUDIO_UPLOAD_DIR/calibration/measurements.jsonl` and the default output is `audio_thresholds/mic_calibration_reference.json`. Override these paths with `--log` and `--out`.
